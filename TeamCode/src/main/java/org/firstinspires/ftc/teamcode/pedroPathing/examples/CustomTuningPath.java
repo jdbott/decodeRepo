@@ -26,14 +26,13 @@ public class CustomTuningPath extends OpMode {
     private int pathState;
     private Telemetry telemetryA;
     private Path toCorner, curve, toStart;
-    private final Pose startPose = new Pose(0, 0, Math.toRadians(90));
 
     @Override
     public void init() {
         // Initialize path stuff with hardwareMap
         follower = new Follower(hardwareMap, FConstants.class, LConstants.class);
         follower.initialize();
-        follower.setStartingPose(startPose);
+        follower.setStartingPose(new Pose(0, 0, Math.toRadians(90)));
         follower.setMaxPower(1);
         pathTimer = new Timer();
         pathState = 0;
@@ -71,7 +70,7 @@ public class CustomTuningPath extends OpMode {
             case 0:
                 toCorner = new Path(new BezierLine(
                         new Point(follower.getPose().getX(), follower.getPose().getY(), Point.CARTESIAN),
-                        new Point(-10, 48, Point.CARTESIAN)));
+                        new Point(-10, 40, Point.CARTESIAN)));
                 toCorner.setTangentHeadingInterpolation();
                 follower.followPath(toCorner, true);
                 led.setPattern(RevBlinkinLedDriver.BlinkinPattern.GREEN);
@@ -79,7 +78,7 @@ public class CustomTuningPath extends OpMode {
                 break;
 
             case 1:
-                if (follower.isBusy() && follower.getCurrentTValue() > 0.8) {
+                if (follower.isBusy() && follower.getCurrentTValue() > 0.7) {
                     toCorner.setConstantHeadingInterpolation(Math.toRadians(180));
                     led.setPattern(RevBlinkinLedDriver.BlinkinPattern.HOT_PINK);
                 }
@@ -90,11 +89,11 @@ public class CustomTuningPath extends OpMode {
                 break;
 
             case 2:
-                if (pathTimer.getElapsedTimeSeconds() > 2) {
+                if (pathTimer.getElapsedTimeSeconds() > 1) {
                     curve = new Path(new BezierCurve(
                             new Point(follower.getPose().getX(), follower.getPose().getY(), Point.CARTESIAN),
-                            new Point(-40, -40, Point.CARTESIAN),
-                            new Point(-20, -20, Point.CARTESIAN),
+                            new Point(-40, 40, Point.CARTESIAN),
+                            new Point(-20, 20, Point.CARTESIAN),
                             new Point(-60, 10, Point.CARTESIAN)));
                     curve.setLinearHeadingInterpolation(follower.getPose().getHeading(), Math.toRadians(90));
                     follower.followPath(curve, true);
@@ -121,6 +120,7 @@ public class CustomTuningPath extends OpMode {
                     led.setPattern(RevBlinkinLedDriver.BlinkinPattern.ORANGE);
                     setPathState(5);
                 }
+                break;
 
             case 5:
                 if (!follower.isBusy()) {
