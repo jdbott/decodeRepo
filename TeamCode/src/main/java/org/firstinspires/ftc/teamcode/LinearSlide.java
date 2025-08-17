@@ -83,6 +83,10 @@ public class LinearSlide {
         return maxExtensionInches;
     }
 
+    public double getPower() {
+        return motors.get(0).getPower();
+    }
+
     // Get the minimum extension in inches
     public double getMinExtensionInches() {
         return minExtensionInches;
