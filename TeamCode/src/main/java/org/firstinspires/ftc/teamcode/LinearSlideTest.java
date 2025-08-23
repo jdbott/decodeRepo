@@ -14,6 +14,8 @@ public class LinearSlideTest extends LinearOpMode {
     private Servo armLeft;
     private Servo armRight;
 
+    private Pivot pivot;
+
     @Override
     public void runOpMode() {
         String[] motorNames = {"slides", "slides2"};
@@ -25,6 +27,7 @@ public class LinearSlideTest extends LinearOpMode {
         armLeft.setDirection(Servo.Direction.REVERSE);
         armRight = hardwareMap .get(Servo.class, "armRight");
 
+        pivot = new Pivot(hardwareMap);
 
         // Set position to zero
         armLeft.setPosition(0.25);
@@ -47,11 +50,23 @@ public class LinearSlideTest extends LinearOpMode {
                 linearSlide.moveSlidesToPositionInches(27);
             }
 
-            linearSlide.update();
+            if (gamepad1.left_bumper) {
+                pivot.movePivotToAngle(0);
+            }
 
-            telemetry.addData("Position Inches", linearSlide.slidesPositionInches());
-            telemetry.addData("Is Busy", linearSlide.isSlideMotorsBusy());
-            telemetry.addData("Power", linearSlide.getPower());
+            if (gamepad1.right_bumper) {
+                pivot.movePivotToAngle(80);
+            }
+
+            linearSlide.update();
+            pivot.update();
+
+            telemetry.addData("Slide Position Inches", linearSlide.slidesPositionInches());
+            telemetry.addData("Slide Is Busy", linearSlide.isSlideMotorsBusy());
+            telemetry.addData("Slide Power", linearSlide.getPower());
+            telemetry.addData("Pivot Angle", pivot.getPivotAngle());
+            telemetry.addData("Pivot Is Busy", pivot.isPivotMotorBusy());
+            telemetry.addData("Pivot Power", pivot.getPower());
             telemetry.update();
         }
     }
