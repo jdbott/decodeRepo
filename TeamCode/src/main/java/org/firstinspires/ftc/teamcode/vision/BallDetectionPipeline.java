@@ -38,7 +38,7 @@ public class BallDetectionPipeline extends OpenCvPipeline {
     public Mat processFrame(Mat input) {
         balls.clear();
 
-        Size size = new Size(600, (600.0 / input.cols()) * input.rows());
+        Size size = new Size(600, 480);
         Mat resized = new Mat();
         Imgproc.resize(input, resized, size);
 
