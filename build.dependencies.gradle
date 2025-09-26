@@ -19,5 +19,6 @@ dependencies {
 
     implementation 'com.pedropathing:pedro:1.0.9'
     implementation 'com.acmerobotics.dashboard:dashboard:0.4.16'
+    implementation "com.bylazar:ftcontrol:0.6.8"
 }
 
