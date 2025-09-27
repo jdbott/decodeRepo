@@ -33,7 +33,7 @@ public class Shooter {
             DcMotorEx motor = hardwareMap.get(DcMotorEx.class, motorNames[i]);
             motor.setDirection(directions[i]);
             motor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-            motor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+            motor.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
             motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             motors.add(motor);
         }
@@ -46,7 +46,7 @@ public class Shooter {
         double shaftRadius = shaftCircumference / (2 * Math.PI);
         for (DcMotorEx motor : motors) {
             // convert velocity from m/s at the wheel to m/s at the motor shaft
-            double linearShaftVelocity = wheelVelocity * (wheelCircumference / shaftCircumference);
+            double linearShaftVelocity = wheelVelocity * (shaftCircumference / wheelCircumference);
             // convert velocity from linear velocity in m/s to angular velocity in rad/s
             double angularShaftVelocity = linearShaftVelocity / shaftRadius;
             // set the motor velocity to power the motor shaft at the calculated angular velocity
@@ -55,5 +55,16 @@ public class Shooter {
             telemetry.addData("Target Velocity (m/s)", wheelVelocity);
             telemetry.update();
         }
+    }
+
+    public void stopMotors() {
+        for (DcMotorEx motor : motors) {
+            motor.setPower(0);
+        }
+    }
+
+    public void setHoodAngle(Servo hoodServo, double angle) {
+
+
     }
 }
