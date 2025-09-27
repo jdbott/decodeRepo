@@ -39,8 +39,8 @@ public class BallDetectorTest extends LinearOpMode {
 
         while (opModeIsActive()) {
             for (BallDetectionPipeline.Ball d : pipeline.getBalls()) {
-                telemetry.addData("Ball", "%s at (%.1f, %.1f), r=%.1f",
-                        d.color, d.center.x, d.center.y, d.radius);
+                telemetry.addData("Ball", "%s at (%.1f, %.1f), r=%.1f, d=%.1fcm",
+                        d.color, d.center.x, d.center.y, d.radius, d.distance);
             }
             telemetry.update();
         }
