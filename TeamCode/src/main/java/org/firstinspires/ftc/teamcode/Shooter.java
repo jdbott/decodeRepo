@@ -22,6 +22,7 @@ Time permitting, you should also work on adding the turret code to the same hard
 factoring in the reduction (24:108) and using the encoder to spin the turret to any angle with a PID,
 also clamping the min and max angle to avoid wire tangling.
  */
+
 public class Shooter {
     private final List<DcMotorEx> motors = new ArrayList<>();
     private static final double wheelCircumference = 0.0762; // meters
