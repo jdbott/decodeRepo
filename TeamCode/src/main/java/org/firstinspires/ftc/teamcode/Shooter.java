@@ -7,6 +7,7 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
@@ -26,6 +27,16 @@ also clamping the min and max angle to avoid wire tangling.
 public class Shooter {
     private final List<DcMotorEx> motors = new ArrayList<>();
     private static final double wheelCircumference = 0.0762; // meters
+
+    private static final double C1 = 232; //mm
+    private static final double C2 = 32; //mm
+    private static final double C3 =200; //mm
+    private static final double C4 = 51.24; //mm
+
+    private static final double minAngle = 45; //degrees
+
+    private static final double maxAngle = 180; //degrees
+
 
     public Shooter(HardwareMap hardwareMap, String[] motorNames, DcMotorSimple.Direction[] directions, String hoodServoName) {
 
@@ -56,6 +67,21 @@ public class Shooter {
             telemetry.update();
         }
     }
+
+    public void setAngle(double deltaAngle) {
+        double x2 = Math.pow(C1, 2) + Math.pow(C2, 2) - 2*C1*C2*Math.cos(Math.toRadians(deltaAngle));
+
+        double gamma = Math.toDegrees(Math.acos((x2 - Math.pow(C3, 2) - Math.pow(C4, 2))/(-2*C3*C4)));
+
+        gamma = Range.clip(gamma, minAngle, maxAngle);
+
+        currentAngle = hoodServo.getPosition();
+        hoodServo.setPosition(gamma/180); // Normalize to [0, 1]
+
+        telemetry.addData("Hood Angle (degrees)", gamma);
+        telemetry.update();
+    }
+
 
     public void stopMotors() {
         for (DcMotorEx motor : motors) {
