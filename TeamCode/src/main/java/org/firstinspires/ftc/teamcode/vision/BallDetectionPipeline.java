@@ -10,13 +10,13 @@ import java.util.List;
 
 public class BallDetectionPipeline extends OpenCvPipeline {
 
-    private final Scalar lower_purple = new Scalar(125, 80, 50);
-    private final Scalar upper_purple = new Scalar(155, 255, 255);
+    private final Scalar lower_purple = new Scalar(120, 43, 45);
+    private final Scalar upper_purple = new Scalar(179, 255, 255);
     private final Scalar lower_green = new Scalar(30, 75, 93);
     private final Scalar upper_green = new Scalar(88, 255, 255);
 
     private final double REAL_BALL_DIAMETER = 12.7;
-    private final double FOCAL_LENGTH = 622.001;
+    private final double FOCAL_LENGTH = 403.94;
 
     public static class Ball {
         public String color;
@@ -30,12 +30,30 @@ public class BallDetectionPipeline extends OpenCvPipeline {
             this.radius = radius;
             this.distance = distance;
         }
+
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (o == null || getClass() != o.getClass()) return false;
+            Ball ball = (Ball) o;
+            return Float.compare(ball.radius, radius) == 0 &&
+                    Double.compare(ball.distance, distance) == 0 &&
+                    color.equals(ball.color) &&
+                    center.equals(ball.center);
+        }
+
+        public int hashCode() {
+            int result = color.hashCode();
+            result = 31 * result + center.hashCode();
+            result = 31 * result + Float.hashCode(radius);
+            result = 31 * result + Double.hashCode(distance);
+            return result;
+        }
     }
 
-    private final List<Ball> balls = new ArrayList<>();
+    private static final List<Ball> balls = new ArrayList<>();
 
     public List<Ball> getBalls() {
-        return balls;
+        return new ArrayList<>(balls); // Return a copy to avoid concurrent modification
     }
 
     @Override

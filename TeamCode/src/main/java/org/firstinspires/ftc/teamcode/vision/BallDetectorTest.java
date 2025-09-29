@@ -8,6 +8,9 @@ import org.openftc.easyopencv.OpenCvCamera;
 import org.openftc.easyopencv.OpenCvCameraFactory;
 import org.openftc.easyopencv.OpenCvCameraRotation;
 
+import java.util.HashSet;
+import java.util.Set;
+
 @TeleOp(name="Ball Detector Test", group="Vision")
 public class BallDetectorTest extends LinearOpMode {
     OpenCvCamera camera;
@@ -17,7 +20,7 @@ public class BallDetectorTest extends LinearOpMode {
     public void runOpMode() {
         int cameraMonitorViewId = hardwareMap.appContext.getResources().getIdentifier(
                 "cameraMonitorViewId", "id", hardwareMap.appContext.getPackageName());
-        camera= OpenCvCameraFactory.getInstance().createWebcam(hardwareMap.get(WebcamName.class, "C920"), cameraMonitorViewId);
+        camera= OpenCvCameraFactory.getInstance().createWebcam(hardwareMap.get(WebcamName.class, "Webcam 1"), cameraMonitorViewId);
         pipeline = new BallDetectionPipeline();
         camera.setPipeline(pipeline);
         camera.openCameraDeviceAsync(new OpenCvCamera.AsyncCameraOpenListener()
@@ -38,7 +41,12 @@ public class BallDetectorTest extends LinearOpMode {
         waitForStart();
 
         while (opModeIsActive()) {
-            for (BallDetectionPipeline.Ball d : pipeline.getBalls()) {
+            Set<BallDetectionPipeline.Ball> ballsCopy = new HashSet<>(pipeline.getBalls());
+            for (BallDetectionPipeline.Ball d : ballsCopy) {
+                if (d == null) {
+                    telemetry.addLine("Warning: Null Ball detected");
+                    continue;
+                }
                 telemetry.addData("Ball", "%s at (%.1f, %.1f), r=%.1f, d=%.1fcm",
                         d.color, d.center.x, d.center.y, d.radius, d.distance);
             }
