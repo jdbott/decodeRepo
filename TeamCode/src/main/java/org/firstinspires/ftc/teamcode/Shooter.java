@@ -26,6 +26,8 @@ also clamping the min and max angle to avoid wire tangling.
 
 public class Shooter {
     private final List<DcMotorEx> motors = new ArrayList<>();
+
+    private final Servo hoodServo;
     private static final double wheelCircumference = 0.0762; // meters
 
     private static final double C1 = 232; //mm
@@ -33,7 +35,7 @@ public class Shooter {
     private static final double C3 =200; //mm
     private static final double C4 = 51.24; //mm
 
-    private static final double minAngle = 45; //degrees
+    private static final double minAngle = 30; //degrees
 
     private static final double maxAngle = 180; //degrees
 
@@ -48,7 +50,9 @@ public class Shooter {
             motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
             motors.add(motor);
         }
-        Servo hoodServo = hardwareMap.get(Servo.class, hoodServoName);
+        hoodServo = hardwareMap.get(Servo.class, hoodServoName);
+        hoodServo.setDirection(Servo.Direction.FORWARD);
+        hoodServo.setPosition(0);
     }
 
     // Spin the output shaft of the wheel shooter at a target velocity in m/s
@@ -69,13 +73,12 @@ public class Shooter {
     }
 
     public void setAngle(double deltaAngle) {
-        double x2 = Math.pow(C1, 2) + Math.pow(C2, 2) - 2*C1*C2*Math.cos(Math.toRadians(deltaAngle));
+        double x2 = Math.pow(C3, 2) + Math.pow(C4, 2) - 2*C3*C4*Math.cos(Math.toRadians(deltaAngle));
 
-        double gamma = Math.toDegrees(Math.acos((x2 - Math.pow(C3, 2) - Math.pow(C4, 2))/(-2*C3*C4)));
+        double gamma = Math.toDegrees(Math.acos((x2 - Math.pow(C1, 2) - Math.pow(C2, 2))/(-2*C1*C2)));
 
         gamma = Range.clip(gamma, minAngle, maxAngle);
 
-        currentAngle = hoodServo.getPosition();
         hoodServo.setPosition(gamma/180); // Normalize to [0, 1]
 
         telemetry.addData("Hood Angle (degrees)", gamma);
