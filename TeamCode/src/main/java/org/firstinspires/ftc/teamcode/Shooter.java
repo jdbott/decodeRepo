@@ -93,7 +93,7 @@ public class Shooter {
     }
 
     public void setHoodAngle(Servo hoodServo, double angle) {
-
-
+        double normalizedPosition = Range.clip(angle / 180.0, 0.0, 1.0);
+        hoodServo.setPosition(normalizedPosition);
     }
 }
