@@ -26,13 +26,13 @@ public class Shooter {
 
     private static final double TICKS_PER_REVOLUTION = 28;
 
-    public Shooter(HardwareMap hardwareMap, String[] motorNames, DcMotorSimple.Direction[] directions, String hoodServoName) {
+    public void init(HardwareMap hardwareMap, String[] motorNames, DcMotorSimple.Direction[] directions, DcMotorEx.RunMode[] runModes, String hoodServoName) {
         motors.clear();
         for (int i = 0; i < motorNames.length; i++) {
             DcMotorEx motor = hardwareMap.get(DcMotorEx.class, motorNames[i]);
             motor.setDirection(directions[i]);
             motor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
-            motor.setMode(DcMotorEx.RunMode.RUN_USING_ENCODER);
+            motor.setMode(runModes[i]);
             motor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
             motors.add(motor);
         }

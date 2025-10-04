@@ -42,7 +42,6 @@ public class Turret {
     }
 
     public void rotateToAngle(double targetAngle) {
-        // Clamp target angle within allowed range
         targetAngle = Range.clip(targetAngle, minAngle, maxAngle);
         double targetTicks = angleToTicks(targetAngle);
         moveTurretToPosition(targetTicks);

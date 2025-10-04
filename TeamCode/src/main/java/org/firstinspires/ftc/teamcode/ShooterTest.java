@@ -1,8 +1,10 @@
+/*
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.Servo;
 
@@ -14,7 +16,8 @@ public class ShooterTest extends LinearOpMode {
     public void runOpMode() {
         String[] motorNames = {"shooter", "shooter2"};
         DcMotorSimple.Direction[] directions = {DcMotorSimple.Direction.FORWARD, DcMotorSimple.Direction.FORWARD};
-        shooter = new Shooter(hardwareMap, motorNames, directions, "hood");
+        DcMotorEx.RunMode[] runModes = {DcMotorEx.RunMode.RUN_USING_ENCODER, DcMotorEx.RunMode.RUN_USING_ENCODER};
+        shooter = new Shooter(hardwareMap, motorNames, directions, runModes, "hoodServo");
 
         waitForStart();
 
@@ -51,3 +54,4 @@ public class ShooterTest extends LinearOpMode {
         }
     }
 }
+ */
