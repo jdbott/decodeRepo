@@ -23,12 +23,16 @@ public class BallDetectionPipeline extends OpenCvPipeline {
         public Point center;
         public float radius;
         public double distance;
+        public double xDistance; // cm from center horizontally
+        public double yDistance; // cm from center vertically
 
-        public Ball(String color, Point center, float radius, double distance) {
+        public Ball(String color, Point center, float radius, double distance, double xDistance, double yDistance) {
             this.color = color;
             this.center = center;
             this.radius = radius;
             this.distance = distance;
+            this.xDistance = xDistance;
+            this.yDistance = yDistance;
         }
 
         public boolean equals(Object o) {
@@ -141,8 +145,15 @@ public class BallDetectionPipeline extends OpenCvPipeline {
                     Point centroid = new Point(m.m10 / m.m00, m.m01 / m.m00);
 
                     double distance = (REAL_BALL_DIAMETER * FOCAL_LENGTH) / (2.0 * radius[0]);
+                    double imageCenterX = output.width() / 2.0;
+                    double imageCenterY = output.height() / 2.0;
+                    double dx = centroid.x - imageCenterX;
+                    double dy = centroid.y - imageCenterY;
+                    double cmPerPixel = distance / FOCAL_LENGTH;
+                    double xDistance = dx * cmPerPixel;
+                    double yDistance = dy * cmPerPixel;
 
-                    balls.add(new Ball(color, centroid, radius[0], distance));
+                    balls.add(new Ball(color, centroid, radius[0], distance, xDistance, yDistance));
                 }
             }
         }
