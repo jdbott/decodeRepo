@@ -64,20 +64,15 @@ public class LLMT2 extends LinearOpMode {
 
         while (opModeIsActive()) {
             YawPitchRollAngles orientation = imu.getRobotYawPitchRollAngles();
-            limelight.updateRobotOrientation(orientation.getYaw(AngleUnit.DEGREES));
+            limelight.updateRobotOrientation(orientation.getYaw());
             LLResult result = limelight.getLatestResult();
             if (result != null && result.isValid()) {
-                List<LLResultTypes.FiducialResult> fiducials = result.getFiducialResults();
-                for (LLResultTypes.FiducialResult fiducial : fiducials) {
-                    if (fiducial.getFiducialId() == 20) {
-                        telemetry.addData("X", fiducial.getRobotPoseTargetSpace().getPosition().x);
-                        telemetry.addData("Y", fiducial.getRobotPoseTargetSpace().getPosition().y);
-                        telemetry.addData("Z", fiducial.getRobotPoseTargetSpace().getPosition().z);
-                        telemetry.addData("Heading", fiducial.getRobotPoseTargetSpace().getOrientation().getYaw());
-                        telemetry.addData("Pitch", fiducial.getRobotPoseTargetSpace().getOrientation().getPitch());
-                        telemetry.addData("Roll", fiducial.getRobotPoseTargetSpace().getOrientation().getRoll());
-                    }
-                }
+                Pose3D pose = result.getBotpose_MT2();
+                telemetry.addData("Tx", result.getTx());
+                telemetry.addData("Ty", result.getTy());
+                telemetry.addData("Area", result.getTa());
+                telemetry.addData("Pose", pose.toString());
+                telemetry.addData("Yaw", pose.getOrientation().getYaw());
             }
             telemetry.update();
         }
