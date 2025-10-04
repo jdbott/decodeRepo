@@ -2,7 +2,6 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.Range;
 
@@ -15,7 +14,7 @@ public class Turret {
     private boolean turretBusy = false;
     private double kP = 0.01;
 
-    public Turret(HardwareMap hardwareMap, String motorName, DcMotorSimple.Direction direction,
+    public Turret(HardwareMap hardwareMap, String motorName, DcMotorEx.Direction direction,
                   double ticksPerRevolution, double gearReduction, double minAngle, double maxAngle) {
         this.ticksPerDegree = (ticksPerRevolution * gearReduction) / 360.0;
         this.minAngle = minAngle;

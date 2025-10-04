@@ -1,3 +1,4 @@
+/*
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.hardware.DcMotor;
@@ -11,12 +12,9 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import java.util.ArrayList;
 import java.util.List;
 
-public class Shooter {
-    public List<DcMotorEx> motors = new ArrayList<>();
+public class Linkage {
     public Servo hoodServo;
 
-    private static final double wheelCircumference = 0.0762; // meters
-    private static final double shaftCircumference = 0.008; // meters
     private static final double C1 = 232; // mm
     private static final double C2 = 32; // mm
     private static final double C3 = 200; // mm
@@ -26,7 +24,7 @@ public class Shooter {
 
     private static final double TICKS_PER_REVOLUTION = 28;
 
-    public Shooter(HardwareMap hardwareMap, String[] motorNames, DcMotorSimple.Direction[] directions, String hoodServoName) {
+    public Linkage(HardwareMap hardwareMap, String[] motorNames, DcMotorSimple.Direction[] directions, String hoodServoName) {
         motors.clear();
         for (int i = 0; i < motorNames.length; i++) {
             DcMotorEx motor = hardwareMap.get(DcMotorEx.class, motorNames[i]);
@@ -83,3 +81,4 @@ public class Shooter {
         hoodServo.setPosition(gamma / 180.0); // Normalize to [0, 1]
     }
 }
+ */
