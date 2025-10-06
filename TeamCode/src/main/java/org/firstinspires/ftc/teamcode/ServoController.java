@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.AnalogInput;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.HardwareMap;
@@ -9,119 +10,159 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ServoController {
+    // Hardware
     private final List<CRServo> servos = new ArrayList<>();
-    private final List<AnalogInput> encoders = new ArrayList<>();
+    private final AnalogInput encoder; // single shared encoder
 
-    private double lastSetServoAngle = 0; // target angle in degrees
+    // Shared encoder state
+    private double zeroOffsetDeg = 0.0;
+    private double lastZeroedDeg = 0.0;
+    private int revolutions = 0;
+
+    // Per-servo configuration
+    private final List<Double> dirSign = new ArrayList<>();
+    private final List<Double> lastSetTargetDeg = new ArrayList<>();
+
+    // Tuning
+    private double kP = 0.01;
+    private double kD = 0.002;      // <-- Derivative term added
+    private double lastError = 0.0; // <-- To compute derivative
+    private double minPower = 0.0;
     private boolean servosBusy = false;
-    private double kP = 0.0001;             // proportional gain
-    private double minPower = 0.0;        // minimum power threshold
-    private static final double TOLERANCE = 1.0; // degrees
 
-    public ServoController(HardwareMap hardwareMap, String[] servoNames, String[] encoderNames) {
-        for (String name : servoNames) {
-            CRServo servo = hardwareMap.get(CRServo.class, name);
-            servos.add(servo);
+    // Constants
+    private static final double TOLERANCE_DEG = 4.0;
+    private static final double VREF = 3.3;
+    private static final double WRAP_THRESH_DEG = 270.0;
+
+    // Gear ratio constants (servo gear : output gear = 30 : 36)
+    private static final double GEAR_RATIO = 30.0 / 36.0;
+    private static final double INV_GEAR_RATIO = 1.0 / GEAR_RATIO;
+
+    /**
+     * Constructor.
+     * @param hw Hardware map.
+     * @param servoNames Array of servo names.
+     * @param directions Array of direction multipliers (+1 or -1) for each servo.
+     * @param encoderName Analog input name for the encoder.
+     */
+    public ServoController(HardwareMap hw, String[] servoNames, double[] directions, String encoderName) {
+        if (servoNames.length != directions.length)
+            throw new IllegalArgumentException("Servo names and directions arrays must have the same length.");
+
+        encoder = hw.get(AnalogInput.class, encoderName);
+        for (int i = 0; i < servoNames.length; i++) {
+            servos.add(hw.get(CRServo.class, servoNames[i]));
+            dirSign.add(Math.signum(directions[i]));
+            lastSetTargetDeg.add(0.0);
         }
-        for (String name : encoderNames) {
-            AnalogInput encoder = hardwareMap.get(AnalogInput.class, name);
-            encoders.add(encoder);
-        }
+        zeroNow();
     }
 
-    // Set minimum servo power threshold
-    public void setMinPower(double minPower) {
-        this.minPower = Math.abs(minPower);
+    // --- Configuration ---
+    public void setKP(double gain) { kP = gain; }
+    public void setKD(double gain) { kD = gain; } // <-- Setter for derivative
+    public void setMinPower(double pwr) { minPower = Math.abs(pwr); }
+    public void setServoReversed(int i, boolean reversed) { dirSign.set(i, reversed ? -1.0 : 1.0); }
+
+    // Zero shared encoder
+    public void zeroNow() {
+        double raw = rawAngleDeg();
+        zeroOffsetDeg = raw;
+        lastZeroedDeg = 0.0;
+        revolutions = 0;
+        for (CRServo s : servos) s.setPower(0);
+        servosBusy = false;
+        lastError = 0.0; // reset derivative memory
     }
 
-    // Convert encoder voltage to angle (0–360)
-    private double getAngleFromEncoder(AnalogInput encoder) {
-        return (encoder.getVoltage() / encoder.getMaxVoltage()) * 360.0;
+    // --- Commands ---
+    public void moveServosToPosition(double targetOutputDeg) {
+        double t0_360 = wrapTo0_360(targetOutputDeg);
+        double currentOutput = getContinuousOutputAngleDeg();
+        double nearest = nearestEquivalent(t0_360, currentOutput);
+        double servoTarget = nearest * INV_GEAR_RATIO;
+        for (int i = 0; i < servos.size(); i++) lastSetTargetDeg.set(i, servoTarget);
+        servosBusy = true;
     }
 
-    // Move servos to absolute target angle in degrees
-    public void moveServosToPosition(double targetAngle) {
-        lastSetServoAngle = targetAngle;
+    public void moveServosByRotation(double deltaOutputDeg) {
+        double currentServo = getContinuousServoAngleDeg();
+        double newTarget = currentServo + deltaOutputDeg * INV_GEAR_RATIO;
+        for (int i = 0; i < servos.size(); i++) lastSetTargetDeg.set(i, newTarget);
+        servosBusy = true;
+    }
+
+    // --- Update loop ---
+    public void update() {
+        boolean anyBusy = false;
+        double currentServo = getContinuousServoAngleDeg();
 
         for (int i = 0; i < servos.size(); i++) {
-            double currentAngle = getAngleFromEncoder(encoders.get(i));
-            double error = wrapDegrees(targetAngle - currentAngle);
+            double error = lastSetTargetDeg.get(i) - currentServo;
+            error = Range.clip(error, -180.0, 180.0);
+            double absErr = Math.abs(error);
 
-            if (Math.abs(error) > TOLERANCE) {
-                double power = kP * error;
+            // Derivative term: change in error per cycle
+            double derivative = error - lastError;
+            lastError = error;
 
-                // Apply minimum threshold
-                if (minPower > 0) {
-                    if (power > 0 && power < minPower) power = minPower;
-                    else if (power < 0 && power > -minPower) power = -minPower;
-                }
-
-                servos.get(i).setPower(Range.clip(power, -1, 1));
-                servosBusy = true;
+            if (absErr > TOLERANCE_DEG) {
+                double pwr = kP * error + kD * derivative; // <-- PD control
+                if (Math.abs(pwr) < minPower) pwr = Math.signum(pwr) * minPower;
+                pwr = Range.clip(pwr, -1, 1);
+                servos.get(i).setPower(pwr * dirSign.get(i));
+                anyBusy = true;
             } else {
                 servos.get(i).setPower(0);
-                servosBusy = false;
             }
         }
+        servosBusy = anyBusy;
     }
 
-    // NEW: Move servos by a relative rotation (can exceed 360 or be negative)
-    public void moveServosByRotation(double deltaAngle) {
-        // Get the average current position
-        double currentAngle = averageServoAngle();
+    // --- Status ---
+    public boolean isServosBusy() { return servosBusy; }
+    public double getContinuousAngleDeg() { return getContinuousServoAngleDeg() * GEAR_RATIO; }
 
-        // New target is current + requested delta
-        double newTarget = currentAngle + deltaAngle;
+    // --- Encoder tracking ---
+    private double rawAngleDeg() { return (encoder.getVoltage() / VREF) * 360.0; }
 
-        // Save it as the target (not wrapped, allows multiple turns)
-        lastSetServoAngle = newTarget;
-
-        // Move like usual
-        moveServosToPosition(lastSetServoAngle);
+    private double zeroedServoAngleDeg() {
+        double raw = rawAngleDeg();
+        double z = raw - zeroOffsetDeg;
+        z %= 360.0;
+        if (z < 0) z += 360.0;
+        return z;
     }
 
-    // Corrects positions when not busy
-    public void correctServoPositions() {
-        if (!servosBusy) {
-            for (int i = 0; i < servos.size(); i++) {
-                double currentAngle = getAngleFromEncoder(encoders.get(i));
-                double error = wrapDegrees(lastSetServoAngle - currentAngle);
-                double power = kP * error;
-                servos.get(i).setPower(Range.clip(power, -1, 1));
-            }
-        }
+    private double getContinuousServoAngleDeg() {
+        double currZeroed = zeroedServoAngleDeg();
+        double diff = currZeroed - lastZeroedDeg;
+        if (diff < -WRAP_THRESH_DEG) revolutions++;
+        else if (diff > WRAP_THRESH_DEG) revolutions--;
+        lastZeroedDeg = currZeroed;
+        return revolutions * 360.0 + currZeroed;
     }
 
-    // Updates the servo state
-    public void update() {
-        if (isServosBusy()) {
-            moveServosToPosition(lastSetServoAngle);
-        } else {
-            correctServoPositions();
-        }
+    private double getContinuousOutputAngleDeg() {
+        return getContinuousServoAngleDeg() * GEAR_RATIO;
     }
 
-    // Check if servos are busy (based on tolerance)
-    public boolean isServosBusy() {
-        return servosBusy;
+    // --- Utility ---
+    private static double wrapTo0_360(double a) {
+        double r = a % 360.0;
+        if (r < 0) r += 360.0;
+        return r;
     }
 
-    // Get average servo angle from encoders
-    public double averageServoAngle() {
-        double total = 0;
-        for (AnalogInput encoder : encoders) {
-            total += getAngleFromEncoder(encoder);
-        }
-        return total / encoders.size();
+    private static double nearestEquivalent(double target0to360, double currentContinuous) {
+        double k = Math.rint((currentContinuous - target0to360) / 360.0);
+        return target0to360 + 360.0 * k;
     }
 
-    // Utility: wrap to [-180, 180)
-    private double wrapDegrees(double angle) {
-        return ((angle + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
-    }
-
-    // Allow tuning kP
-    public void setKP(double set) {
-        kP = set;
+    // Stop all
+    public void stopAll() {
+        for (CRServo s : servos) s.setPower(0);
+        servosBusy = false;
     }
 }
