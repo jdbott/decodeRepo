@@ -16,22 +16,11 @@ public class TurretTest extends LinearOpMode {
         waitForStart();
 
         while (opModeIsActive()) {
-
-            if (gamepad1.dpad_left) {
-                turret.rotateToAngle(-90);
-            }
-
-            if (gamepad1.dpad_right) {
-                turret.rotateToAngle(90);
-            }
-
-            if (gamepad1.dpad_up) {
-                turret.rotateToAngle(0);
-            }
-            
+            turret.rotateToAngle(-45);
             telemetry.addData("Turret Angle", turret.getCurrentAngle());
+            telemetry.addData("Target Angle", -45);
             telemetry.update();
         }
     }
-
 }
+

@@ -11,7 +11,7 @@ public class OneMotorShooterTest extends LinearOpMode {
     @Override
     public void runOpMode() {
         shooter = new OneMotorShooter();
-        shooter.init(hardwareMap, "shooter", DcMotorEx.Direction.FORWARD);
+        shooter.init(hardwareMap, "turret", DcMotorEx.Direction.FORWARD);
 
         waitForStart();
 

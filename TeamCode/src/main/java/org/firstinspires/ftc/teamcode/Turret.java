@@ -12,7 +12,7 @@ public class Turret {
     private final double minAngle;
     private double lastSetAngle = 0;
     private boolean turretBusy = false;
-    private double kP = 0.01;
+    private double kP = 0.004;
 
     public Turret(HardwareMap hardwareMap, String motorName, DcMotorEx.Direction direction,
                   double ticksPerRevolution, double gearReduction, double minAngle, double maxAngle) {

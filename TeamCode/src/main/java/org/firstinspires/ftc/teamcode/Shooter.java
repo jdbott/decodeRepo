@@ -24,7 +24,7 @@ public class Shooter {
     private static final double minAngle = 30; // degrees
     private static final double maxAngle = 180; // degrees
 
-    private static final double TICKS_PER_REVOLUTION = 28;
+    private static final double TICKS_PER_REVOLUTION = 537.7;
 
     public void init(HardwareMap hardwareMap, String[] motorNames, DcMotorSimple.Direction[] directions, DcMotorEx.RunMode[] runModes, String hoodServoName) {
         motors.clear();
