@@ -1,85 +1,129 @@
 package org.firstinspires.ftc.teamcode;
 
-import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.Range;
 
 public class Turret {
-    private final DcMotorEx turretMotor;
-    private final double ticksPerDegree;
-    private final double maxAngle;
-    private final double minAngle;
-    private double lastSetAngle = 0;
-    private boolean turretBusy = false;
-    private double kP = 0.004;
+    private DcMotorEx turretMotor;
 
-    public Turret(HardwareMap hardwareMap, String motorName, DcMotorEx.Direction direction,
-                  double ticksPerRevolution, double gearReduction, double minAngle, double maxAngle) {
-        this.ticksPerDegree = (ticksPerRevolution * gearReduction) / 360.0;
-        this.minAngle = minAngle;
-        this.maxAngle = maxAngle;
+    // Constants
+    private final double ticksPerRev = 384.5;
+    private final double gearRatio = 108.0 / 24.0; // Driven / Driver = 4.5:1
+    private final double ticksPerDegree = (ticksPerRev * gearRatio) / 360.0;
+
+    // Tunable parameters
+    private double kP = 0.02;
+    private double minPower = 0;
+    private double maxAngle = 180;
+    private double minAngle = -180;
+
+    // State variables
+    private double lastSetAngle = 0;  // in degrees
+    private boolean turretBusy = false;
+
+    // Initialization
+    public void init(HardwareMap hardwareMap, String motorName, DcMotorSimple.Direction direction) {
         turretMotor = hardwareMap.get(DcMotorEx.class, motorName);
         turretMotor.setDirection(direction);
-        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        turretMotor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        turretMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
+        turretMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
+        turretMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
     }
 
-    public void zeroTurret() {
-        turretMotor.setMode(DcMotor.RunMode.STOP_AND_RESET_ENCODER);
-        turretMotor.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
-        lastSetAngle = 0;
-        rotateToAngle(0);
+    // ===== Public Configuration =====
+
+    public void setKP(double newKP) {
+        kP = newKP;
     }
 
-    private double angleToTicks(double angle) {
-        return angle * ticksPerDegree;
+    public void setMinPower(double minPwr) {
+        minPower = Math.abs(minPwr);
     }
 
-    private double ticksToAngle(double ticks) {
-        return ticks / ticksPerDegree;
+    public void setLimits(double minDeg, double maxDeg) {
+        minAngle = minDeg;
+        maxAngle = maxDeg;
     }
 
-    public void rotateToAngle(double targetAngle) {
-        targetAngle = Range.clip(targetAngle, minAngle, maxAngle);
-        double targetTicks = angleToTicks(targetAngle);
-        moveTurretToPosition(targetTicks);
+    // ===== Motion Control =====
+
+    public void setAngle(double targetDeg) {
+        // Clamp within mechanical limits
+        targetDeg = Range.clip(targetDeg, minAngle, maxAngle);
+        lastSetAngle = targetDeg;
+        turretBusy = true;
     }
 
-    private void moveTurretToPosition(double targetTicks) {
-        lastSetAngle = ticksToAngle(targetTicks);
-        double error = targetTicks - turretMotor.getCurrentPosition();
-        if (Math.abs(error) > 10) { // error threshold
-            double power = error * kP;
+    // Called periodically from loop()
+    public void update() {
+        if (turretBusy) {
+            moveTurretToAngle(lastSetAngle);
+        } else {
+            correctTurretPosition();
+        }
+    }
+
+    // Move to a target position in degrees
+    private void moveTurretToAngle(double targetAngle) {
+        double targetTicks = targetAngle * ticksPerDegree;
+        double currentTicks = turretMotor.getCurrentPosition();
+        double error = targetTicks - currentTicks;
+
+        if (Math.abs(error) > ticksPerDegree) { // within 1 degree tolerance
+            double power = kP * error;
+            power = applyMinPower(power);
             turretMotor.setPower(Range.clip(power, -1, 1));
-            turretBusy = true;
         } else {
             turretMotor.setPower(0);
             turretBusy = false;
         }
     }
 
-    public void correctTurretPosition() {
-        if (!turretBusy) {
-            double error = angleToTicks(lastSetAngle) - turretMotor.getCurrentPosition();
-            turretMotor.setPower(Range.clip((error * kP), -1, 1));
-        }
+    // Hold position (correct small drift)
+    private void correctTurretPosition() {
+        double targetTicks = lastSetAngle * ticksPerDegree;
+        double currentTicks = turretMotor.getCurrentPosition();
+        double error = targetTicks - currentTicks;
+        double power = 0.02 * error;
+        power = applyMinPower(power);
+        turretMotor.setPower(Range.clip(power, -1, 1));
     }
 
-    public void update() {
-        if (isTurretBusy()) {
-            moveTurretToPosition(angleToTicks(lastSetAngle));
-        } else {
-            correctTurretPosition();
-        }
+    private double applyMinPower(double power) {
+        if (minPower == 0) return power;
+        if (power > 0 && power < minPower) return minPower;
+        if (power < 0 && power > -minPower) return -minPower;
+        return power;
     }
 
-    public boolean isTurretBusy() {
+    // ===== Accessors =====
+
+    public double getCurrentAngle() {
+        return turretMotor.getCurrentPosition() / ticksPerDegree;
+    }
+
+    public double getTargetAngle() {
+        return lastSetAngle;
+    }
+
+    public double getError() {
+        return lastSetAngle - getCurrentAngle();
+    }
+
+    public boolean isBusy() {
         return turretBusy;
     }
 
-    public double getCurrentAngle() {
-        return ticksToAngle(turretMotor.getCurrentPosition());
+    public void stop() {
+        turretMotor.setPower(0);
+        turretBusy = false;
+    }
+
+    public void zeroTurret() {
+        turretMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
+        turretMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
+        lastSetAngle = 0;
     }
 }
