@@ -7,7 +7,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 public class HoodTest extends LinearOpMode {
 
     private final HoodKinematics hood = new HoodKinematics();
-    private final double[] targets = {45, 50, 60, 65};
+    private final double[] targets = {40, 35, 30, 0};
     private int idx = 0;
     private boolean lastA = false;
 
@@ -28,6 +28,7 @@ public class HoodTest extends LinearOpMode {
             lastA = a;
 
             telemetry.addData("Target", targets[idx]);
+            telemetry.addData("target servo", hood.servoAngle(targets[idx]));
             telemetry.update();
             sleep(20);
         }

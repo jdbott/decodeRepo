@@ -36,14 +36,15 @@ public class IntakeCR extends LinearOpMode {
     private int popCount = 0;
 
     // configurable timings (ms)
-    private long autoInitialMoveDelayMs = 750;
-    private long popUpMs = 150;
-    private long popDownMs = 150;
-    private long betweenRevolveMs = 200;
+    private long autoInitialMoveDelayMs = 650;
+    private long postRevolveDelayMs = 500;
+    private long popUpMs = 200;
+    private long popDownMs = 100;
+    private long betweenRevolveMs = 0;
     private double autoRevolveDeg = 120.0;
     private int popRepeats = 3;
 
-    private double lastRightBumperTarget = 60.0;
+    private double lastRightBumperTarget = 180;
     private double lastLeftBumperTarget = 0.0;
 
     @Override
@@ -304,7 +305,7 @@ public class IntakeCR extends LinearOpMode {
                 if (now >= autoTimer) {
                     servoController.moveServosByRotation(autoRevolveDeg);
                     autoState = AutoState.WAIT_TO_SETTLE;
-                    autoTimer = now + autoInitialMoveDelayMs;
+                    autoTimer = now + postRevolveDelayMs;
                 }
                 break;
 
