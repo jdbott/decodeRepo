@@ -11,8 +11,8 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
-@TeleOp(name = "Srimmage teleop", group = "A")
-public class IntakeCR extends LinearOpMode {
+@TeleOp(name = "IntakeCRFC", group = "Tests")
+public class IntakeTestFC extends LinearOpMode {
 
     private Servo popperServo;
     private Servo gateServo;
@@ -25,7 +25,6 @@ public class IntakeCR extends LinearOpMode {
     private IMU imu;
     private double targetHeading = 0;
     private double turretOffset = 0;
-    private double fixedTurretAngle = 0;
 
     public static double ff = 0.003;
     public static double kP = 0.008;
@@ -49,9 +48,9 @@ public class IntakeCR extends LinearOpMode {
     private int popCount = 0;
 
     private long autoInitialMoveDelayMs = 650;
-    private long postRevolveDelayMs = 600;
-    private long popUpMs = 250;
-    private long popDownMs = 250;
+    private long postRevolveDelayMs = 500;
+    private long popUpMs = 200;
+    private long popDownMs = 150;
     private long betweenRevolveMs = 0;
     private double autoRevolveDeg = 120.0;
     private int popRepeats = 3;
@@ -65,15 +64,6 @@ public class IntakeCR extends LinearOpMode {
     private int colorCount = 0;
     private static final int MAX_COLOR_DETECTIONS = 3;
     private static final long COLOR_REARM_DELAY_MS = 400; // 0.2 sec
-
-    // --- New Toggles ---
-    private boolean flywheelActive = false;
-    private boolean lastAButton = false;
-    private boolean intakeActive = false;
-    private boolean lastYButton = false;
-
-    private static final double INTAKE_POWER = 1.0;
-    private static final double FLYWHEEL_RPM = 3100;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -123,6 +113,7 @@ public class IntakeCR extends LinearOpMode {
 
         colorSensor = new ColorV3(hardwareMap);
 
+        // Zero heading
         YawPitchRollAngles orientation = imu.getRobotYawPitchRollAngles();
         targetHeading = orientation.getYaw(AngleUnit.DEGREES);
 
@@ -148,47 +139,24 @@ public class IntakeCR extends LinearOpMode {
 
         waitForStart();
 
-        // Fixed turret reference angle
-        fixedTurretAngle = 0;
-
         while (opModeIsActive()) {
             long now = System.currentTimeMillis();
 
-            // --- Field-centric drive ---
-            YawPitchRollAngles orientationNow = imu.getRobotYawPitchRollAngles();
-            double botHeading = orientationNow.getYaw(AngleUnit.RADIANS);
-
+            // --- FIELD-CENTRIC DRIVE ---
             double y = -gamepad2.left_stick_y;
             double x = gamepad2.left_stick_x * 1.1;
             double rx = gamepad2.right_stick_x;
 
-            double rotX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
-            double rotY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
+            double botHeading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+            double rotatedX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
+            double rotatedY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
 
-            double denom = Math.max(Math.abs(rotY) + Math.abs(rotX) + Math.abs(rx), 1.0);
-            frontLeft.setPower((rotY + rotX + rx) / denom);
-            frontRight.setPower((rotY - rotX - rx) / denom);
-            backLeft.setPower((rotY - rotX + rx) / denom);
-            backRight.setPower((rotY + rotX - rx) / denom);
+            double denom = Math.max(Math.abs(rotatedY) + Math.abs(rotatedX) + Math.abs(rx), 1.0);
+            frontLeft.setPower((rotatedY + rotatedX + rx) / denom);
+            frontRight.setPower((rotatedY - rotatedX - rx) / denom);
+            backLeft.setPower((rotatedY - rotatedX + rx) / denom);
+            backRight.setPower((rotatedY + rotatedX - rx) / denom);
 
-            // --- IMU Reset ---
-            if (gamepad2.share) {
-                imu.resetYaw();
-            }
-
-            if (gamepad1.x) {
-                intakeMotor.setPower(1);
-                wheelRPM = 0;
-                servoController.moveServosToPosition(0);
-            }
-
-            if (gamepad1.options) {
-                intakeMotor.setPower(0);
-                wheelRPM = FLYWHEEL_RPM;
-                requestGateBeforeMove(0, true, 60);
-            }
-
-            // --- Manual servo control (same as before) ---
             boolean dpadLeft = gamepad1.dpad_left;
             boolean dpadRight = gamepad1.dpad_right;
             boolean dpadUp = gamepad1.dpad_up;
@@ -199,6 +167,7 @@ public class IntakeCR extends LinearOpMode {
             double rightTrigger = gamepad1.right_trigger;
             boolean sharePressed = gamepad1.share;
 
+            // --- Manual servo control ---
             if (autoState == AutoState.OFF) {
                 if (dpadLeft && !lastDpadLeft)
                     requestGateBeforeMove(-incrementDeg, false, 0);
@@ -213,18 +182,10 @@ public class IntakeCR extends LinearOpMode {
             if (rightBumper && !lastRightBumper) lastRightBumperTarget = 60.0;
             if (leftBumper && !lastLeftBumper) lastLeftBumperTarget = 0.0;
 
-            // --- Intake toggle logic ---
-            boolean yButton = gamepad1.y;
-            if (yButton && !lastYButton) {
-                intakeActive = !intakeActive;
-                intakeMotor.setPower(intakeActive ? INTAKE_POWER : 0);
-            }
-            lastYButton = yButton;
-
-            if (gamepad1.b) {
-                intakeMotor.setPower(-INTAKE_POWER);
-                intakeActive = false;
-            }
+            // --- Intake control ---
+            if (gamepad1.y) intakeMotor.setPower(intakePower);
+            else if (gamepad1.b) intakeMotor.setPower(-intakePower);
+            else if (gamepad1.x) intakeMotor.setPower(0);
 
             // --- Popper manual ---
             if (rightTrigger > 0.5 && autoState == AutoState.OFF)
@@ -232,20 +193,16 @@ public class IntakeCR extends LinearOpMode {
             else if (autoState == AutoState.OFF)
                 popperServo.setPosition(0.14);
 
-            // --- Flywheel toggle (A) ---
-            boolean aButton = gamepad1.a;
-            if (aButton && !lastAButton) {
-                flywheelActive = !flywheelActive;
-                wheelRPM = flywheelActive ? FLYWHEEL_RPM : 0;
-                shooter.setTargetRPM(wheelRPM);
-            }
-            lastAButton = aButton;
-
-            // --- Shooter RPM adjustments ---
+            // --- Shooter RPM ---
             if (dpadUp && !lastDpadUp) wheelRPM = Range.clip(wheelRPM + 250, 0.0, 4900);
             if (dpadDown && !lastDpadDown) wheelRPM = Range.clip(wheelRPM - 250, 0.0, 4900);
             shooter.setTargetRPM(wheelRPM);
             shooter.update();
+
+            if (gamepad1.a) {
+                wheelRPM = 4000;
+                shooter.setTargetRPM(wheelRPM);
+            }
 
             // --- Auto shoot trigger ---
             boolean leftTriggerActive = (leftTrigger > 0.7);
@@ -258,8 +215,8 @@ public class IntakeCR extends LinearOpMode {
             }
             lastLeftTriggerActive = leftTriggerActive;
 
-            // --- Color automation logic (unchanged) ---
-            boolean intakeRunning = false;
+            // --- Color detection (unchanged) ---
+            boolean intakeRunning = false; // can re-enable later
             if (intakeRunning && colorActive && now >= colorRearmTime && colorCount < MAX_COLOR_DETECTIONS) {
                 String color = colorSensor.proximityAndColor();
                 if (color.equals("Green") || color.equals("Purple")) {
@@ -281,24 +238,33 @@ public class IntakeCR extends LinearOpMode {
             updateGateFSM(servoController);
             updateAutoFSM(servoController);
 
-            // --- Turret hold fixed ---
-            turret.setAngle(fixedTurretAngle);
+            double robotYaw = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES);
+            double turretTarget = targetHeading + robotYaw + turretOffset;
+
+            if (turretTarget > 180) turretTarget -= 360;
+            if (turretTarget < -180) turretTarget += 360;
+
+            if (turretTarget > 180 || turretTarget < -180) {
+                turretOffset = (turretOffset > 0) ? turretOffset - 360 : turretOffset + 360;
+                turretTarget = targetHeading - robotYaw + turretOffset;
+            }
+
+            double yawVel = imu.getRobotAngularVelocity(AngleUnit.DEGREES).zRotationRate;
+            turret.setFeedforward(yawVel);
+            turret.setAngle(turretTarget);
             turret.update();
             turret.setKF(ff);
             turret.setKP(kP);
 
-            // --- Telemetry ---
             telemetry.clearAll();
             telemetry.addLine("=== System Status ===");
             telemetry.addData("Gate State", gateState);
             telemetry.addData("Servo Angle (deg)", "%.2f", servoController.getContinuousAngleDeg());
             telemetry.addData("Shooter Target RPM", "%.0f", wheelRPM);
-            telemetry.addData("Flywheel Active", flywheelActive);
-            telemetry.addData("Intake Active", intakeActive);
             telemetry.addData("Color Detected", colorSensor.proximityAndColor());
             telemetry.addData("Color Detections", "%d / %d", colorCount, MAX_COLOR_DETECTIONS);
             telemetry.addData("Color Active", colorActive);
-            telemetry.addData("IMU Yaw", "%.1f°", orientationNow.getYaw(AngleUnit.DEGREES));
+            telemetry.addData("Share Press resets count", sharePressed);
             telemetry.update();
 
             lastDpadLeft = dpadLeft;

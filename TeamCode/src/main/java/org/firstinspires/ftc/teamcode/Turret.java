@@ -15,6 +15,7 @@ public class Turret {
 
     // Tunable parameters
     private double kP = 0.02;
+    private double kF = 0.015; // feedforward gain (adjust in test)
     private double minPower = 0;
     private double maxAngle = 180;
     private double minAngle = -180;
@@ -22,6 +23,7 @@ public class Turret {
     // State variables
     private double lastSetAngle = 0;  // in degrees
     private boolean turretBusy = false;
+    private double feedforward = 0;   // added for angular velocity compensation
 
     // Initialization
     public void init(HardwareMap hardwareMap, String motorName, DcMotorSimple.Direction direction) {
@@ -33,46 +35,37 @@ public class Turret {
     }
 
     // ===== Public Configuration =====
+    public void setKP(double newKP) { kP = newKP; }
+    public void setKF(double newKF) { kF = newKF; }
+    public void setMinPower(double minPwr) { minPower = Math.abs(minPwr); }
+    public void setLimits(double minDeg, double maxDeg) { minAngle = minDeg; maxAngle = maxDeg; }
 
-    public void setKP(double newKP) {
-        kP = newKP;
-    }
-
-    public void setMinPower(double minPwr) {
-        minPower = Math.abs(minPwr);
-    }
-
-    public void setLimits(double minDeg, double maxDeg) {
-        minAngle = minDeg;
-        maxAngle = maxDeg;
+    // Feedforward setter
+    public void setFeedforward(double angularVelDegPerSec) {
+        // Oppose robot rotation to maintain heading
+        feedforward = angularVelDegPerSec * kF;
+        feedforward = Range.clip(feedforward, -1.0, 1.0);
     }
 
     // ===== Motion Control =====
-
     public void setAngle(double targetDeg) {
-        // Clamp within mechanical limits
         targetDeg = Range.clip(targetDeg, minAngle, maxAngle);
         lastSetAngle = targetDeg;
         turretBusy = true;
     }
 
-    // Called periodically from loop()
     public void update() {
-        if (turretBusy) {
-            moveTurretToAngle(lastSetAngle);
-        } else {
-            correctTurretPosition();
-        }
+        if (turretBusy) moveTurretToAngle(lastSetAngle);
+        else correctTurretPosition();
     }
 
-    // Move to a target position in degrees
     private void moveTurretToAngle(double targetAngle) {
         double targetTicks = targetAngle * ticksPerDegree;
         double currentTicks = turretMotor.getCurrentPosition();
         double error = targetTicks - currentTicks;
 
-        if (Math.abs(error) > ticksPerDegree) { // within 1 degree tolerance
-            double power = kP * error;
+        if (Math.abs(error) > ticksPerDegree) { // >1° tolerance
+            double power = kP * error + feedforward;
             power = applyMinPower(power);
             turretMotor.setPower(Range.clip(power, -1, 1));
         } else {
@@ -81,12 +74,11 @@ public class Turret {
         }
     }
 
-    // Hold position (correct small drift)
     private void correctTurretPosition() {
         double targetTicks = lastSetAngle * ticksPerDegree;
         double currentTicks = turretMotor.getCurrentPosition();
         double error = targetTicks - currentTicks;
-        double power = 0.02 * error;
+        double power = kP * error + feedforward;
         power = applyMinPower(power);
         turretMotor.setPower(Range.clip(power, -1, 1));
     }
@@ -99,22 +91,10 @@ public class Turret {
     }
 
     // ===== Accessors =====
-
-    public double getCurrentAngle() {
-        return turretMotor.getCurrentPosition() / ticksPerDegree;
-    }
-
-    public double getTargetAngle() {
-        return lastSetAngle;
-    }
-
-    public double getError() {
-        return lastSetAngle - getCurrentAngle();
-    }
-
-    public boolean isBusy() {
-        return turretBusy;
-    }
+    public double getCurrentAngle() { return turretMotor.getCurrentPosition() / ticksPerDegree; }
+    public double getTargetAngle() { return lastSetAngle; }
+    public double getError() { return lastSetAngle - getCurrentAngle(); }
+    public boolean isBusy() { return turretBusy; }
 
     public void stop() {
         turretMotor.setPower(0);
