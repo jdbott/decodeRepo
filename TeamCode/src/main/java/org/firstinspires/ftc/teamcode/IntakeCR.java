@@ -11,7 +11,7 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
-@TeleOp(name = "Srimmage teleop", group = "A")
+@TeleOp(name = "A Srimmage teleop")
 public class IntakeCR extends LinearOpMode {
 
     private Servo popperServo;
