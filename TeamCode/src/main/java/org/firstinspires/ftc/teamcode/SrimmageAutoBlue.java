@@ -17,8 +17,8 @@ import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
-@Autonomous(name = "Auto Shoot 3 Balls")
-public class SrimmageAuto extends OpMode {
+@Autonomous(name = "Srimmage Auto Blue")
+public class SrimmageAutoBlue extends OpMode {
 
     // Subsystems
     private Follower follower;
@@ -34,6 +34,7 @@ public class SrimmageAuto extends OpMode {
     // FSM State variables
     private int pathState;
     private Timer pathTimer;
+    private int nextPathStateAfterShooting = 3; // default old behavior
 
     // Telemetry
     private MultipleTelemetry telemetryA;
@@ -64,16 +65,9 @@ public class SrimmageAuto extends OpMode {
         intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");
         intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        revolver = new ServoController(
-                hardwareMap,
-                new String[]{"CRServo1", "CRServo2"},
-                new double[]{+1.0, -1.0},
-                "CRServo1A"
-        );
+        revolver = new ServoController(hardwareMap);
         revolver.zeroNow();
         revolver.update();
-        revolver.setKP(0.007);
-        revolver.setKD(0.005);
 
         imu = hardwareMap.get(IMU.class, "imu");
         imu.initialize(new IMU.Parameters(
@@ -88,6 +82,7 @@ public class SrimmageAuto extends OpMode {
         gateServo.setPosition(0.38); // gate down
         popperServo.setPosition(0.14); // popper down
         shooter.setTargetRPM(0); // flywheel off
+        //revolver.moveServosToPosition(0); // 60° offset position
 
         pathTimer = new Timer();
         pathState = 0;
@@ -99,13 +94,13 @@ public class SrimmageAuto extends OpMode {
 
     @Override
     public void init_loop() {
-        revolver.moveServosToPosition(60); // 60° offset position
-        revolver.update();
+        //revolver.update();
     }
 
     @Override
     public void start() {
-        pathTimer.resetTimer();
+        revolver.zeroNow();
+        revolver.update();
         setPathState(0);
     }
 
@@ -133,12 +128,12 @@ public class SrimmageAuto extends OpMode {
         switch (pathState) {
             case 0:
                 // Spin up flywheel and start moving
-                shooter.setTargetRPM(2500);
+                shooter.setTargetRPM(3200);
                 Path toShoot1 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(46.465, 97.116))
                 );
-                toShoot1.setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(130));
+                toShoot1.setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(125), 0.8);
                 follower.followPath(toShoot1, true);
                 setPathState(1);
                 break;
@@ -157,13 +152,12 @@ public class SrimmageAuto extends OpMode {
 
             case 3:
                 // All done
-                follower.setMaxPower(0.5);
                 shooter.setTargetRPM(0);
                 intakeMotor.setPower(1);
                 gateServo.setPosition(0.48);
                 Path toLine1 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(40.814, 83.930))
+                        new Pose(47.5, 89))
                 );
                 toLine1.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(toLine1, true);
@@ -178,26 +172,35 @@ public class SrimmageAuto extends OpMode {
                 break;
 
             case 5:
+                follower.setMaxPower(0.35);
                 // Begin pickup sequence – REMEMBER TO TURN INTAKE ON HERE
                 Path forward1 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(follower.getPose().getX() - 5, follower.getPose().getY())
                 ));
-                forward1.setConstantHeadingInterpolation(follower.getPose().getHeading());
+                forward1.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(forward1, true);
-                pathTimer.resetTimer();
                 setPathState(6);
                 break;
 
             case 6:
-                // Wait 1 second before first revolve
-                if (pathTimer.getElapsedTimeSeconds() > 1.0) {
-                    revolver.moveServosByRotation(120.0);
+                // Wait 0.8s, then drop gate, wait 0.2s, revolve 120°, raise gate
+                if (pathTimer.getElapsedTimeSeconds() > 1.2) {
+                    gateServo.setPosition(0.38); // gate down
+                    pathTimer.resetTimer();
+                    setPathState(61); // intermediate substate
+                }
+                break;
+
+            case 61:
+                if (pathTimer.getElapsedTimeSeconds() > 0.2) {
+                    revolver.moveServosToPosition(180);
+                    gateServo.setPosition(0.48); // gate up
                     Path forward2 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(follower.getPose().getX() - 5, follower.getPose().getY())
+                            new Pose(follower.getPose().getX() - 13, follower.getPose().getY())
                     ));
-                    forward2.setConstantHeadingInterpolation(follower.getPose().getHeading());
+                    forward2.setConstantHeadingInterpolation(Math.toRadians(180));
                     follower.followPath(forward2, true);
                     pathTimer.resetTimer();
                     setPathState(7);
@@ -205,14 +208,23 @@ public class SrimmageAuto extends OpMode {
                 break;
 
             case 7:
-                // Wait 1 second before second revolve
-                if (pathTimer.getElapsedTimeSeconds() > 1.0) {
-                    revolver.moveServosByRotation(120.0);
+                // Second ball, same timing sequence
+                if (pathTimer.getElapsedTimeSeconds() > 1.2) {
+                    gateServo.setPosition(0.38);
+                    pathTimer.resetTimer();
+                    setPathState(71);
+                }
+                break;
+
+            case 71:
+                if (pathTimer.getElapsedTimeSeconds() > 0.2) {
+                    revolver.moveServosToPosition(300);
+                    gateServo.setPosition(0.48);
                     Path forward3 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(follower.getPose().getX() - 5, follower.getPose().getY())
+                            new Pose(follower.getPose().getX() - 7, follower.getPose().getY())
                     ));
-                    forward3.setConstantHeadingInterpolation(follower.getPose().getHeading());
+                    forward3.setConstantHeadingInterpolation(Math.toRadians(180));
                     follower.followPath(forward3, true);
                     pathTimer.resetTimer();
                     setPathState(8);
@@ -220,18 +232,26 @@ public class SrimmageAuto extends OpMode {
                 break;
 
             case 8:
-                // Wait final second, then final revolve
-                if (pathTimer.getElapsedTimeSeconds() > 1.0) {
-                    revolver.moveServosByRotation(120.0);
+                // Third ball
+                if (pathTimer.getElapsedTimeSeconds() > 1.2) {
+                    gateServo.setPosition(0.38);
+                    pathTimer.resetTimer();
+                    setPathState(81);
+                }
+                break;
+
+            case 81:
+                if (pathTimer.getElapsedTimeSeconds() > 0.2) {
+                    gateServo.setPosition(0.48);
                     intakeMotor.setPower(0);
-                    setPathState(9); // end sequence
+                    setPathState(9); // proceed to shooting again
                 }
                 break;
 
             case 9:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(2500);  // spin up flywheel
+                shooter.setTargetRPM(3200);  // spin up flywheel
                 follower.setMaxPower(1);
                 Path toShootAgain = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -239,7 +259,7 @@ public class SrimmageAuto extends OpMode {
                 ));
                 toShootAgain.setLinearHeadingInterpolation(
                         follower.getPose().getHeading(),
-                        Math.toRadians(130) // same target heading as before
+                        Math.toRadians(125) // same target heading as before
                 );
                 follower.followPath(toShootAgain, true);
                 pathTimer.resetTimer();
@@ -249,11 +269,39 @@ public class SrimmageAuto extends OpMode {
             case 10:
                 // After 0.2s, move revolver to 60°; when motion finishes, shoot again
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(60);
+                    //revolver.moveServosByRotation(60);
                 }
 
                 if (!follower.isBusy()) {
                     setPathState(2); // reuse AutoShoot3BallsFSM to fire again
+                    nextPathStateAfterShooting = 11;
+                }
+                break;
+
+            case 11:
+                // Drive to lower pickup line (24 in lower Y)
+                Path toLowerLine = new Path(new BezierLine(
+                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
+                        new Pose(47.5, 89-24)
+                ));
+                toLowerLine.setConstantHeadingInterpolation(Math.toRadians(180));
+                follower.followPath(toLowerLine, true);
+                setPathState(12);
+                break;
+
+            case 12:
+                // Wait for arrival, then start intake
+                if (!follower.isBusy()) {
+//                    intakeMotor.setPower(1);
+//                    gateServo.setPosition(0.48);
+//                    Path pick1 = new Path(new BezierLine(
+//                            new Pose(follower.getPose().getX(), follower.getPose().getY()),
+//                            new Pose(follower.getPose().getX() - 5, follower.getPose().getY())
+//                    ));
+//                    pick1.setConstantHeadingInterpolation(Math.toRadians(180));
+//                    follower.followPath(pick1, true);
+//                    pathTimer.resetTimer();
+                    setPathState(-1);
                 }
                 break;
 
@@ -274,13 +322,11 @@ public class SrimmageAuto extends OpMode {
     private void runAutoShoot3BallsFSM() {
         long now = System.currentTimeMillis();
 
-        // Timings and constants (same as teleop)
-        long autoInitialMoveDelayMs = 650;
-        long postRevolveDelayMs = 500;
-        long popUpMs = 200;
-        long popDownMs = 150;
-        long betweenRevolveMs = 0;
-        double autoRevolveDeg = 120.0;
+        long autoInitialMoveDelayMs = 750;
+        long postRevolveDelayMs = 750;
+        long popUpMs = 250;
+        long popDownMs = 200;
+        double[] revolverPositions = {60, 180, 300}; // explicit positions
         int popRepeats = 3;
 
         switch (autoShootState) {
@@ -288,7 +334,7 @@ public class SrimmageAuto extends OpMode {
                 autoShootState = AutoShoot3BallsState.MOVE_TO_START;
                 popCount = 0;
                 gateServo.setPosition(0.38);
-                revolver.moveServosToPosition(60);
+                revolver.moveServosToPosition(revolverPositions[0]);
                 autoShootTimer = now + autoInitialMoveDelayMs;
                 break;
 
@@ -314,10 +360,10 @@ public class SrimmageAuto extends OpMode {
                     popCount++;
                     if (popCount < popRepeats) {
                         autoShootState = AutoShoot3BallsState.REVOLVE;
-                        autoShootTimer = now + betweenRevolveMs;
+                        autoShootTimer = now; // no delay before revolve
                     } else {
                         autoShootState = AutoShoot3BallsState.RETURN_TO_START;
-                        revolver.moveServosToPosition(0);
+                        revolver.moveServosToPosition(0); // back to start
                         autoShootTimer = now + autoInitialMoveDelayMs;
                     }
                 }
@@ -325,7 +371,8 @@ public class SrimmageAuto extends OpMode {
 
             case REVOLVE:
                 if (now >= autoShootTimer) {
-                    revolver.moveServosByRotation(autoRevolveDeg);
+                    double nextPos = revolverPositions[popCount % revolverPositions.length];
+                    revolver.moveServosToPosition(nextPos);
                     autoShootState = AutoShoot3BallsState.WAIT_TO_SETTLE;
                     autoShootTimer = now + postRevolveDelayMs;
                 }
@@ -342,14 +389,14 @@ public class SrimmageAuto extends OpMode {
             case RETURN_TO_START:
                 if (now >= autoShootTimer) {
                     autoShootState = AutoShoot3BallsState.DONE;
-                    revolver.moveServosToPosition(0);
+                    revolver.moveServosByRotation(60);
                 }
                 break;
 
             case DONE:
                 shooter.setTargetRPM(0);
                 autoShootState = AutoShoot3BallsState.OFF;
-                setPathState(3); // stop after shooting
+                setPathState(nextPathStateAfterShooting);
                 break;
         }
 

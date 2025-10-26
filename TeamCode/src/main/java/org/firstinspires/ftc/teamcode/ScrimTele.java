@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -12,38 +13,56 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
 @TeleOp(name = "A Srimmage teleop")
-public class IntakeCR extends LinearOpMode {
+public class ScrimTele extends LinearOpMode {
 
+    // --- Subsystems / hardware ---
     private Servo popperServo;
     private Servo gateServo;
     private Shooter shooter;
     private Turret turret = new Turret();
     private ColorV3 colorSensor;
 
-    // --- Drivetrain motors ---
+    // Drivetrain
     private DcMotorEx frontLeft, frontRight, backLeft, backRight;
     private IMU imu;
-    private double targetHeading = 0;
-    private double turretOffset = 0;
-    private double fixedTurretAngle = 0;
 
+    // --- Shooter/turret constants ---
     public static double ff = 0.003;
     public static double kP = 0.008;
 
-    // --- FSM variables ---
+    private static final double INTAKE_POWER = 1.0;
+    private static final double FLYWHEEL_RPM = 3300;
+
+    private double fixedTurretAngle = 0;
+
+    // --- Simple revolver logic (single source of truth) ---
+    private double currentRevolverDeg = 0.0;
+    private static final double STEP_120 = 120.0;
+    private static final double OFFSET_60 = 60.0;
+    private boolean shootOffsetActive = false;
+
+    // --- Buttons edge memory ---
+    private boolean lastDpadLeft = false, lastDpadRight = false;
+    private boolean lastOptions = false, lastX = false;
+    private boolean lastAButton = false, lastYButton = false;
+
+    // --- Toggles and flags ---
+    private boolean flywheelActive = false;
+    private boolean intakeActive = false;
+    private boolean gateLifted = false;
+
+    // --- Gate FSM (kept intact for other actions; NOT used by revolver here) ---
     private enum GateState { IDLE, WAITING, RAISING }
     private GateState gateState = GateState.IDLE;
     private long gateTimer = 0;
     private boolean gateRequested = false;
     private boolean servoMovePending = false;
-    private double moveAmountDeg = 0;
     private boolean useAbsolute = false;
+    private double moveAmountDeg = 0;
     private double absoluteTarget = 0.0;
 
-    // --- Auto-shoot FSM ---
-    private enum AutoState {
-        OFF, MOVE_TO_START, WAIT_TO_SETTLE, POP_UP, POP_DOWN, REVOLVE, DONE, RETURN_TO_START
-    }
+    // --- Auto FSM (left intact; independent of D-pad revolver logic) ---
+    private enum AutoState { OFF, MOVE_TO_START, WAIT_TO_SETTLE, POP_UP, POP_DOWN, REVOLVE, DONE, RETURN_TO_START }
     private AutoState autoState = AutoState.OFF;
     private long autoTimer = 0;
     private int popCount = 0;
@@ -56,34 +75,25 @@ public class IntakeCR extends LinearOpMode {
     private double autoRevolveDeg = 120.0;
     private int popRepeats = 3;
 
-    private double lastRightBumperTarget = 180;
-    private double lastLeftBumperTarget = 0.0;
-
-    // --- Color automation variables ---
+    // --- Color automation (kept) ---
     private boolean colorActive = true;
     private long colorRearmTime = 0;
     private int colorCount = 0;
     private static final int MAX_COLOR_DETECTIONS = 3;
-    private static final long COLOR_REARM_DELAY_MS = 400; // 0.2 sec
+    private static final long COLOR_REARM_DELAY_MS = 400;
 
-    // --- New Toggles ---
-    private boolean flywheelActive = false;
-    private boolean lastAButton = false;
-    private boolean intakeActive = false;
-    private boolean lastYButton = false;
+    private GoBildaPinpointDriver pinpoint;
 
-    private static final double INTAKE_POWER = 1.0;
-    private static final double FLYWHEEL_RPM = 3100;
+    // --- Helpers ---
+    private void setRevolverTarget(ServoController servoController, double targetDeg) {
+        currentRevolverDeg = targetDeg;
+        servoController.moveServosToPosition(currentRevolverDeg);
+    }
 
     @Override
     public void runOpMode() throws InterruptedException {
-        // --- Hardware setup ---
-        ServoController servoController = new ServoController(
-                hardwareMap,
-                new String[]{"CRServo1", "CRServo2"},
-                new double[]{+1.0, -1.0},
-                "CRServo1A"
-        );
+        // Hardware map
+        ServoController servoController = new ServoController(hardwareMap);
 
         DcMotorEx intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");
         intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -121,149 +131,182 @@ public class IntakeCR extends LinearOpMode {
         ));
         imu.resetYaw();
 
+        pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
+        pinpoint.resetPosAndIMU();
+
         colorSensor = new ColorV3(hardwareMap);
 
-        YawPitchRollAngles orientation = imu.getRobotYawPitchRollAngles();
-        targetHeading = orientation.getYaw(AngleUnit.DEGREES);
+        servoController.zeroNow();
+        servoController.setKP(0.003);
+        gateServo.setPosition(0.38);
 
-        double intakePower = 1.0;
-        double incrementDeg = 120.0;
-        double wheelRPM = 0.0;
-
-        boolean lastDpadLeft = false;
-        boolean lastDpadRight = false;
-        boolean lastDpadUp = false;
-        boolean lastDpadDown = false;
-        boolean lastRightBumper = false;
-        boolean lastLeftBumper = false;
-        boolean lastLeftTriggerActive = false;
+        // Start state
+        currentRevolverDeg = 0.0;
+        setRevolverTarget(servoController, currentRevolverDeg);
 
         telemetry.addLine("Initialized. Press START to begin.");
         telemetry.update();
-
-        servoController.zeroNow();
-        servoController.setKP(0.007);
-        servoController.setKD(0.005);
-        gateServo.setPosition(0.48);
-
         waitForStart();
 
-        // Fixed turret reference angle
-        fixedTurretAngle = 0;
+        double wheelRPM = 0.0;
+        boolean lastLeftTriggerActive = false;
 
         while (opModeIsActive()) {
             long now = System.currentTimeMillis();
 
             // --- Field-centric drive ---
-            YawPitchRollAngles orientationNow = imu.getRobotYawPitchRollAngles();
-            double botHeading = orientationNow.getYaw(AngleUnit.RADIANS);
-
             double y = -gamepad2.left_stick_y;
             double x = gamepad2.left_stick_x * 1.1;
             double rx = gamepad2.right_stick_x;
+            double trigger = Range.clip(1 - gamepad2.left_trigger, 0.2, 1);
 
-            double rotX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
-            double rotY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
+            double botHeading = 1;
+            double rotatedX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
+            double rotatedY = y * Math.sin(-botHeading) + y * Math.cos(-botHeading);
+            pinpoint.update();
 
-            double denom = Math.max(Math.abs(rotY) + Math.abs(rotX) + Math.abs(rx), 1.0);
-            frontLeft.setPower((rotY + rotX + rx) / denom);
-            frontRight.setPower((rotY - rotX - rx) / denom);
-            backLeft.setPower((rotY - rotX + rx) / denom);
-            backRight.setPower((rotY + rotX - rx) / denom);
+            double denom = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1.0);
+            frontLeft.setPower((y + x + rx) / denom * trigger);
+            frontRight.setPower((y - x - rx) / denom * trigger);
+            backLeft.setPower((y - x + rx) / denom * trigger);
+            backRight.setPower((y + x - rx) / denom * trigger);
 
-            // --- IMU Reset ---
-            if (gamepad2.share) {
-                imu.resetYaw();
+            if (gamepad2.share) pinpoint.resetPosAndIMU();
+
+            boolean g2Left = gamepad2.dpad_left;
+            boolean g2Right = gamepad2.dpad_right;
+            boolean g2Down = gamepad2.dpad_down;
+
+            if (g2Left) {
+                currentRevolverDeg -= 5.0;
+                servoController.moveServosToPosition(currentRevolverDeg);
+            }
+            if (g2Right) {
+                currentRevolverDeg += 5.0;
+                servoController.moveServosToPosition(currentRevolverDeg);
+            }
+            if (g2Down) {
+                currentRevolverDeg = 0.0;
+                servoController.zeroNow();
             }
 
-            if (gamepad1.x) {
-                intakeMotor.setPower(1);
-                wheelRPM = 0;
-                servoController.moveServosToPosition(0);
-            }
-
-            if (gamepad1.options) {
-                intakeMotor.setPower(0);
-                wheelRPM = FLYWHEEL_RPM;
-                requestGateBeforeMove(0, true, 60);
-            }
-
-            // --- Manual servo control (same as before) ---
+            // =========================
+            // SIMPLE REVOLVER BEHAVIOR
+            // =========================
             boolean dpadLeft = gamepad1.dpad_left;
             boolean dpadRight = gamepad1.dpad_right;
-            boolean dpadUp = gamepad1.dpad_up;
-            boolean dpadDown = gamepad1.dpad_down;
-            boolean rightBumper = gamepad1.right_bumper;
-            boolean leftBumper = gamepad1.left_bumper;
-            double leftTrigger = gamepad1.left_trigger;
-            double rightTrigger = gamepad1.right_trigger;
-            boolean sharePressed = gamepad1.share;
 
-            if (autoState == AutoState.OFF) {
-                if (dpadLeft && !lastDpadLeft)
-                    requestGateBeforeMove(-incrementDeg, false, 0);
-                if (dpadRight && !lastDpadRight)
-                    requestGateBeforeMove(incrementDeg, false, 0);
-                if (rightBumper && !lastRightBumper)
-                    requestGateBeforeMove(0, true, 60);
-                if (leftBumper && !lastLeftBumper)
-                    requestGateBeforeMove(0, true, 0);
+            if (dpadLeft && !lastDpadLeft) {
+                currentRevolverDeg -= STEP_120;        // current = current - 120
+                requestGateBeforeMove(0, /*absolute*/ true, currentRevolverDeg);
+            }
+            if (dpadRight && !lastDpadRight) {
+                currentRevolverDeg += STEP_120;        // current = current + 120
+                requestGateBeforeMove(0, /*absolute*/ true, currentRevolverDeg);
             }
 
-            if (rightBumper && !lastRightBumper) lastRightBumperTarget = 60.0;
-            if (leftBumper && !lastLeftBumper) lastLeftBumperTarget = 0.0;
-
-            // --- Intake toggle logic ---
-            boolean yButton = gamepad1.y;
-            if (yButton && !lastYButton) {
-                intakeActive = !intakeActive;
-                intakeMotor.setPower(intakeActive ? INTAKE_POWER : 0);
-            }
-            lastYButton = yButton;
-
-            if (gamepad1.b) {
-                intakeMotor.setPower(-INTAKE_POWER);
+            // Options: enter shoot offset and spin up flywheel, stop intake
+            boolean optionsPressed = gamepad1.options;
+            if (optionsPressed && !lastOptions) {
+                if (!shootOffsetActive) {
+                    currentRevolverDeg += OFFSET_60;   // +60 once
+                    shootOffsetActive = true;
+                }
+                // keep previous actions
                 intakeActive = false;
+                intakeMotor.setPower(0.0);
+                gateServo.setPosition(0.38);
+                flywheelActive = true;
+                wheelRPM = FLYWHEEL_RPM;
+                shooter.setTargetRPM(wheelRPM);
             }
+            lastOptions = optionsPressed;
 
-            // --- Popper manual ---
+            // X: exit shoot offset and start intake, stop flywheel
+            boolean xPressed = gamepad1.x;
+            if (xPressed && !lastX) {
+                if (shootOffsetActive) {
+                    currentRevolverDeg -= OFFSET_60;   // -60 once
+                    shootOffsetActive = false;
+                }
+                // keep previous actions
+                intakeActive = true;
+                intakeMotor.setPower(1.0);
+                gateServo.setPosition(0.48);
+                flywheelActive = false;
+                wheelRPM = 0.0;
+                shooter.setTargetRPM(wheelRPM);
+            }
+            lastX = xPressed;
+
+            // Exactly one revolver command per loop
+            servoController.moveServosToPosition(currentRevolverDeg);
+
+            // --- Popper ---
+            double rightTrigger = gamepad1.right_trigger;
             if (rightTrigger > 0.5 && autoState == AutoState.OFF)
                 popperServo.setPosition(0.45);
             else if (autoState == AutoState.OFF)
                 popperServo.setPosition(0.14);
 
+            // --- Intake toggle (Y) ---
+            boolean yButton = gamepad1.y;
+            if (yButton && !lastYButton) {
+                intakeActive = !intakeActive;
+                if (intakeActive) {
+                    intakeMotor.setPower(1.0);
+                    gateServo.setPosition(0.48);
+                    gateLifted = true;
+                } else {
+                    intakeMotor.setPower(0.0);
+                    gateServo.setPosition(0.38);
+                    gateLifted = false;
+                }
+            }
+            lastYButton = yButton;
+
+            // --- Quick outtake (B) ---
+            if (gamepad1.b) {
+                gateServo.setPosition(0.48);
+                intakeMotor.setPower(-INTAKE_POWER);
+                intakeActive = false;
+            }
+
             // --- Flywheel toggle (A) ---
             boolean aButton = gamepad1.a;
             if (aButton && !lastAButton) {
                 flywheelActive = !flywheelActive;
-                wheelRPM = flywheelActive ? FLYWHEEL_RPM : 0;
+                wheelRPM = flywheelActive ? FLYWHEEL_RPM : 0.0;
                 shooter.setTargetRPM(wheelRPM);
             }
             lastAButton = aButton;
 
-            // --- Shooter RPM adjustments ---
-            if (dpadUp && !lastDpadUp) wheelRPM = Range.clip(wheelRPM + 250, 0.0, 4900);
-            if (dpadDown && !lastDpadDown) wheelRPM = Range.clip(wheelRPM - 250, 0.0, 4900);
+            // --- RPM nudge ---
+            if (gamepad1.dpad_up)   wheelRPM = Range.clip(wheelRPM + 250, 0.0, 4900);
+            if (gamepad1.dpad_down) wheelRPM = Range.clip(wheelRPM - 250, 0.0, 4900);
             shooter.setTargetRPM(wheelRPM);
             shooter.update();
 
-            // --- Auto shoot trigger ---
+            // --- Auto shoot trigger (kept, independent) ---
+            double leftTrigger = gamepad1.left_trigger;
             boolean leftTriggerActive = (leftTrigger > 0.7);
             if (leftTriggerActive && !lastLeftTriggerActive && autoState == AutoState.OFF) {
                 autoState = AutoState.MOVE_TO_START;
                 popCount = 0;
                 gateServo.setPosition(0.38);
-                servoController.moveServosToPosition(lastRightBumperTarget);
+                // move to a start point for auto; use current as baseline
+                setRevolverTarget(servoController, currentRevolverDeg);
                 autoTimer = now + autoInitialMoveDelayMs;
             }
             lastLeftTriggerActive = leftTriggerActive;
 
-            // --- Color automation logic (unchanged) ---
-            boolean intakeRunning = false;
+            // --- Color automation (kept minimal) ---
+            boolean intakeRunning = intakeActive; // simple coupling
             if (intakeRunning && colorActive && now >= colorRearmTime && colorCount < MAX_COLOR_DETECTIONS) {
                 String color = colorSensor.proximityAndColor();
                 if (color.equals("Green") || color.equals("Purple")) {
-                    requestGateBeforeMove(-120.0, false, 0);
+                    currentRevolverDeg -= 120.0; // advance bin
+                    servoController.moveServosToPosition(currentRevolverDeg);
                     colorCount++;
                     colorActive = false;
                     colorRearmTime = now + COLOR_REARM_DELAY_MS;
@@ -271,17 +314,16 @@ public class IntakeCR extends LinearOpMode {
             } else if (!colorActive && now >= colorRearmTime) {
                 colorActive = true;
             }
-
-            if (sharePressed) {
+            if (gamepad1.share) { // reset color counters
                 colorCount = 0;
                 colorActive = true;
             }
 
-            // --- FSM updates ---
+            // --- Gate and Auto FSM updates (kept) ---
             updateGateFSM(servoController);
             updateAutoFSM(servoController);
 
-            // --- Turret hold fixed ---
+            // --- Turret loop (kept) ---
             turret.setAngle(fixedTurretAngle);
             turret.update();
             turret.setKF(ff);
@@ -289,24 +331,23 @@ public class IntakeCR extends LinearOpMode {
 
             // --- Telemetry ---
             telemetry.clearAll();
-            telemetry.addLine("=== System Status ===");
-            telemetry.addData("Gate State", gateState);
-            telemetry.addData("Servo Angle (deg)", "%.2f", servoController.getContinuousAngleDeg());
-            telemetry.addData("Shooter Target RPM", "%.0f", wheelRPM);
+            telemetry.addLine("=== Simple Revolver Control ===");
+            telemetry.addData("Target (deg)", "%.1f", currentRevolverDeg);
+            telemetry.addData("Shoot Offset", shootOffsetActive);
+            telemetry.addLine("=== Shooter/Intake ===");
             telemetry.addData("Flywheel Active", flywheelActive);
             telemetry.addData("Intake Active", intakeActive);
-            telemetry.addData("Color Detected", colorSensor.proximityAndColor());
-            telemetry.addData("Color Detections", "%d / %d", colorCount, MAX_COLOR_DETECTIONS);
-            telemetry.addData("Color Active", colorActive);
-            telemetry.addData("IMU Yaw", "%.1f°", orientationNow.getYaw(AngleUnit.DEGREES));
+            telemetry.addData("Shooter Target RPM", "%.0f", wheelRPM);
+            telemetry.addLine("=== Gate/Auto ===");
+            telemetry.addData("Gate State", gateState);
+            telemetry.addData("Auto State", autoState);
+            telemetry.addLine("=== Color ===");
+            telemetry.addData("Detections", "%d/%d", colorCount, MAX_COLOR_DETECTIONS);
             telemetry.update();
 
+            // Edge memory
             lastDpadLeft = dpadLeft;
             lastDpadRight = dpadRight;
-            lastDpadUp = dpadUp;
-            lastDpadDown = dpadDown;
-            lastRightBumper = rightBumper;
-            lastLeftBumper = leftBumper;
 
             sleep(20);
         }
@@ -314,16 +355,12 @@ public class IntakeCR extends LinearOpMode {
         servoController.stopAll();
     }
 
-    // ---------------- Gate FSM ----------------
+    // ---------------- Gate FSM (unchanged; not used by revolver logic) ----------------
     private void requestGateBeforeMove(double moveDeg, boolean absolute, double absTarget) {
         gateRequested = true;
         moveAmountDeg = moveDeg;
         useAbsolute = absolute;
         absoluteTarget = absTarget;
-        if (absolute) {
-            if (absTarget == 60.0) lastRightBumperTarget = absTarget;
-            if (absTarget == 0.0) lastLeftBumperTarget = absTarget;
-        }
     }
 
     private void updateGateFSM(ServoController servoController) {
@@ -345,10 +382,7 @@ public class IntakeCR extends LinearOpMode {
 
             case WAITING:
                 if (now >= gateTimer && servoMovePending) {
-                    if (useAbsolute)
-                        servoController.moveServosToPosition(absoluteTarget);
-                    else
-                        servoController.moveServosByRotation(moveAmountDeg);
+                    setRevolverTarget(servoController, absoluteTarget);
                     servoMovePending = false;
                     gateTimer = now + 400;
                     gateState = GateState.RAISING;
@@ -357,7 +391,9 @@ public class IntakeCR extends LinearOpMode {
 
             case RAISING:
                 if (now >= gateTimer) {
-                    gateServo.setPosition(gateUpPos);
+                    if (!intakeActive) {
+                        gateServo.setPosition(gateUpPos);
+                    }
                     gateState = GateState.IDLE;
                 }
                 break;
@@ -366,13 +402,14 @@ public class IntakeCR extends LinearOpMode {
         servoController.update();
     }
 
-    // ---------------- Auto-shoot FSM ----------------
+    // ---------------- Auto FSM (kept) ----------------
     private void updateAutoFSM(ServoController servoController) {
         long now = System.currentTimeMillis();
 
         switch (autoState) {
             case OFF:
                 break;
+
             case MOVE_TO_START:
                 if (now >= autoTimer) {
                     autoState = AutoState.POP_UP;
@@ -381,6 +418,7 @@ public class IntakeCR extends LinearOpMode {
                     popperServo.setPosition(0.45);
                 }
                 break;
+
             case POP_UP:
                 if (now >= autoTimer) {
                     autoState = AutoState.POP_DOWN;
@@ -388,6 +426,7 @@ public class IntakeCR extends LinearOpMode {
                     autoTimer = now + popDownMs;
                 }
                 break;
+
             case POP_DOWN:
                 if (now >= autoTimer) {
                     popCount++;
@@ -396,18 +435,20 @@ public class IntakeCR extends LinearOpMode {
                         autoTimer = now + betweenRevolveMs;
                     } else {
                         autoState = AutoState.RETURN_TO_START;
-                        servoController.moveServosToPosition(lastLeftBumperTarget);
+                        setRevolverTarget(servoController, currentRevolverDeg);
                         autoTimer = now + autoInitialMoveDelayMs;
                     }
                 }
                 break;
+
             case REVOLVE:
                 if (now >= autoTimer) {
-                    servoController.moveServosByRotation(autoRevolveDeg);
+                    setRevolverTarget(servoController, currentRevolverDeg + autoRevolveDeg);
                     autoState = AutoState.WAIT_TO_SETTLE;
                     autoTimer = now + postRevolveDelayMs;
                 }
                 break;
+
             case WAIT_TO_SETTLE:
                 if (now >= autoTimer) {
                     autoState = AutoState.POP_UP;
@@ -415,12 +456,14 @@ public class IntakeCR extends LinearOpMode {
                     autoTimer = now + popUpMs;
                 }
                 break;
+
             case RETURN_TO_START:
                 if (now >= autoTimer) {
                     autoState = AutoState.DONE;
-                    servoController.moveServosToPosition(lastLeftBumperTarget);
+                    setRevolverTarget(servoController, currentRevolverDeg);
                 }
                 break;
+
             case DONE:
                 autoState = AutoState.OFF;
                 popCount = 0;

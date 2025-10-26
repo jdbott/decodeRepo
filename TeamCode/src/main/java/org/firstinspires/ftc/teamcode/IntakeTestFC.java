@@ -68,12 +68,8 @@ public class IntakeTestFC extends LinearOpMode {
     @Override
     public void runOpMode() throws InterruptedException {
         // --- Hardware setup ---
-        ServoController servoController = new ServoController(
-                hardwareMap,
-                new String[]{"CRServo1", "CRServo2"},
-                new double[]{+1.0, -1.0},
-                "CRServo1A"
-        );
+        ServoController servoController = new ServoController(hardwareMap);
+
 
         DcMotorEx intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");
         intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -134,7 +130,6 @@ public class IntakeTestFC extends LinearOpMode {
 
         servoController.zeroNow();
         servoController.setKP(0.007);
-        servoController.setKD(0.005);
         gateServo.setPosition(0.48);
 
         waitForStart();
@@ -259,7 +254,7 @@ public class IntakeTestFC extends LinearOpMode {
             telemetry.clearAll();
             telemetry.addLine("=== System Status ===");
             telemetry.addData("Gate State", gateState);
-            telemetry.addData("Servo Angle (deg)", "%.2f", servoController.getContinuousAngleDeg());
+            telemetry.addData("Servo Angle (deg)", "%.2f", servoController.getContinuousAngleDeg1());
             telemetry.addData("Shooter Target RPM", "%.0f", wheelRPM);
             telemetry.addData("Color Detected", colorSensor.proximityAndColor());
             telemetry.addData("Color Detections", "%d / %d", colorCount, MAX_COLOR_DETECTIONS);

@@ -10,12 +10,8 @@ public class CRServoTest extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
         // Example:
         // Two servos, first normal (+1), second reversed (-1)
-        ServoController servoController = new ServoController(
-                hardwareMap,
-                new String[]{"CRServo1", "CRServo2"},
-                new double[]{+1.0, -1.0},  // direction for each servo
-                "CRServo1A"                 // encoder is on CRServo1
-        );
+        ServoController servoController = new ServoController(hardwareMap);
+
 
         telemetry.addLine("CRServoTest initialized. Press START to begin.");
         telemetry.update();
@@ -44,7 +40,7 @@ public class CRServoTest extends LinearOpMode {
 
             // Toggle between 0° and 180°
             if (aButton && !lastA) {
-                double currentAngle = servoController.getContinuousAngleDeg();
+                double currentAngle = servoController.getContinuousAngleDeg1();
                 double target = (Math.abs(currentAngle % 360) < 90) ? 180.0 : 0.0;
                 servoController.moveServosToPosition(target);
             }
@@ -52,7 +48,7 @@ public class CRServoTest extends LinearOpMode {
             servoController.update();
 
             telemetry.addData("Servo busy", servoController.isServosBusy());
-            telemetry.addData("Angle (deg)", "%.2f", servoController.getContinuousAngleDeg());
+            telemetry.addData("Angle (deg)", "%.2f", servoController.getContinuousAngleDeg1());
             telemetry.update();
 
             lastDpadLeft = dpadLeft;
