@@ -1,6 +1,8 @@
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -12,6 +14,8 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 
+import java.nio.file.Path;
+
 @TeleOp(name = "A Srimmage teleop")
 public class ScrimTele extends LinearOpMode {
 
@@ -21,6 +25,8 @@ public class ScrimTele extends LinearOpMode {
     private Shooter shooter;
     private Turret turret = new Turret();
     private ColorV3 colorSensor;
+
+    private Limelight3A limelight3A;
 
     // Drivetrain
     private DcMotorEx frontLeft, frontRight, backLeft, backRight;
@@ -84,6 +90,12 @@ public class ScrimTele extends LinearOpMode {
 
     private GoBildaPinpointDriver pinpoint;
 
+    double robotHeadingDeg = 0;  // already available from your code
+    double desiredFieldHeading = 0;       // field-relative heading to face
+    double lowerLimit = -205;
+    double upperLimit = 90;
+    double lastEdgeAngle = 0;
+
     // --- Helpers ---
     private void setRevolverTarget(ServoController servoController, double targetDeg) {
         currentRevolverDeg = targetDeg;
@@ -120,7 +132,7 @@ public class ScrimTele extends LinearOpMode {
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
         turret.setKP(kP);
         turret.setKF(ff);
-        turret.setLimits(-180, 180);
+        turret.setLimits(-205, 90);
 
         imu = hardwareMap.get(IMU.class, "imu");
         imu.initialize(new IMU.Parameters(
@@ -133,6 +145,10 @@ public class ScrimTele extends LinearOpMode {
 
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         pinpoint.resetPosAndIMU();
+
+        limelight3A = hardwareMap.get(Limelight3A.class, "Limelight");
+        limelight3A.pipelineSwitch(0);
+        limelight3A.setPollRateHz(50);
 
         colorSensor = new ColorV3(hardwareMap);
 
@@ -147,9 +163,11 @@ public class ScrimTele extends LinearOpMode {
         telemetry.addLine("Initialized. Press START to begin.");
         telemetry.update();
         waitForStart();
+        limelight3A.start();
 
         double wheelRPM = 0.0;
         boolean lastLeftTriggerActive = false;
+        double distance = 0;
 
         while (opModeIsActive()) {
             long now = System.currentTimeMillis();
@@ -282,8 +300,8 @@ public class ScrimTele extends LinearOpMode {
             lastAButton = aButton;
 
             // --- RPM nudge ---
-            if (gamepad1.dpad_up)   wheelRPM = Range.clip(wheelRPM + 250, 0.0, 4900);
-            if (gamepad1.dpad_down) wheelRPM = Range.clip(wheelRPM - 250, 0.0, 4900);
+            if (gamepad1.dpad_up)   wheelRPM = Range.clip(wheelRPM + 50, 0.0, 4200);
+            if (gamepad1.dpad_down) wheelRPM = Range.clip(wheelRPM - 50, 0.0, 4200);
             shooter.setTargetRPM(wheelRPM);
             shooter.update();
 
@@ -319,18 +337,56 @@ public class ScrimTele extends LinearOpMode {
                 colorActive = true;
             }
 
+            limelight3A.updateRobotOrientation(pinpoint.getHeading(AngleUnit.DEGREES));
+            LLResult result = limelight3A.getLatestResult();
+
+            telemetry.addData("LL Yaw", result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES));
+            telemetry.addData("LL Distance x", result.getBotpose_MT2().getPosition().x);
+            telemetry.addData("LL Distance y", result.getBotpose_MT2().getPosition().y);
+            telemetry.addData("LL Distance z", result.getBotpose_MT2().getPosition().z);
+            telemetry.addData("Distance", result.getBotposeAvgDist());
+
+            if (result.getBotposeAvgDist() != 0.0) {
+                distance = result.getBotposeAvgDist()*1000;
+            } else {
+                distance = 0;
+            }
+
+            //wheelRPM = (2.27371e-10*Math.pow(distance,4)) - (0.00000213609*Math.pow(distance,3)) + (0.00731095*Math.pow(distance,2)) - (10.47343*distance) + 8194.26622;
+
+            // --- Turret tracking based on yaw error ---
+            double yaw = result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES);
+
+            // read robot heading from pinpoint
+            double robotHeadingDeg = pinpoint.getHeading(AngleUnit.DEGREES);
+
+            // if target is visible, use its yaw to correct
+            if (Math.abs(yaw) > 0.5) { // tolerance to ignore small noise
+                desiredFieldHeading = robotHeadingDeg + yaw;
+                lastEdgeAngle = desiredFieldHeading;
+            } else {
+                // yaw == 0 or target lost, hold last known direction
+                desiredFieldHeading = 0;
+            }
+
+            // convert back to turret-relative command
+            double targetTurretAngle = desiredFieldHeading;
+            targetTurretAngle = Range.clip(targetTurretAngle, lowerLimit, upperLimit);
+
+// send to turret
+            turret.setAngle(targetTurretAngle);
+            turret.update();
+
             // --- Gate and Auto FSM updates (kept) ---
             updateGateFSM(servoController);
             updateAutoFSM(servoController);
 
             // --- Turret loop (kept) ---
-            turret.setAngle(fixedTurretAngle);
             turret.update();
             turret.setKF(ff);
             turret.setKP(kP);
 
             // --- Telemetry ---
-            telemetry.clearAll();
             telemetry.addLine("=== Simple Revolver Control ===");
             telemetry.addData("Target (deg)", "%.1f", currentRevolverDeg);
             telemetry.addData("Shoot Offset", shootOffsetActive);
@@ -338,6 +394,8 @@ public class ScrimTele extends LinearOpMode {
             telemetry.addData("Flywheel Active", flywheelActive);
             telemetry.addData("Intake Active", intakeActive);
             telemetry.addData("Shooter Target RPM", "%.0f", wheelRPM);
+            telemetry.addData("Current Shooter RPM", shooter.getMasterRPM());
+            telemetry.addData("Curret Shooter Power", shooter.getLastPower());
             telemetry.addLine("=== Gate/Auto ===");
             telemetry.addData("Gate State", gateState);
             telemetry.addData("Auto State", autoState);
