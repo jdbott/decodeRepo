@@ -145,6 +145,7 @@ public class ScrimTele extends LinearOpMode {
 
         pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
         pinpoint.resetPosAndIMU();
+        pinpoint.update();
 
         limelight3A = hardwareMap.get(Limelight3A.class, "Limelight");
         limelight3A.pipelineSwitch(0);
@@ -173,23 +174,29 @@ public class ScrimTele extends LinearOpMode {
             long now = System.currentTimeMillis();
 
             // --- Field-centric drive ---
+            boolean fieldCentric = true; // hold to enable field-centric
+
             double y = -gamepad2.left_stick_y;
-            double x = gamepad2.left_stick_x * 1.1;
+            double x = gamepad2.left_stick_x;
             double rx = gamepad2.right_stick_x;
             double trigger = Range.clip(1 - gamepad2.left_trigger, 0.2, 1);
 
-            double botHeading = 1;
-            double rotatedX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
-            double rotatedY = y * Math.sin(-botHeading) + y * Math.cos(-botHeading);
-            pinpoint.update();
+            double rotatedX = x;
+            double rotatedY = y;
+
+            if (fieldCentric) {
+                double botHeading = Math.toRadians(imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES));
+                rotatedX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
+                rotatedY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
+            }
 
             double denom = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1.0);
-            frontLeft.setPower((y + x + rx) / denom * trigger);
-            frontRight.setPower((y - x - rx) / denom * trigger);
-            backLeft.setPower((y - x + rx) / denom * trigger);
-            backRight.setPower((y + x - rx) / denom * trigger);
+            frontLeft.setPower((rotatedY + rotatedX + rx) / denom * trigger);
+            frontRight.setPower((rotatedY - rotatedX - rx) / denom * trigger);
+            backLeft.setPower((rotatedY - rotatedX + rx) / denom * trigger);
+            backRight.setPower((rotatedY + rotatedX - rx) / denom * trigger);
 
-            if (gamepad2.share) pinpoint.resetPosAndIMU();
+            if (gamepad2.b) imu.resetYaw();
 
             boolean g2Left = gamepad2.dpad_left;
             boolean g2Right = gamepad2.dpad_right;
@@ -224,7 +231,7 @@ public class ScrimTele extends LinearOpMode {
             }
 
             // Options: enter shoot offset and spin up flywheel, stop intake
-            boolean optionsPressed = gamepad1.options;
+            boolean optionsPressed = gamepad1.a;
             if (optionsPressed && !lastOptions) {
                 if (!shootOffsetActive) {
                     currentRevolverDeg += OFFSET_60;   // +60 once
@@ -283,22 +290,6 @@ public class ScrimTele extends LinearOpMode {
             }
             lastYButton = yButton;
 
-            // --- Quick outtake (B) ---
-            if (gamepad1.b) {
-                gateServo.setPosition(0.48);
-                intakeMotor.setPower(-INTAKE_POWER);
-                intakeActive = false;
-            }
-
-            // --- Flywheel toggle (A) ---
-            boolean aButton = gamepad1.a;
-            if (aButton && !lastAButton) {
-                flywheelActive = !flywheelActive;
-                wheelRPM = flywheelActive ? FLYWHEEL_RPM : 0.0;
-                shooter.setTargetRPM(wheelRPM);
-            }
-            lastAButton = aButton;
-
             // --- RPM nudge ---
             if (gamepad1.dpad_up)   wheelRPM = Range.clip(wheelRPM + 50, 0.0, 4200);
             if (gamepad1.dpad_down) wheelRPM = Range.clip(wheelRPM - 50, 0.0, 4200);
@@ -306,7 +297,7 @@ public class ScrimTele extends LinearOpMode {
             shooter.update();
 
             // --- Auto shoot trigger (kept, independent) ---
-            double leftTrigger = gamepad1.left_trigger;
+            double leftTrigger = 0;
             boolean leftTriggerActive = (leftTrigger > 0.7);
             if (leftTriggerActive && !lastLeftTriggerActive && autoState == AutoState.OFF) {
                 autoState = AutoState.MOVE_TO_START;
@@ -352,29 +343,35 @@ public class ScrimTele extends LinearOpMode {
                 distance = 0;
             }
 
-            //wheelRPM = (2.27371e-10*Math.pow(distance,4)) - (0.00000213609*Math.pow(distance,3)) + (0.00731095*Math.pow(distance,2)) - (10.47343*distance) + 8194.26622;
 
-            // --- Turret tracking based on yaw error ---
-            double yaw = result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES);
-
-            // read robot heading from pinpoint
-            double robotHeadingDeg = pinpoint.getHeading(AngleUnit.DEGREES);
-
-            // if target is visible, use its yaw to correct
-            if (Math.abs(yaw) > 0.5) { // tolerance to ignore small noise
-                desiredFieldHeading = robotHeadingDeg + yaw;
-                lastEdgeAngle = desiredFieldHeading;
-            } else {
-                // yaw == 0 or target lost, hold last known direction
-                desiredFieldHeading = 0;
+            if (gamepad1.b) {
+                wheelRPM = -2.08318e-10 * Math.pow(x, 4)
+                        + 0.00000142366 * Math.pow(x, 3)
+                        - 0.00296486 * Math.pow(x, 2)
+                        + 1.93708 * x
+                        + 3520.10779;
             }
-
-            // convert back to turret-relative command
-            double targetTurretAngle = desiredFieldHeading;
-            targetTurretAngle = Range.clip(targetTurretAngle, lowerLimit, upperLimit);
+            // --- Turret tracking based on yaw error ---
+//            double yaw = result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES);
+//
+//            // read robot heading from pinpoint
+//            double robotHeadingDeg = pinpoint.getHeading(AngleUnit.DEGREES);
+//
+//            // if target is visible, use its yaw to correct
+//            if (Math.abs(yaw) > 0.5) { // tolerance to ignore small noise
+//                desiredFieldHeading = robotHeadingDeg + yaw;
+//                lastEdgeAngle = desiredFieldHeading;
+//            } else {
+//                // yaw == 0 or target lost, hold last known direction
+//                desiredFieldHeading = 0;
+//            }
+//
+//            // convert back to turret-relative command
+//            double targetTurretAngle = desiredFieldHeading;
+//            targetTurretAngle = Range.clip(targetTurretAngle, lowerLimit, upperLimit);
 
 // send to turret
-            turret.setAngle(targetTurretAngle);
+            turret.setAngle(0);
             turret.update();
 
             // --- Gate and Auto FSM updates (kept) ---
@@ -453,6 +450,7 @@ public class ScrimTele extends LinearOpMode {
                         gateServo.setPosition(gateUpPos);
                     }
                     gateState = GateState.IDLE;
+                    gateServo.setPosition(gateUpPos);
                 }
                 break;
         }

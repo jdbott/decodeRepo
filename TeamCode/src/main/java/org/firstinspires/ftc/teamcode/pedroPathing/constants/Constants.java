@@ -18,8 +18,8 @@ public class Constants {
 
     public static FollowerConstants followerConstants = new FollowerConstants()
             .mass(11.34)
-            .forwardZeroPowerAcceleration(-37.5226)
-            .lateralZeroPowerAcceleration(-50.9753)
+            .forwardZeroPowerAcceleration(-37.615)
+            .lateralZeroPowerAcceleration(-60.117)
             .useSecondaryTranslationalPIDF(false)
             .useSecondaryHeadingPIDF(false)
             .useSecondaryDrivePIDF(false)
@@ -28,7 +28,7 @@ public class Constants {
             .translationalPIDFCoefficients(new PIDFCoefficients(0.15, 0, 0.02, 0))
             .headingPIDFCoefficients(new PIDFCoefficients(2, 0, 0.1, 0))
             .drivePIDFCoefficients(
-                    new FilteredPIDFCoefficients(0.015, 0, 0.00001, 0.6, 0.2)
+                    new FilteredPIDFCoefficients(0.01, 0, 0.000005, 0.6, 0.2)
             );
 
     public static MecanumConstants driveConstants = new MecanumConstants()
@@ -40,10 +40,10 @@ public class Constants {
             .leftRearMotorDirection(DcMotorSimple.Direction.REVERSE)
             .rightFrontMotorDirection(DcMotorSimple.Direction.FORWARD)
             .rightRearMotorDirection(DcMotorSimple.Direction.FORWARD)
-            .xVelocity(90.734)
-            .yVelocity(63.351)
+            .xVelocity(87.47)
+            .yVelocity(61.19)
             .useVoltageCompensation(true)
-            .nominalVoltage(13.5)
+            .nominalVoltage(12.8)
             .useBrakeModeInTeleOp(true);
 
     public static PinpointConstants localizerConstants = new PinpointConstants()
@@ -61,8 +61,8 @@ public class Constants {
     public static PathConstraints pathConstraints = new PathConstraints(
             0.995,
             100,
-            0.75,
-            4
+            0.5,
+            2
     );
 
     public static Follower createFollower(HardwareMap hardwareMap) {

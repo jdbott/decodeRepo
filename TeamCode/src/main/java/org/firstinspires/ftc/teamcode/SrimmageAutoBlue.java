@@ -49,12 +49,13 @@ public class SrimmageAutoBlue extends OpMode {
     // --- Minimal shoot FSM state kept at class scope for Java 8 ---
     private enum AutoShoot3BallsState { OFF, MOVE_TO_START, POP_UP, POP_DOWN, REVOLVE, WAIT_TO_SETTLE, RETURN_TO_START, DONE }
 
+    public double[] ANG = {60, 180, 300};
+
     private static final class AutoShootCtx {
         AutoShoot3BallsState state = AutoShoot3BallsState.OFF;
         long timerMs;
         int popCount;
 
-        final double[] ANG = {60, 180, 300};
         final char[] chambers = new char[3];   // 'G','P',' '
         char[] pattern = new char[3];
         int[] shootIdx = new int[3];           // planned index for each shot, -1 if none
@@ -165,7 +166,6 @@ public class SrimmageAutoBlue extends OpMode {
     @Override
     public void start() {
         revolver.zeroNow();
-        revolver.update();
         turret.setAngle(45);
         setPathState(0);
     }
@@ -194,7 +194,7 @@ public class SrimmageAutoBlue extends OpMode {
         switch (pathState) {
             case 0:
                 // Spin up flywheel and start moving
-                shooter.setTargetRPM(3350);
+                shooter.setTargetRPM(3200);
                 Path toShoot1 = new Path(new BezierLine(
                         new Pose(35.791, 135),
                         new Pose(57, 85))
@@ -218,6 +218,7 @@ public class SrimmageAutoBlue extends OpMode {
                 break;
 
             case 3:
+                ANG = new double[]{60, 180, 300};
                 // All done
                 shooter.setTargetRPM(0);
                 intakeMotor.setPower(1);
@@ -261,7 +262,7 @@ public class SrimmageAutoBlue extends OpMode {
 
             case 61:
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(120);
+                    revolver.moveServosByRotation(120);
                     gateServo.setPosition(0.48); // gate up
                     Path forward2 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -285,11 +286,11 @@ public class SrimmageAutoBlue extends OpMode {
 
             case 71:
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(240);
+                    revolver.moveServosByRotation(120);
                     gateServo.setPosition(0.48);
                     Path forward3 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(follower.getPose().getX() - 7.5, follower.getPose().getY()-1.25)
+                            new Pose(follower.getPose().getX() - 9.5, follower.getPose().getY())
                     ));
                     forward3.setConstantHeadingInterpolation(Math.toRadians(180));
                     follower.followPath(forward3, true);
@@ -318,7 +319,7 @@ public class SrimmageAutoBlue extends OpMode {
             case 9:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3350);  // spin up flywheel
+                shooter.setTargetRPM(3200);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -330,7 +331,7 @@ public class SrimmageAutoBlue extends OpMode {
                 );
                 follower.followPath(toShootAgain, true);
                 chamberOrder = "PGP";
-                revolver.moveServosToPosition(60);
+                revolver.moveServosByRotation(60);
                 pathTimer.resetTimer();
                 setPathState(10);
                 break;
@@ -351,6 +352,8 @@ public class SrimmageAutoBlue extends OpMode {
                 toLowerLine.setLinearHeadingInterpolation(follower.getHeading(), Math.toRadians(180), 0.8);
                 follower.followPath(toLowerLine, true);
                 setPathState(12);
+                revolver.moveServosToPosition(0);
+                revolver.update();
                 break;
 
             case 12:
@@ -358,10 +361,10 @@ public class SrimmageAutoBlue extends OpMode {
                 if (!follower.isBusy()) {
                     intakeMotor.setPower(1);
                     gateServo.setPosition(0.48);
-                    follower.setMaxPower(0.5);
+                    follower.setMaxPower(0.35);
                     Path pick1 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(follower.getPose().getX() - 4, follower.getPose().getY())
+                            new Pose(follower.getPose().getX() - 5, follower.getPose().getY())
                     ));
                     pick1.setConstantHeadingInterpolation(Math.toRadians(180));
                     follower.followPath(pick1, true);
@@ -380,11 +383,11 @@ public class SrimmageAutoBlue extends OpMode {
 
             case 14:
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(120);
+                    revolver.moveServosToPosition(180);
                     gateServo.setPosition(0.48); // gate up
                     Path forward2 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(follower.getPose().getX() - 3.5, follower.getPose().getY())
+                            new Pose(follower.getPose().getX() - 4.5, follower.getPose().getY())
                     ));
                     forward2.setConstantHeadingInterpolation(Math.toRadians(180));
                     follower.followPath(forward2, true);
@@ -404,7 +407,7 @@ public class SrimmageAutoBlue extends OpMode {
 
             case 16:
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(240);
+                    revolver.moveServosToPosition(300);
                     gateServo.setPosition(0.48);
                     Path forward3 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -436,7 +439,7 @@ public class SrimmageAutoBlue extends OpMode {
             case 20:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3350);  // spin up flywheel
+                shooter.setTargetRPM(3200);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -458,7 +461,21 @@ public class SrimmageAutoBlue extends OpMode {
                 }
                 if (!follower.isBusy()) {
                     setPathState(2); // reuse AutoShoot3BallsFSM to fire again
-                    nextPathStateAfterShooting = -1;
+                    nextPathStateAfterShooting = 22;
+                }
+                break;
+
+            case 22:
+                turret.setAngle(0);
+                follower.setTeleOpDrive(1,0,0);
+                follower.startTeleOpDrive();
+                setPathState(23);
+                break;
+
+            case 23:
+                if (pathTimer.getElapsedTimeSeconds() > 0.3) {
+                    follower.breakFollowing();
+                    setPathState(-1);
                 }
                 break;
 
@@ -502,7 +519,7 @@ public class SrimmageAutoBlue extends OpMode {
             ctx.chambers[2] = normColor(chamber300);
 
             ctx.currentIdx = (currentIdxHint >= 0 && currentIdxHint <= 2) ? currentIdxHint : 0;
-            ctx.currentAngle = ctx.ANG[ctx.currentIdx];  // track continuous angle from the start
+            ctx.currentAngle = ANG[ctx.currentIdx];  // track continuous angle from the start
 
             buildShootPlan(ctx); // fills ctx.shootIdx[0..2] deterministically
 
@@ -601,13 +618,13 @@ public class SrimmageAutoBlue extends OpMode {
     // Track continuous angle to avoid drift
     private void gotoIdxShortest(AutoShootCtx ctx, int targetIdx) {
         if (targetIdx < 0 || targetIdx > 2) return;
-        double target = ctx.ANG[targetIdx];
+        double target = ANG[targetIdx];
         double delta  = wrapTo180(target - ctx.currentAngle);   // signed shortest delta in (-180,180]
         if (Math.abs(delta) > 1e-3) {
             revolver.moveServosByRotation(delta);               // signed move
             ctx.currentAngle = normalize360(ctx.currentAngle + delta);
         }
-        ctx.currentIdx = snapToNearestPocket(ctx.currentAngle, ctx.ANG);
+        ctx.currentIdx = snapToNearestPocket(ctx.currentAngle, ANG);
     }
 
     private void gotoAngleShortest(AutoShootCtx ctx, double targetAngle) {
@@ -617,7 +634,7 @@ public class SrimmageAutoBlue extends OpMode {
             revolver.moveServosByRotation(delta);
             ctx.currentAngle = normalize360(ctx.currentAngle + delta);
         }
-        ctx.currentIdx = snapToNearestPocket(ctx.currentAngle, ctx.ANG);
+        ctx.currentIdx = snapToNearestPocket(ctx.currentAngle, ANG);
     }
 
     private int snapToNearestPocket(double angleDeg, double[] pockets) {
