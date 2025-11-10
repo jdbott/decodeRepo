@@ -165,12 +165,22 @@ public class ScrimTele extends LinearOpMode {
         telemetry.update();
         waitForStart();
         limelight3A.start();
+        turret.setAngle(0);
 
         double wheelRPM = 0.0;
         boolean lastLeftTriggerActive = false;
         double distance = 0;
 
+        resetRuntime();
+        boolean times = true;
+
         while (opModeIsActive()) {
+            if (getRuntime() > 120 && times) {
+                gamepad1.rumble(1000);
+                gamepad2.rumble(1000);
+                times = false;
+            }
+
             long now = System.currentTimeMillis();
 
             // --- Field-centric drive ---
@@ -197,6 +207,12 @@ public class ScrimTele extends LinearOpMode {
             backRight.setPower((rotatedY + rotatedX - rx) / denom * trigger);
 
             if (gamepad2.b) imu.resetYaw();
+
+            if (gamepad2.options) {
+                turret.setAngle(-90);
+            } else if (gamepad2.share) {
+                turret.setAngle(90);
+            }
 
             boolean g2Left = gamepad2.dpad_left;
             boolean g2Right = gamepad2.dpad_right;
@@ -371,7 +387,6 @@ public class ScrimTele extends LinearOpMode {
 //            targetTurretAngle = Range.clip(targetTurretAngle, lowerLimit, upperLimit);
 
 // send to turret
-            turret.setAngle(0);
             turret.update();
 
             // --- Gate and Auto FSM updates (kept) ---

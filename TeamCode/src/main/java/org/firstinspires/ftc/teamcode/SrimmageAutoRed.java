@@ -20,6 +20,9 @@ import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
+import java.util.ArrayList;
+import java.util.List;
+
 @Autonomous(name = "Srimmage Auto Red")
 public class SrimmageAutoRed extends OpMode {
 
@@ -49,12 +52,13 @@ public class SrimmageAutoRed extends OpMode {
     // --- Minimal shoot FSM state kept at class scope for Java 8 ---
     private enum AutoShoot3BallsState { OFF, MOVE_TO_START, POP_UP, POP_DOWN, REVOLVE, WAIT_TO_SETTLE, RETURN_TO_START, DONE }
 
+    public double[] ANG = {60, 180, 300};
+
     private static final class AutoShootCtx {
         AutoShoot3BallsState state = AutoShoot3BallsState.OFF;
         long timerMs;
         int popCount;
 
-        final double[] ANG = {60, 180, 300};
         final char[] chambers = new char[3];   // 'G','P',' '
         char[] pattern = new char[3];
         int[] shootIdx = new int[3];           // planned index for each shot, -1 if none
@@ -72,6 +76,8 @@ public class SrimmageAutoRed extends OpMode {
 
     String desiredPattern = null;
     String chamberOrder = "GPP";
+
+    int tag = 21;
 
     @Override
     public void init() {
@@ -114,7 +120,7 @@ public class SrimmageAutoRed extends OpMode {
         imu.resetYaw();
 
         limelight3A = hardwareMap.get(Limelight3A.class, "Limelight");
-        limelight3A.pipelineSwitch(6);
+        limelight3A.pipelineSwitch(7);
         limelight3A.setPollRateHz(50);
         limelight3A.start();
 
@@ -138,12 +144,10 @@ public class SrimmageAutoRed extends OpMode {
     public void init_loop() {
         LLResult result = limelight3A.getLatestResult();
 
-        int tag;
 
         if (result.isValid()) {
             tag = result.getFiducialResults().get(0).getFiducialId();
         } else {
-            tag = 21;
             telemetry.addLine("no tag in sight");
         }
 
@@ -192,8 +196,9 @@ public class SrimmageAutoRed extends OpMode {
     private void autoPathUpdate() {
         switch (pathState) {
             case 0:
+                ANG = new double[]{70, 180, 305};
                 // Spin up flywheel and start moving
-                shooter.setTargetRPM(3200);
+                shooter.setTargetRPM(3250);
                 Path toShoot1 = new Path(new BezierLine(
                         new Pose(144-35.791, 135),
                         new Pose(144-57, 85))
@@ -217,17 +222,19 @@ public class SrimmageAutoRed extends OpMode {
                 break;
 
             case 3:
+                ANG = new double[]{60, 180, 300};
                 // All done
                 shooter.setTargetRPM(0);
                 intakeMotor.setPower(1);
                 gateServo.setPosition(0.48);
                 Path toLine1 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144-48.75, 83.5))
+                        new Pose(144-48.75, 84))
                 );
                 toLine1.setConstantHeadingInterpolation(Math.toRadians(0));
                 follower.followPath(toLine1, true);
                 turret.setAngle(-90);
+                revolver.moveServosByRotation(60);
                 setPathState(4);
                 break;
 
@@ -317,11 +324,11 @@ public class SrimmageAutoRed extends OpMode {
             case 9:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3200);  // spin up flywheel
+                shooter.setTargetRPM(3250);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144 - 57, 85) // same shoot point
+                        new Pose(144-57, 85) // same shoot point
                 ));
                 toShootAgain.setLinearHeadingInterpolation(
                         follower.getPose().getHeading(),
@@ -345,12 +352,13 @@ public class SrimmageAutoRed extends OpMode {
                 // Drive to lower pickup line (24 in lower Y)
                 toLowerLine = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144-49.5, 83.5-21)
+                        new Pose(144-49.5, 84-21)
                 ));
                 toLowerLine.setLinearHeadingInterpolation(follower.getHeading(), Math.toRadians(0), 0.8);
                 follower.followPath(toLowerLine, true);
-                revolver.moveServosToPosition(0);
                 setPathState(12);
+                revolver.moveServosToPosition(0);
+                revolver.update();
                 break;
 
             case 12:
@@ -361,7 +369,7 @@ public class SrimmageAutoRed extends OpMode {
                     follower.setMaxPower(0.35);
                     Path pick1 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(follower.getPose().getX() + 4, follower.getPose().getY())
+                            new Pose(follower.getPose().getX() + 5, follower.getPose().getY())
                     ));
                     pick1.setConstantHeadingInterpolation(Math.toRadians(0));
                     follower.followPath(pick1, true);
@@ -436,7 +444,7 @@ public class SrimmageAutoRed extends OpMode {
             case 20:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3200);  // spin up flywheel
+                shooter.setTargetRPM(3250);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -516,7 +524,7 @@ public class SrimmageAutoRed extends OpMode {
             ctx.chambers[2] = normColor(chamber300);
 
             ctx.currentIdx = (currentIdxHint >= 0 && currentIdxHint <= 2) ? currentIdxHint : 0;
-            ctx.currentAngle = ctx.ANG[ctx.currentIdx];  // track continuous angle from the start
+            ctx.currentAngle = ANG[ctx.currentIdx];  // track continuous angle from the start
 
             buildShootPlan(ctx); // fills ctx.shootIdx[0..2] deterministically
 
@@ -599,6 +607,7 @@ public class SrimmageAutoRed extends OpMode {
             case DONE:
                 shooter.setTargetRPM(0);
                 setPathState(nextPathStateAfterShooting);
+                revolver.moveServosToPosition(0);
                 autoShootCtx = null; // reset
                 break;
 
@@ -613,46 +622,49 @@ public class SrimmageAutoRed extends OpMode {
 // ---- helpers (class scope) ----
 
     // Track continuous angle to avoid drift
+    // ---- helpers (class scope) ----
+// ABSOLUTE version: no incremental deltas; no accumulation.
+// ctx.currentAngle is always set to the commanded absolute angle.
+
+    /** Go to a specific pocket index using absolute angle. */
     private void gotoIdxShortest(AutoShootCtx ctx, int targetIdx) {
         if (targetIdx < 0 || targetIdx > 2) return;
-        double target = ctx.ANG[targetIdx];
-        double delta  = wrapTo180(target - ctx.currentAngle);   // signed shortest delta in (-180,180]
-        if (Math.abs(delta) > 1e-3) {
-            revolver.moveServosByRotation(delta);               // signed move
-            ctx.currentAngle = normalize360(ctx.currentAngle + delta);
-        }
-        ctx.currentIdx = snapToNearestPocket(ctx.currentAngle, ctx.ANG);
+        double target = normalize360(ANG[targetIdx]);
+        revolver.moveServosToPosition(target);
+        ctx.currentAngle = target;          // trust commanded absolute
+        ctx.currentIdx   = targetIdx;       // exact pocket by construction
     }
 
+    /** Go to an arbitrary absolute angle (e.g., home = 0°). */
     private void gotoAngleShortest(AutoShootCtx ctx, double targetAngle) {
         double target = normalize360(targetAngle);
-        double delta  = wrapTo180(target - ctx.currentAngle);   // signed shortest delta
-        if (Math.abs(delta) > 1e-3) {
-            revolver.moveServosByRotation(delta);
-            ctx.currentAngle = normalize360(ctx.currentAngle + delta);
-        }
-        ctx.currentIdx = snapToNearestPocket(ctx.currentAngle, ctx.ANG);
+        revolver.moveServosToPosition(target);
+        ctx.currentAngle = target;                          // trust commanded absolute
+        ctx.currentIdx   = snapToNearestPocket(target, ANG);
     }
 
+    /** Choose nearest pocket to an absolute angle. */
     private int snapToNearestPocket(double angleDeg, double[] pockets) {
-        // choose nearest of {60,180,300}
-        int best = 0; double bestErr = 1e9;
+        int best = 0;
+        double bestErr = 1e9;
         for (int i = 0; i < pockets.length; i++) {
-            double err = Math.abs(wrapTo180(angleDeg - pockets[i]));
-            if (err < bestErr) { best = i; bestErr = err; }
+            double pi = normalize360(pockets[i]);
+            double err = Math.abs(wrapTo180(angleDeg - pi));
+            if (err < bestErr) { bestErr = err; best = i; }
         }
         return best;
     }
 
+    /** Map any angle to (-180, 180]. */
     private double wrapTo180(double a) {
-        // map to (-180, 180]
         a = ((a + 180.0) % 360.0 + 360.0) % 360.0 - 180.0;
-        if (a <= -180.0) a += 360.0; // ensure (-180,180]
+        if (a <= -180.0) a += 360.0;
         return a;
     }
 
+    /** Map any angle to [0, 360). */
     private double normalize360(double a) {
-        a = a % 360.0;
+        a %= 360.0;
         if (a < 0) a += 360.0;
         return a;
     }
@@ -662,19 +674,19 @@ public class SrimmageAutoRed extends OpMode {
         return (u == 'G' || u == 'P') ? u : ' ';
     }
 
+    /** Build the three-shot plan in requested color order, choosing forward-nearest indices. */
     private void buildShootPlan(AutoShootCtx ctx) {
-        java.util.List<Integer> gIdx = new java.util.ArrayList<>(2);
-        java.util.List<Integer> pIdx = new java.util.ArrayList<>(2);
+        List<Integer> gIdx = new ArrayList<>(2);
+        List<Integer> pIdx = new ArrayList<>(2);
         for (int i = 0; i < 3; i++) {
             if (ctx.chambers[i] == 'G') gIdx.add(i);
             else if (ctx.chambers[i] == 'P') pIdx.add(i);
         }
-        // Plan indices in requested color order; choose forward-nearest from the planning cursor
         int planCursor = ctx.currentIdx;
         for (int k = 0; k < 3; k++) {
             char want = ctx.pattern[k];
             int chosen = -1;
-            java.util.List<Integer> pool = (want == 'G') ? gIdx : (want == 'P') ? pIdx : null;
+            List<Integer> pool = (want == 'G') ? gIdx : (want == 'P') ? pIdx : null;
             if (pool != null && !pool.isEmpty()) {
                 chosen = pickNearestForward(planCursor, pool);
                 if (chosen != -1) planCursor = chosen;
@@ -683,7 +695,8 @@ public class SrimmageAutoRed extends OpMode {
         }
     }
 
-    private int pickNearestForward(int fromIdx, java.util.List<Integer> candidates) {
+    /** Forward distance on a 3-pocket wheel; removes chosen candidate from the pool. */
+    private int pickNearestForward(int fromIdx, List<Integer> candidates) {
         int best = -1, bestDist = 4;
         for (int idx : candidates) {
             int dist = (idx - fromIdx + 3) % 3; // 0..2 forward steps
