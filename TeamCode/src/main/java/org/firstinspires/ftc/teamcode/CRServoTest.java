@@ -40,7 +40,7 @@ public class CRServoTest extends LinearOpMode {
 
             // Toggle between 0° and 180°
             if (aButton && !lastA) {
-                double currentAngle = servoController.getContinuousAngleDeg1();
+                double currentAngle = servoController.getTargetAngleDeg();
                 double target = (Math.abs(currentAngle % 360) < 90) ? 180.0 : 0.0;
                 servoController.moveServosToPosition(target);
             }
@@ -48,7 +48,7 @@ public class CRServoTest extends LinearOpMode {
             servoController.update();
 
             telemetry.addData("Servo busy", servoController.isServosBusy());
-            telemetry.addData("Angle (deg)", "%.2f", servoController.getContinuousAngleDeg1());
+            telemetry.addData("Angle (deg)", "%.2f", servoController.getTargetAngleDeg());
             telemetry.update();
 
             lastDpadLeft = dpadLeft;

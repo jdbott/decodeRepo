@@ -254,7 +254,7 @@ public class IntakeTestFC extends LinearOpMode {
             telemetry.clearAll();
             telemetry.addLine("=== System Status ===");
             telemetry.addData("Gate State", gateState);
-            telemetry.addData("Servo Angle (deg)", "%.2f", servoController.getContinuousAngleDeg1());
+            telemetry.addData("Servo Angle (deg)", "%.2f", servoController.getTargetAngleDeg());
             telemetry.addData("Shooter Target RPM", "%.0f", wheelRPM);
             telemetry.addData("Color Detected", colorSensor.proximityAndColor());
             telemetry.addData("Color Detections", "%d / %d", colorCount, MAX_COLOR_DETECTIONS);

@@ -99,11 +99,11 @@ public class SrimmageAutoBlue extends OpMode {
         colorSensor = new ColorV3(hardwareMap);
 
         intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");
-        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        intakeMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
+        intakeMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
 
         revolver = new ServoController(hardwareMap);
-        revolver.zeroNow();
-        revolver.update();
+        revolver.moveServosToPosition(60);
 
         imu = hardwareMap.get(IMU.class, "imu");
         imu.initialize(new IMU.Parameters(
@@ -123,7 +123,6 @@ public class SrimmageAutoBlue extends OpMode {
         gateServo.setPosition(0.38); // gate down
         popperServo.setPosition(0.14); // popper down
         shooter.setTargetRPM(0); // flywheel off
-        //revolver.moveServosToPosition(0); // 60° offset position
 
         turret.setAngle(70);
 
@@ -158,6 +157,7 @@ public class SrimmageAutoBlue extends OpMode {
 
         follower.update();
         turret.update();
+        revolver.update();
         telemetry.addData("Tag", tag);
         telemetry.addData("Pattern", desiredPattern);
         telemetry.update();
@@ -165,7 +165,6 @@ public class SrimmageAutoBlue extends OpMode {
 
     @Override
     public void start() {
-        revolver.zeroNow();
         turret.setAngle(45);
         setPathState(0);
     }
@@ -193,15 +192,13 @@ public class SrimmageAutoBlue extends OpMode {
     private void autoPathUpdate() {
         switch (pathState) {
             case 0:
-                ANG = new double[]{70, 180, 305};
                 // Spin up flywheel and start moving
-                shooter.setTargetRPM(3250);
+                shooter.setTargetRPM(3200);
                 Path toShoot1 = new Path(new BezierLine(
                         new Pose(35.791, 135),
                         new Pose(57, 85))
                 );
                 toShoot1.setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(180), 0.8);
-                revolver.moveServosToPosition(60);
                 follower.followPath(toShoot1, true);
                 setPathState(1);
                 break;
@@ -219,10 +216,9 @@ public class SrimmageAutoBlue extends OpMode {
                 break;
 
             case 3:
-                ANG = new double[]{60, 180, 300};
                 // All done
                 shooter.setTargetRPM(0);
-                intakeMotor.setPower(1);
+                intakeMotor.setPower(-1);
                 gateServo.setPosition(0.48);
                 Path toLine1 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -231,7 +227,6 @@ public class SrimmageAutoBlue extends OpMode {
                 toLine1.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(toLine1, true);
                 turret.setAngle(90);
-                revolver.moveServosByRotation(60);
                 setPathState(4);
                 break;
 
@@ -321,7 +316,7 @@ public class SrimmageAutoBlue extends OpMode {
             case 9:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3250);  // spin up flywheel
+                shooter.setTargetRPM(3200);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -332,8 +327,8 @@ public class SrimmageAutoBlue extends OpMode {
                         Math.toRadians(225) // same target heading as before
                 );
                 follower.followPath(toShootAgain, true);
-                chamberOrder = "PGP";
-                revolver.moveServosByRotation(60);
+                chamberOrder = "GPP";
+                revolver.moveServosToPosition(60);
                 pathTimer.resetTimer();
                 setPathState(10);
                 break;
@@ -349,24 +344,23 @@ public class SrimmageAutoBlue extends OpMode {
                 // Drive to lower pickup line (24 in lower Y)
                 toLowerLine = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(49.5, 84-21)
+                        new Pose(49.5, 64)
                 ));
                 toLowerLine.setLinearHeadingInterpolation(follower.getHeading(), Math.toRadians(180), 0.8);
                 follower.followPath(toLowerLine, true);
                 setPathState(12);
-                revolver.moveServosToPosition(0);
-                revolver.update();
+                // revolver.moveServosToPosition(0);
                 break;
 
             case 12:
                 // Wait for arrival, then start intake
                 if (!follower.isBusy()) {
-                    intakeMotor.setPower(1);
+                    intakeMotor.setPower(-1);
                     gateServo.setPosition(0.48);
                     follower.setMaxPower(0.35);
                     Path pick1 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(follower.getPose().getX() - 5, follower.getPose().getY())
+                            new Pose(follower.getPose().getX() - 6, follower.getPose().getY())
                     ));
                     pick1.setConstantHeadingInterpolation(Math.toRadians(180));
                     follower.followPath(pick1, true);
@@ -385,7 +379,7 @@ public class SrimmageAutoBlue extends OpMode {
 
             case 14:
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(180);
+                    revolver.moveServosToPosition(120);
                     gateServo.setPosition(0.48); // gate up
                     Path forward2 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -409,7 +403,7 @@ public class SrimmageAutoBlue extends OpMode {
 
             case 16:
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(300);
+                    revolver.moveServosToPosition(240);
                     gateServo.setPosition(0.48);
                     Path forward3 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -441,7 +435,7 @@ public class SrimmageAutoBlue extends OpMode {
             case 20:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3250);  // spin up flywheel
+                shooter.setTargetRPM(3200);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -451,7 +445,7 @@ public class SrimmageAutoBlue extends OpMode {
                 toShootAgain.setTangentHeadingInterpolation();
                 toShootAgain.reverseHeadingInterpolation();
                 revolver.moveServosToPosition(60);
-                chamberOrder = "GPP";
+                chamberOrder = "PPG";
                 follower.followPath(toShootAgain, true);
                 pathTimer.resetTimer();
                 setPathState(21);
@@ -468,18 +462,19 @@ public class SrimmageAutoBlue extends OpMode {
                 break;
 
             case 22:
-                turret.setAngle(0);
-                follower.setTeleOpDrive(1,0,0);
-                follower.startTeleOpDrive();
+                Path moveToEnd = new Path(new BezierLine(
+                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
+                        new Pose(20, 20)
+                ));
+                follower.followPath(moveToEnd, true);
                 setPathState(23);
                 break;
 
             case 23:
-                if (pathTimer.getElapsedTimeSeconds() > 0.3) {
+                if (pathTimer.getElapsedTimeSeconds() > 0.5) {
                     follower.breakFollowing();
-                    setPathState(-1);
+                    requestOpModeStop();
                 }
-                break;
 
             default:
                 break;
@@ -612,8 +607,6 @@ public class SrimmageAutoBlue extends OpMode {
             default:
                 break;
         }
-
-        revolver.update();
     }
 
 // ---- helpers (class scope) ----
