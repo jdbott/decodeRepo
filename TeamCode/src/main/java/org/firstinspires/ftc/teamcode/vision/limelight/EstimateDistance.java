@@ -17,9 +17,9 @@ public class EstimateDistance extends OpMode {
     private Limelight3A limelight;
     private IMU imu;
 
-    private static double h1 = 4.0; //height of limelight in inches
+    private static double h1 = 13.5; //height of limelight in inches
     private static double h2 = 26.0;  //height of target in inches
-    private static double a1 = 20.0; //angle of limelight
+    private static double a1 = 33.0; //angle of limelight
     private double a2;
 
     public void init(){
@@ -30,8 +30,8 @@ public class EstimateDistance extends OpMode {
         imu.initialize(
                 new IMU.Parameters(
                         new RevHubOrientationOnRobot(
-                                RevHubOrientationOnRobot.LogoFacingDirection.RIGHT,
-                                RevHubOrientationOnRobot.UsbFacingDirection.UP
+                                RevHubOrientationOnRobot.LogoFacingDirection.BACKWARD,
+                                RevHubOrientationOnRobot.UsbFacingDirection.RIGHT
                         )
                 )
         );
@@ -54,11 +54,13 @@ public class EstimateDistance extends OpMode {
             double botposeDistance = llResult.getBotposeAvgDist();
             telemetry.addData("Estimated Distance (inches)", distance);
             telemetry.addData("Botpose Average Distance (inches)", botposeDistance);
+            telemetry.addData("Botpose", llResult.getBotpose_MT2());
             telemetry.addData("Tag X Angle", llResult.getTx());
             telemetry.addData("Tag Pose Area", llResult.getTa());
+
         } else {
             telemetry.addData("Estimated Distance", "No target found");
-
         }
+
     }
 }
