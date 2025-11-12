@@ -24,8 +24,8 @@ public class PoseTesting extends OpMode {
         imu.initialize(
                 new IMU.Parameters(
                         new RevHubOrientationOnRobot(
-                                RevHubOrientationOnRobot.LogoFacingDirection.RIGHT,
-                                RevHubOrientationOnRobot.UsbFacingDirection.UP
+                                RevHubOrientationOnRobot.LogoFacingDirection.BACKWARD,
+                                RevHubOrientationOnRobot.UsbFacingDirection.RIGHT
                         )
                 )
         );
@@ -71,6 +71,9 @@ public class PoseTesting extends OpMode {
             telemetry.addData("Pedro X (in)", pedroX_in);
             telemetry.addData("Pedro Y (in)", pedroY_in);
             telemetry.addData("Heading (deg)", orientations.getYaw());
+
+            telemetry.addData("Limelight X (meters)", llResult.getBotpose_MT2().getPosition().x);
+            telemetry.addData("Limelight Y (meters)", llResult.getBotpose_MT2().getPosition().y);
         } else {
             telemetry.addData("Tag Pose", "No target found");
         }
