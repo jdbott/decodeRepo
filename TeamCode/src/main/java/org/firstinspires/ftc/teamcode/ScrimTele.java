@@ -1,5 +1,8 @@
 package org.firstinspires.ftc.teamcode;
 
+import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.BezierLine;
+import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.gobilda.GoBildaPinpointDriver;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
@@ -13,13 +16,16 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
-
-import java.nio.file.Path;
+import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
+import com.pedropathing.paths.Path;
 
 @TeleOp(name = "A Srimmage teleop")
 public class ScrimTele extends LinearOpMode {
 
     // --- Subsystems / hardware ---
+    private Follower follower;
+    private static final double TARGET_X = -68;
+    private static final double TARGET_Y = 69;
     private Servo popperServo;
     private Servo gateServo;
     private Shooter shooter;
@@ -82,9 +88,9 @@ public class ScrimTele extends LinearOpMode {
     private int popRepeats = 3;
 
     // --- Color automation (kept) ---
-    private boolean colorActive = true;
+    private boolean colorActive = false;
     private long colorRearmTime = 0;
-    private int colorCount = 0;
+    private int colorCount = 4;
     private static final int MAX_COLOR_DETECTIONS = 3;
     private static final long COLOR_REARM_DELAY_MS = 400;
 
@@ -96,7 +102,13 @@ public class ScrimTele extends LinearOpMode {
     double upperLimit = 90;
     double lastEdgeAngle = 0;
 
-    // --- Helpers ---
+
+    private enum ParkState { OFF, RUNNING }
+    private ParkState parkState = ParkState.OFF;
+
+    private boolean lastStickPress = false;
+    private Path parkPath;
+
     private void setRevolverTarget(ServoController servoController, double targetDeg) {
         currentRevolverDeg = targetDeg;
         servoController.moveServosToPosition(currentRevolverDeg);
@@ -104,11 +116,16 @@ public class ScrimTele extends LinearOpMode {
 
     @Override
     public void runOpMode() throws InterruptedException {
+
+        follower = Constants.createFollower(hardwareMap);
+        follower.setStartingPose(new Pose(0, 0, Math.toRadians(90)));
+        follower.updatePose();
+        follower.setMaxPower(1);
+
         // Hardware map
         ServoController servoController = new ServoController(hardwareMap);
 
         DcMotorEx intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");
-        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
         popperServo = hardwareMap.get(Servo.class, "popperServo");
         gateServo = hardwareMap.get(Servo.class, "gateServo");
@@ -143,10 +160,6 @@ public class ScrimTele extends LinearOpMode {
         ));
         imu.resetYaw();
 
-        pinpoint = hardwareMap.get(GoBildaPinpointDriver.class, "pinpoint");
-        pinpoint.resetPosAndIMU();
-        pinpoint.update();
-
         limelight3A = hardwareMap.get(Limelight3A.class, "Limelight");
         limelight3A.pipelineSwitch(0);
         limelight3A.setPollRateHz(50);
@@ -164,6 +177,7 @@ public class ScrimTele extends LinearOpMode {
         telemetry.addLine("Initialized. Press START to begin.");
         telemetry.update();
         waitForStart();
+        follower.startTeleOpDrive(true);
         limelight3A.start();
         turret.setAngle(0);
 
@@ -175,6 +189,31 @@ public class ScrimTele extends LinearOpMode {
         boolean times = true;
 
         while (opModeIsActive()) {
+            follower.update();
+
+            // Robot pose
+            double botX = follower.getPose().getX();
+            double botY = follower.getPose().getY();
+            double robotHeadingDeg = Math.toDegrees(follower.getPose().getHeading());  // standard math frame
+
+            // Vector to target
+            double dx = TARGET_X - botX;
+            double dy = TARGET_Y - botY;
+
+            // Absolute field angle toward target (0°=+X, CCW positive)
+            double angleToTarget = Math.toDegrees(Math.atan2(dy, dx));  // correct for math coordinate system
+
+            // Turret angle = field angle - robot heading
+            double turretAngleNeeded = normalize180(angleToTarget - robotHeadingDeg);
+
+            // Drive turret
+            if (wheelRPM != 0) {
+                turret.setAngle(-turretAngleNeeded);
+            } else {
+                turret.setAngle(0);
+            }
+            turret.update();
+
             if (getRuntime() > 120 && times) {
                 gamepad1.rumble(1000);
                 gamepad2.rumble(1000);
@@ -183,30 +222,41 @@ public class ScrimTele extends LinearOpMode {
 
             long now = System.currentTimeMillis();
 
-            // --- Field-centric drive ---
-            boolean fieldCentric = true; // hold to enable field-centric
-
-            double y = -gamepad2.left_stick_y;
-            double x = gamepad2.left_stick_x;
-            double rx = gamepad2.right_stick_x;
+            double y = -gamepad1.left_stick_y;
+            double x = -gamepad1.left_stick_x;
+            double rx = -gamepad1.right_stick_x;
             double trigger = Range.clip(1 - gamepad2.left_trigger, 0.2, 1);
 
-            double rotatedX = x;
-            double rotatedY = y;
+            follower.setTeleOpDrive(y*trigger, x*trigger, rx*trigger, true);
 
-            if (fieldCentric) {
-                double botHeading = Math.toRadians(imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES));
-                rotatedX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
-                rotatedY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
+            if (gamepad2.b) {
+                follower.setPose(new Pose(0, 0, Math.toRadians(90)));
+                follower.startTeleOpDrive();
             }
 
-            double denom = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1.0);
-            frontLeft.setPower((rotatedY + rotatedX + rx) / denom * trigger);
-            frontRight.setPower((rotatedY - rotatedX - rx) / denom * trigger);
-            backLeft.setPower((rotatedY - rotatedX + rx) / denom * trigger);
-            backRight.setPower((rotatedY + rotatedX - rx) / denom * trigger);
+            boolean stickPress = gamepad1.left_stick_button;
 
-            if (gamepad2.b) imu.resetYaw();
+            // Toggle logic
+            if (stickPress && !lastStickPress) {
+                if (parkState == ParkState.OFF) {
+                    startParkFSM();
+                } else {
+                    stopParkFSM();
+                }
+            }
+            lastStickPress = stickPress;
+
+            // FSM update
+            if (parkState == ParkState.RUNNING) {
+                // Disable teleop drive while auto path is running
+                if (!follower.isBusy()) {
+                    stopParkFSM();
+                } else {
+                    // Skip user drive so auto can execute
+                    // But DO NOT block the loop — follower.update() still runs above
+                    continue;
+                }
+            }
 
             if (gamepad2.options) {
                 turret.setAngle(-90);
@@ -250,7 +300,7 @@ public class ScrimTele extends LinearOpMode {
             boolean optionsPressed = gamepad1.a;
             if (optionsPressed && !lastOptions) {
                 if (!shootOffsetActive) {
-                    currentRevolverDeg += OFFSET_60;   // +60 once
+                    currentRevolverDeg = 60;   // +60 once
                     shootOffsetActive = true;
                 }
                 // keep previous actions
@@ -267,16 +317,18 @@ public class ScrimTele extends LinearOpMode {
             boolean xPressed = gamepad1.x;
             if (xPressed && !lastX) {
                 if (shootOffsetActive) {
-                    currentRevolverDeg -= OFFSET_60;   // -60 once
+                    currentRevolverDeg = 0;
                     shootOffsetActive = false;
                 }
                 // keep previous actions
                 intakeActive = true;
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(-1.0);
                 gateServo.setPosition(0.48);
                 flywheelActive = false;
                 wheelRPM = 0.0;
                 shooter.setTargetRPM(wheelRPM);
+                colorCount = 0;
+                colorActive = true;
             }
             lastX = xPressed;
 
@@ -295,7 +347,7 @@ public class ScrimTele extends LinearOpMode {
             if (yButton && !lastYButton) {
                 intakeActive = !intakeActive;
                 if (intakeActive) {
-                    intakeMotor.setPower(1.0);
+                    intakeMotor.setPower(-1.0);
                     gateServo.setPosition(0.48);
                     gateLifted = true;
                 } else {
@@ -330,43 +382,51 @@ public class ScrimTele extends LinearOpMode {
             if (intakeRunning && colorActive && now >= colorRearmTime && colorCount < MAX_COLOR_DETECTIONS) {
                 String color = colorSensor.proximityAndColor();
                 if (color.equals("Green") || color.equals("Purple")) {
-                    currentRevolverDeg -= 120.0; // advance bin
-                    servoController.moveServosToPosition(currentRevolverDeg);
+                    if (colorCount < 3) {
+                        currentRevolverDeg -= 120.0; // advance bin
+                        requestGateBeforeMove(0, true, currentRevolverDeg);
+                    }
                     colorCount++;
                     colorActive = false;
                     colorRearmTime = now + COLOR_REARM_DELAY_MS;
                 }
             } else if (!colorActive && now >= colorRearmTime) {
                 colorActive = true;
+            } else if (colorCount == 3) {
+                intakeMotor.setPower(0);
+                gateServo.setPosition(0.38);
+                colorCount++;
+                currentRevolverDeg = 60;
+                requestGateBeforeMove(0, true, currentRevolverDeg);
             }
-            if (gamepad1.share) { // reset color counters
+            if (gamepad1.options) {
                 colorCount = 0;
                 colorActive = true;
             }
 
-            limelight3A.updateRobotOrientation(pinpoint.getHeading(AngleUnit.DEGREES));
-            LLResult result = limelight3A.getLatestResult();
-
-            telemetry.addData("LL Yaw", result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES));
-            telemetry.addData("LL Distance x", result.getBotpose_MT2().getPosition().x);
-            telemetry.addData("LL Distance y", result.getBotpose_MT2().getPosition().y);
-            telemetry.addData("LL Distance z", result.getBotpose_MT2().getPosition().z);
-            telemetry.addData("Distance", result.getBotposeAvgDist());
-
-            if (result.getBotposeAvgDist() != 0.0) {
-                distance = result.getBotposeAvgDist()*1000;
-            } else {
-                distance = 0;
-            }
-
-
-            if (gamepad1.b) {
-                wheelRPM = -2.08318e-10 * Math.pow(x, 4)
-                        + 0.00000142366 * Math.pow(x, 3)
-                        - 0.00296486 * Math.pow(x, 2)
-                        + 1.93708 * x
-                        + 3520.10779;
-            }
+//            limelight3A.updateRobotOrientation(Math.toRadians(robotHeadingDeg));
+//            LLResult result = limelight3A.getLatestResult();
+//
+//            telemetry.addData("LL Yaw", result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES));
+//            telemetry.addData("LL Distance x", result.getBotpose_MT2().getPosition().x);
+//            telemetry.addData("LL Distance y", result.getBotpose_MT2().getPosition().y);
+//            telemetry.addData("LL Distance z", result.getBotpose_MT2().getPosition().z);
+//            telemetry.addData("Distance", result.getBotposeAvgDist());
+//
+//            if (result.getBotposeAvgDist() != 0.0) {
+//                distance = result.getBotposeAvgDist()*1000;
+//            } else {
+//                distance = 0;
+//            }
+//
+//
+//            if (gamepad1.b) {
+//                wheelRPM = -2.08318e-10 * Math.pow(x, 4)
+//                        + 0.00000142366 * Math.pow(x, 3)
+//                        - 0.00296486 * Math.pow(x, 2)
+//                        + 1.93708 * x
+//                        + 3520.10779;
+//            }
             // --- Turret tracking based on yaw error ---
 //            double yaw = result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES);
 //
@@ -413,6 +473,7 @@ public class ScrimTele extends LinearOpMode {
             telemetry.addData("Auto State", autoState);
             telemetry.addLine("=== Color ===");
             telemetry.addData("Detections", "%d/%d", colorCount, MAX_COLOR_DETECTIONS);
+            telemetry.addData("Raw Data", colorSensor.proximityAndColor());
             telemetry.update();
 
             // Edge memory
@@ -423,6 +484,33 @@ public class ScrimTele extends LinearOpMode {
         }
 
         servoController.stopAll();
+    }
+
+    private void startParkFSM() {
+        Pose p = follower.getPose();
+
+        // build the path
+        parkPath = new Path(new BezierLine(
+                new Pose(p.getX(), p.getY(), p.getHeading()),
+                new Pose(-36, -12, 0)
+        ));
+        parkPath.setConstantHeadingInterpolation(Math.toRadians(90));
+
+        follower.breakFollowing();
+        follower.followPath(parkPath, true);
+
+        parkState = ParkState.RUNNING;
+    }
+
+    private void stopParkFSM() {
+        follower.breakFollowing();
+        follower.startTeleOpDrive(); // back to normal user control
+        parkState = ParkState.OFF;
+    }
+
+    private double normalize180(double a) {
+        a = ((a + 180) % 360 + 360) % 360 - 180;
+        return a;
     }
 
     // ---------------- Gate FSM (unchanged; not used by revolver logic) ----------------
@@ -493,7 +581,7 @@ public class ScrimTele extends LinearOpMode {
             case POP_UP:
                 if (now >= autoTimer) {
                     autoState = AutoState.POP_DOWN;
-                    popperServo.setPosition(0.14);
+                    popperServo.setPosition(0.15);
                     autoTimer = now + popDownMs;
                 }
                 break;

@@ -121,7 +121,7 @@ public class SrimmageAutoBlue extends OpMode {
 
         // Start configuration
         gateServo.setPosition(0.38); // gate down
-        popperServo.setPosition(0.14); // popper down
+        popperServo.setPosition(0.15); // popper down
         shooter.setTargetRPM(0); // flywheel off
 
         turret.setAngle(70);
@@ -546,7 +546,7 @@ public class SrimmageAutoBlue extends OpMode {
 
             case POP_UP:
                 if (now >= ctx.timerMs) {
-                    popperServo.setPosition(0.14);
+                    popperServo.setPosition(.15);
                     ctx.timerMs = now + ctx.popDownMs;
                     ctx.state = AutoShoot3BallsState.POP_DOWN;
                 }
