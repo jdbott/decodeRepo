@@ -118,7 +118,7 @@ public class ScrimTele extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(0, 0, Math.toRadians(-90)));
+        follower.setStartingPose(new Pose(0, 0, Math.toRadians(180)));
         follower.updatePose();
         follower.setMaxPower(1);
 
@@ -206,7 +206,7 @@ public class ScrimTele extends LinearOpMode {
             double turretAngleNeeded = normalize180(angleToTarget - robotHeadingDeg);
 
             // Drive turret
-            if (wheelRPM != 0) {
+            if (wheelRPM != 0 && !gamepad2.a) {
                 turret.setAngle(-turretAngleNeeded);
             } else {
                 turret.setAngle(0);
@@ -229,12 +229,12 @@ public class ScrimTele extends LinearOpMode {
             double rotatedX = x;
             double rotatedY = y;
 
-//            double botHeading = Math.toRadians(imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.DEGREES));
+//            double botHeading = Math.toRadians(robotHeadingDeg);
 //            rotatedX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
 //            rotatedY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
 
             if (gamepad2.b) {
-                follower.setPose(new Pose(0, 0, Math.toRadians(90)));
+                follower.setPose(new Pose(0, 0, Math.toRadians(180)));
             }
 
             double denom = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1.0);
@@ -309,7 +309,7 @@ public class ScrimTele extends LinearOpMode {
             boolean optionsPressed = gamepad1.a;
             if (optionsPressed && !lastOptions) {
                 if (!shootOffsetActive) {
-                    currentRevolverDeg = -60;   // +60 once
+                    currentRevolverDeg = -180;   // +60 once
                     shootOffsetActive = true;
                 }
                 // keep previous actions
@@ -452,6 +452,10 @@ public class ScrimTele extends LinearOpMode {
             targetTurretAngle = Range.clip(targetTurretAngle, lowerLimit, upperLimit);
 
             turret.update();
+
+            if (gamepad1.left_trigger > 0.5) {
+                autoState = AutoState.MOVE_TO_START;
+            }
 
             // --- Gate and Auto FSM updates (kept) ---
             updateGateFSM(servoController);
