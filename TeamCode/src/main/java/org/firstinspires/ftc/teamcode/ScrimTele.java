@@ -186,6 +186,7 @@ public class ScrimTele extends LinearOpMode {
 
         resetRuntime();
         boolean times = true;
+        boolean bPressed = false;
 
         while (opModeIsActive()) {
             follower.update();
@@ -221,20 +222,36 @@ public class ScrimTele extends LinearOpMode {
 
             long now = System.currentTimeMillis();
 
-            double y = -gamepad1.left_stick_y;
-            double x =  gamepad1.left_stick_x;
-            double rx = gamepad1.right_stick_x;
+            double rotatedX = 0;
+            double rotatedY = 0;
+            double x = 0;
+            double y = 0;
+            double rx = 0;
+
             double trigger = Range.clip(1 - gamepad2.left_trigger, 0.2, 1);
 
-            double rotatedX = x;
-            double rotatedY = y;
+            if (bPressed) {
+                y = gamepad2.left_stick_y;
+                x = -gamepad2.left_stick_x;
+                rx = gamepad2.right_stick_x;
 
-//            double botHeading = Math.toRadians(robotHeadingDeg);
-//            rotatedX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
-//            rotatedY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
+                double botHeading = Math.toRadians(robotHeadingDeg);
+                rotatedX = x * Math.cos(-botHeading) - y * Math.sin(-botHeading);
+                rotatedY = x * Math.sin(-botHeading) + y * Math.cos(-botHeading);
+            } else {
+                y = -gamepad2.left_stick_y;
+                x = gamepad2.left_stick_x;
+                rx = gamepad2.right_stick_x;
+                trigger = Range.clip(1 - gamepad2.left_trigger, 0.2, 1);
+
+                rotatedX = x;
+                rotatedY = y;
+            }
 
             if (gamepad2.b) {
-                follower.setPose(new Pose(0, 0, Math.toRadians(180)));
+                bPressed = true;
+                follower.setPose(new Pose(-46.9, 55.1, Math.toRadians(137.7)));
+                gamepad2.rumble(500);
             }
 
             double denom = Math.max(Math.abs(y) + Math.abs(x) + Math.abs(rx), 1.0);
@@ -482,6 +499,7 @@ public class ScrimTele extends LinearOpMode {
             telemetry.addLine("=== Color ===");
             telemetry.addData("Detections", "%d/%d", colorCount, MAX_COLOR_DETECTIONS);
             telemetry.addData("Raw Data", colorSensor.proximityAndColor());
+            telemetry.addData("Pose", follower.getPose().toString());
             telemetry.update();
 
             // Edge memory

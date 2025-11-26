@@ -124,7 +124,7 @@ public class SrimmageAutoBlue extends OpMode {
         popperServo.setPosition(0.15); // popper down
         shooter.setTargetRPM(0); // flywheel off
 
-        turret.setAngle(70);
+        turret.setAngle(90);
 
         pathTimer = new Timer();
         pathState = 0;
@@ -136,36 +136,18 @@ public class SrimmageAutoBlue extends OpMode {
 
     @Override
     public void init_loop() {
-        LLResult result = limelight3A.getLatestResult();
 
-        int tag;
-
-        if (result.isValid()) {
-            tag = result.getFiducialResults().get(0).getFiducialId();
-        } else {
-            tag = 21;
-            telemetry.addLine("no tag in sight");
-        }
-
-        if (tag == 21) {
-            desiredPattern = "GPP";
-        } else if (tag == 22) {
-            desiredPattern = "PGP";
-        } else if (tag == 23) {
-            desiredPattern = "PPG";
-        }
 
         follower.update();
         turret.update();
         revolver.update();
-        telemetry.addData("Tag", tag);
-        telemetry.addData("Pattern", desiredPattern);
+
         telemetry.update();
     }
 
     @Override
     public void start() {
-        turret.setAngle(45);
+        turret.setAngle(90);
         setPathState(0);
     }
 
@@ -206,6 +188,51 @@ public class SrimmageAutoBlue extends OpMode {
             case 1:
                 // Wait until motion completes
                 if (!follower.isBusy()) {
+                    setPathState(101);
+                }
+                if ((pathTimer.getElapsedTimeSeconds() > 0)) {
+                    LLResult result = limelight3A.getLatestResult();
+
+                    int tag;
+
+                    if (result.isValid()) {
+                        tag = result.getFiducialResults().get(0).getFiducialId();
+                    } else {
+                        tag = 21;
+                        telemetry.addLine("no tag in sight");
+                    }
+
+                    if (tag == 21) {
+                        desiredPattern = "GPP";
+                    } else if (tag == 22) {
+                        desiredPattern = "PGP";
+                    } else if (tag == 23) {
+                        desiredPattern = "PPG";
+                    }
+                }
+                break;
+
+            case 101:
+                LLResult result = limelight3A.getLatestResult();
+
+                int tag;
+
+                if (result.isValid()) {
+                    tag = result.getFiducialResults().get(0).getFiducialId();
+                } else {
+                    tag = 21;
+                    telemetry.addLine("no tag in sight");
+                }
+
+                if (tag == 21) {
+                    desiredPattern = "GPP";
+                } else if (tag == 22) {
+                    desiredPattern = "PGP";
+                } else if (tag == 23) {
+                    desiredPattern = "PPG";
+                }
+                if (pathTimer.getElapsedTimeSeconds() > 0.5) {
+                    turret.setAngle(45);
                     setPathState(2);
                 }
                 break;
@@ -467,13 +494,13 @@ public class SrimmageAutoBlue extends OpMode {
                         new Pose(20, 20)
                 ));
                 follower.followPath(moveToEnd, true);
+                turret.setAngle(0);
                 setPathState(23);
                 break;
 
             case 23:
                 if (pathTimer.getElapsedTimeSeconds() > 0.5) {
                     follower.breakFollowing();
-                    requestOpModeStop();
                 }
 
             default:
