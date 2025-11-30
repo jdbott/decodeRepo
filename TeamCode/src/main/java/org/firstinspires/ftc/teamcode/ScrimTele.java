@@ -214,12 +214,6 @@ public class ScrimTele extends LinearOpMode {
             }
             turret.update();
 
-            if (getRuntime() > 120 && times) {
-                gamepad1.rumble(1000);
-                gamepad2.rumble(1000);
-                times = false;
-            }
-
             long now = System.currentTimeMillis();
 
             double rotatedX = 0;
@@ -419,6 +413,8 @@ public class ScrimTele extends LinearOpMode {
             } else if (!colorActive && now >= colorRearmTime) {
                 colorActive = true;
             } else if (colorCount == 3) {
+                gamepad1.rumble(500);
+                gamepad2.rumble(500);
                 intakeMotor.setPower(0);
                 gateServo.setPosition(0.38);
                 colorCount++;
