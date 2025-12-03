@@ -118,7 +118,7 @@ public class ScrimTele extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(0, 0, Math.toRadians(180)));
+        follower.setStartingPose(new Pose(30, 73, Math.toRadians(180)));
         follower.updatePose();
         follower.setMaxPower(1);
 
@@ -222,7 +222,7 @@ public class ScrimTele extends LinearOpMode {
             double y = 0;
             double rx = 0;
 
-            double trigger = Range.clip(1 - gamepad2.left_trigger, 0.2, 1);
+            double trigger = Range.clip(1 - gamepad2.right_trigger, 0.2, 1);
 
             if (bPressed) {
                 y = gamepad2.left_stick_y;
@@ -236,7 +236,7 @@ public class ScrimTele extends LinearOpMode {
                 y = -gamepad2.left_stick_y;
                 x = gamepad2.left_stick_x;
                 rx = gamepad2.right_stick_x;
-                trigger = Range.clip(1 - gamepad2.left_trigger, 0.2, 1);
+                trigger = Range.clip(1 - gamepad2.right_trigger, 0.2, 1);
 
                 rotatedX = x;
                 rotatedY = y;
@@ -426,45 +426,45 @@ public class ScrimTele extends LinearOpMode {
                 colorActive = true;
             }
 
-            limelight3A.updateRobotOrientation(Math.toRadians(robotHeadingDeg));
-            LLResult result = limelight3A.getLatestResult();
-
-            telemetry.addData("LL Yaw", result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES));
-            telemetry.addData("LL Distance x", result.getBotpose_MT2().getPosition().x);
-            telemetry.addData("LL Distance y", result.getBotpose_MT2().getPosition().y);
-            telemetry.addData("LL Distance z", result.getBotpose_MT2().getPosition().z);
-            telemetry.addData("Distance", result.getBotposeAvgDist());
-
-            if (result.getBotposeAvgDist() != 0.0) {
-                distance = result.getBotposeAvgDist()*1000;
-            } else {
-                distance = 0;
-            }
-
-
-            if (gamepad1.b) {
-                wheelRPM = -2.08318e-10 * Math.pow(x, 4)
-                        + 0.00000142366 * Math.pow(x, 3)
-                        - 0.00296486 * Math.pow(x, 2)
-                        + 1.93708 * x
-                        + 3520.10779;
-            }
-            double yaw = result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES);
-
-            // if target is visible, use its yaw to correct
-            if (Math.abs(yaw) > 0.5) { // tolerance to ignore small noise
-                desiredFieldHeading = robotHeadingDeg + yaw;
-                lastEdgeAngle = desiredFieldHeading;
-            } else {
-                // yaw == 0 or target lost, hold last known direction
-                desiredFieldHeading = 0;
-            }
-
-            // convert back to turret-relative command
-            double targetTurretAngle = desiredFieldHeading;
-            targetTurretAngle = Range.clip(targetTurretAngle, lowerLimit, upperLimit);
-
-            turret.update();
+//            limelight3A.updateRobotOrientation(Math.toRadians(robotHeadingDeg));
+//            LLResult result = limelight3A.getLatestResult();
+//
+//            telemetry.addData("LL Yaw", result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES));
+//            telemetry.addData("LL Distance x", result.getBotpose_MT2().getPosition().x);
+//            telemetry.addData("LL Distance y", result.getBotpose_MT2().getPosition().y);
+//            telemetry.addData("LL Distance z", result.getBotpose_MT2().getPosition().z);
+//            telemetry.addData("Distance", result.getBotposeAvgDist());
+//
+//            if (result.getBotposeAvgDist() != 0.0) {
+//                distance = result.getBotposeAvgDist()*1000;
+//            } else {
+//                distance = 0;
+//            }
+//
+//
+//            if (gamepad1.b) {
+//                wheelRPM = -2.08318e-10 * Math.pow(x, 4)
+//                        + 0.00000142366 * Math.pow(x, 3)
+//                        - 0.00296486 * Math.pow(x, 2)
+//                        + 1.93708 * x
+//                        + 3520.10779;
+//            }
+//            double yaw = result.getBotpose_MT2().getOrientation().getYaw(AngleUnit.DEGREES);
+//
+//            // if target is visible, use its yaw to correct
+//            if (Math.abs(yaw) > 0.5) { // tolerance to ignore small noise
+//                desiredFieldHeading = robotHeadingDeg + yaw;
+//                lastEdgeAngle = desiredFieldHeading;
+//            } else {
+//                // yaw == 0 or target lost, hold last known direction
+//                desiredFieldHeading = 0;
+//            }
+//
+//            // convert back to turret-relative command
+//            double targetTurretAngle = desiredFieldHeading;
+//            targetTurretAngle = Range.clip(targetTurretAngle, lowerLimit, upperLimit);
+//
+//            turret.update();
 
             if (gamepad1.left_trigger > 0.5) {
                 autoState = AutoState.MOVE_TO_START;

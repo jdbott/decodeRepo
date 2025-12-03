@@ -64,10 +64,10 @@ public class SrimmageAutoBlue extends OpMode {
         double currentAngle = 0;
 
         // timings (preserved)
-        final long autoInitialMoveDelayMs = 750;
-        final long postRevolveDelayMs    = 750;
+        final long autoInitialMoveDelayMs = 600;
+        final long postRevolveDelayMs    = 500;
         final long popUpMs               = 250;
-        final long popDownMs             = 200;
+        final long popDownMs             = 50;
     }
     private AutoShootCtx autoShootCtx = null;
 
@@ -175,7 +175,7 @@ public class SrimmageAutoBlue extends OpMode {
         switch (pathState) {
             case 0:
                 // Spin up flywheel and start moving
-                shooter.setTargetRPM(3200);
+                shooter.setTargetRPM(3300);
                 Path toShoot1 = new Path(new BezierLine(
                         new Pose(35.791, 135),
                         new Pose(57, 85))
@@ -343,7 +343,7 @@ public class SrimmageAutoBlue extends OpMode {
             case 9:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3200);  // spin up flywheel
+                shooter.setTargetRPM(3300);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -462,7 +462,7 @@ public class SrimmageAutoBlue extends OpMode {
             case 20:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3200);  // spin up flywheel
+                shooter.setTargetRPM(3300);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -491,16 +491,17 @@ public class SrimmageAutoBlue extends OpMode {
             case 22:
                 Path moveToEnd = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(20, 20)
+                        new Pose(37, 73)
                 ));
+                moveToEnd.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(moveToEnd, true);
                 turret.setAngle(0);
                 setPathState(23);
                 break;
 
             case 23:
-                if (pathTimer.getElapsedTimeSeconds() > 0.5) {
-                    follower.breakFollowing();
+                if (!follower.isBusy()) {
+                    setPathState(-1);
                 }
 
             default:
