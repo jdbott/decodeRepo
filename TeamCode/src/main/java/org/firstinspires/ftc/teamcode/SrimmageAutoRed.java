@@ -20,9 +20,6 @@ import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
-import java.util.ArrayList;
-import java.util.List;
-
 @Autonomous(name = "Srimmage Auto Red")
 public class SrimmageAutoRed extends OpMode {
 
@@ -67,17 +64,15 @@ public class SrimmageAutoRed extends OpMode {
         double currentAngle = 0;
 
         // timings (preserved)
-        final long autoInitialMoveDelayMs = 750;
-        final long postRevolveDelayMs    = 750;
+        final long autoInitialMoveDelayMs = 600;
+        final long postRevolveDelayMs    = 500;
         final long popUpMs               = 250;
-        final long popDownMs             = 200;
+        final long popDownMs             = 50;
     }
     private AutoShootCtx autoShootCtx = null;
 
     String desiredPattern = null;
     String chamberOrder = "GPP";
-
-    int tag = 21;
 
     @Override
     public void init() {
@@ -104,11 +99,11 @@ public class SrimmageAutoRed extends OpMode {
         colorSensor = new ColorV3(hardwareMap);
 
         intakeMotor = hardwareMap.get(DcMotorEx.class, "intakeMotor");
-        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        intakeMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
+        intakeMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
 
         revolver = new ServoController(hardwareMap);
-        revolver.zeroNow();
-        revolver.update();
+        revolver.moveServosToPosition(60);
 
         imu = hardwareMap.get(IMU.class, "imu");
         imu.initialize(new IMU.Parameters(
@@ -120,17 +115,16 @@ public class SrimmageAutoRed extends OpMode {
         imu.resetYaw();
 
         limelight3A = hardwareMap.get(Limelight3A.class, "Limelight");
-        limelight3A.pipelineSwitch(7);
+        limelight3A.pipelineSwitch(6);
         limelight3A.setPollRateHz(50);
         limelight3A.start();
 
         // Start configuration
         gateServo.setPosition(0.38); // gate down
-        popperServo.setPosition(0.14); // popper down
+        popperServo.setPosition(0.15); // popper down
         shooter.setTargetRPM(0); // flywheel off
-        //revolver.moveServosToPosition(0); // 60° offset position
 
-        turret.setAngle(-70);
+        turret.setAngle(-90);
 
         pathTimer = new Timer();
         pathState = 0;
@@ -142,34 +136,18 @@ public class SrimmageAutoRed extends OpMode {
 
     @Override
     public void init_loop() {
-        LLResult result = limelight3A.getLatestResult();
 
-
-        if (result.isValid()) {
-            tag = result.getFiducialResults().get(0).getFiducialId();
-        } else {
-            telemetry.addLine("no tag in sight");
-        }
-
-        if (tag == 21) {
-            desiredPattern = "GPP";
-        } else if (tag == 22) {
-            desiredPattern = "PGP";
-        } else if (tag == 23) {
-            desiredPattern = "PPG";
-        }
 
         follower.update();
         turret.update();
-        telemetry.addData("Tag", tag);
-        telemetry.addData("Pattern", desiredPattern);
+        revolver.update();
+
         telemetry.update();
     }
 
     @Override
     public void start() {
-        revolver.zeroNow();
-        turret.setAngle(-45);
+        turret.setAngle(-90);
         setPathState(0);
     }
 
@@ -196,15 +174,13 @@ public class SrimmageAutoRed extends OpMode {
     private void autoPathUpdate() {
         switch (pathState) {
             case 0:
-                ANG = new double[]{70, 180, 305};
                 // Spin up flywheel and start moving
-                shooter.setTargetRPM(3250);
+                shooter.setTargetRPM(3300);
                 Path toShoot1 = new Path(new BezierLine(
                         new Pose(144-35.791, 135),
                         new Pose(144-57, 85))
                 );
                 toShoot1.setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(0), 0.8);
-                revolver.moveServosToPosition(60);
                 follower.followPath(toShoot1, true);
                 setPathState(1);
                 break;
@@ -212,6 +188,51 @@ public class SrimmageAutoRed extends OpMode {
             case 1:
                 // Wait until motion completes
                 if (!follower.isBusy()) {
+                    setPathState(101);
+                }
+                if ((pathTimer.getElapsedTimeSeconds() > 0)) {
+                    LLResult result = limelight3A.getLatestResult();
+
+                    int tag;
+
+                    if (result.isValid()) {
+                        tag = result.getFiducialResults().get(0).getFiducialId();
+                    } else {
+                        tag = 21;
+                        telemetry.addLine("no tag in sight");
+                    }
+
+                    if (tag == 21) {
+                        desiredPattern = "GPP";
+                    } else if (tag == 22) {
+                        desiredPattern = "PGP";
+                    } else if (tag == 23) {
+                        desiredPattern = "PPG";
+                    }
+                }
+                break;
+
+            case 101:
+                LLResult result = limelight3A.getLatestResult();
+
+                int tag;
+
+                if (result.isValid()) {
+                    tag = result.getFiducialResults().get(0).getFiducialId();
+                } else {
+                    tag = 21;
+                    telemetry.addLine("no tag in sight");
+                }
+
+                if (tag == 21) {
+                    desiredPattern = "GPP";
+                } else if (tag == 22) {
+                    desiredPattern = "PGP";
+                } else if (tag == 23) {
+                    desiredPattern = "PPG";
+                }
+                if (pathTimer.getElapsedTimeSeconds() > 0.5) {
+                    turret.setAngle(-45);
                     setPathState(2);
                 }
                 break;
@@ -222,10 +243,9 @@ public class SrimmageAutoRed extends OpMode {
                 break;
 
             case 3:
-                ANG = new double[]{60, 180, 300};
                 // All done
                 shooter.setTargetRPM(0);
-                intakeMotor.setPower(1);
+                intakeMotor.setPower(-1);
                 gateServo.setPosition(0.48);
                 Path toLine1 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -234,7 +254,6 @@ public class SrimmageAutoRed extends OpMode {
                 toLine1.setConstantHeadingInterpolation(Math.toRadians(0));
                 follower.followPath(toLine1, true);
                 turret.setAngle(-90);
-                revolver.moveServosByRotation(60);
                 setPathState(4);
                 break;
 
@@ -324,7 +343,7 @@ public class SrimmageAutoRed extends OpMode {
             case 9:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3250);  // spin up flywheel
+                shooter.setTargetRPM(3300);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -335,8 +354,8 @@ public class SrimmageAutoRed extends OpMode {
                         Math.toRadians(-45) // same target heading as before
                 );
                 follower.followPath(toShootAgain, true);
-                chamberOrder = "PGP";
-                revolver.moveServosByRotation(60);
+                chamberOrder = "GPP";
+                revolver.moveServosToPosition(60);
                 pathTimer.resetTimer();
                 setPathState(10);
                 break;
@@ -352,24 +371,23 @@ public class SrimmageAutoRed extends OpMode {
                 // Drive to lower pickup line (24 in lower Y)
                 toLowerLine = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144-49.5, 84-21)
+                        new Pose(144-49.5, 64)
                 ));
                 toLowerLine.setLinearHeadingInterpolation(follower.getHeading(), Math.toRadians(0), 0.8);
                 follower.followPath(toLowerLine, true);
                 setPathState(12);
-                revolver.moveServosToPosition(0);
-                revolver.update();
+                // revolver.moveServosToPosition(0);
                 break;
 
             case 12:
                 // Wait for arrival, then start intake
                 if (!follower.isBusy()) {
-                    intakeMotor.setPower(1);
+                    intakeMotor.setPower(-1);
                     gateServo.setPosition(0.48);
                     follower.setMaxPower(0.35);
                     Path pick1 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(follower.getPose().getX() + 5, follower.getPose().getY())
+                            new Pose(follower.getPose().getX() + 6, follower.getPose().getY())
                     ));
                     pick1.setConstantHeadingInterpolation(Math.toRadians(0));
                     follower.followPath(pick1, true);
@@ -388,7 +406,7 @@ public class SrimmageAutoRed extends OpMode {
 
             case 14:
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(180);
+                    revolver.moveServosToPosition(120);
                     gateServo.setPosition(0.48); // gate up
                     Path forward2 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -412,7 +430,7 @@ public class SrimmageAutoRed extends OpMode {
 
             case 16:
                 if (pathTimer.getElapsedTimeSeconds() > 0.2) {
-                    revolver.moveServosToPosition(300);
+                    revolver.moveServosToPosition(240);
                     gateServo.setPosition(0.48);
                     Path forward3 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -444,7 +462,7 @@ public class SrimmageAutoRed extends OpMode {
             case 20:
                 // Start moving toward the target immediately, lower gate after 0.0s
                 gateServo.setPosition(0.38); // gate down
-                shooter.setTargetRPM(3250);  // spin up flywheel
+                shooter.setTargetRPM(3300);  // spin up flywheel
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -454,7 +472,7 @@ public class SrimmageAutoRed extends OpMode {
                 toShootAgain.setTangentHeadingInterpolation();
                 toShootAgain.reverseHeadingInterpolation();
                 revolver.moveServosToPosition(60);
-                chamberOrder = "GPP";
+                chamberOrder = "PPG";
                 follower.followPath(toShootAgain, true);
                 pathTimer.resetTimer();
                 setPathState(21);
@@ -471,18 +489,20 @@ public class SrimmageAutoRed extends OpMode {
                 break;
 
             case 22:
+                Path moveToEnd = new Path(new BezierLine(
+                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
+                        new Pose(144-37, 73)
+                ));
+                moveToEnd.setConstantHeadingInterpolation(Math.toRadians(0));
+                follower.followPath(moveToEnd, true);
                 turret.setAngle(0);
-                follower.setTeleOpDrive(1,0,0);
-                follower.startTeleOpDrive();
                 setPathState(23);
                 break;
 
             case 23:
-                if (pathTimer.getElapsedTimeSeconds() > 0.3) {
-                    follower.breakFollowing();
+                if (!follower.isBusy()) {
                     setPathState(-1);
                 }
-                break;
 
             default:
                 break;
@@ -554,7 +574,7 @@ public class SrimmageAutoRed extends OpMode {
 
             case POP_UP:
                 if (now >= ctx.timerMs) {
-                    popperServo.setPosition(0.14);
+                    popperServo.setPosition(.15);
                     ctx.timerMs = now + ctx.popDownMs;
                     ctx.state = AutoShoot3BallsState.POP_DOWN;
                 }
@@ -615,8 +635,6 @@ public class SrimmageAutoRed extends OpMode {
             default:
                 break;
         }
-
-        revolver.update();
     }
 
 // ---- helpers (class scope) ----
@@ -676,8 +694,8 @@ public class SrimmageAutoRed extends OpMode {
 
     /** Build the three-shot plan in requested color order, choosing forward-nearest indices. */
     private void buildShootPlan(AutoShootCtx ctx) {
-        List<Integer> gIdx = new ArrayList<>(2);
-        List<Integer> pIdx = new ArrayList<>(2);
+        java.util.List<Integer> gIdx = new java.util.ArrayList<>(2);
+        java.util.List<Integer> pIdx = new java.util.ArrayList<>(2);
         for (int i = 0; i < 3; i++) {
             if (ctx.chambers[i] == 'G') gIdx.add(i);
             else if (ctx.chambers[i] == 'P') pIdx.add(i);
@@ -686,7 +704,7 @@ public class SrimmageAutoRed extends OpMode {
         for (int k = 0; k < 3; k++) {
             char want = ctx.pattern[k];
             int chosen = -1;
-            List<Integer> pool = (want == 'G') ? gIdx : (want == 'P') ? pIdx : null;
+            java.util.List<Integer> pool = (want == 'G') ? gIdx : (want == 'P') ? pIdx : null;
             if (pool != null && !pool.isEmpty()) {
                 chosen = pickNearestForward(planCursor, pool);
                 if (chosen != -1) planCursor = chosen;
@@ -696,7 +714,7 @@ public class SrimmageAutoRed extends OpMode {
     }
 
     /** Forward distance on a 3-pocket wheel; removes chosen candidate from the pool. */
-    private int pickNearestForward(int fromIdx, List<Integer> candidates) {
+    private int pickNearestForward(int fromIdx, java.util.List<Integer> candidates) {
         int best = -1, bestDist = 4;
         for (int idx : candidates) {
             int dist = (idx - fromIdx + 3) % 3; // 0..2 forward steps

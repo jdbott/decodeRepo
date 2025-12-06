@@ -19,12 +19,12 @@ import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 import com.pedropathing.paths.Path;
 
-@TeleOp(name = "A Srimmage teleop")
-public class ScrimTele extends LinearOpMode {
+@TeleOp(name = "A Srimmage teleop but for red alliance")
+public class ScrimTeleRed extends LinearOpMode {
 
     // --- Subsystems / hardware ---
     private Follower follower;
-    private static final double TARGET_X = -68;
+    private static final double TARGET_X = 68;
     private static final double TARGET_Y = 69;
     private Servo popperServo;
     private Servo gateServo;
@@ -62,7 +62,8 @@ public class ScrimTele extends LinearOpMode {
     private boolean gateLifted = false;
 
     // --- Gate FSM (kept intact for other actions; NOT used by revolver here) ---
-    private enum GateState { IDLE, WAITING, RAISING }
+    private enum GateState {IDLE, WAITING, RAISING}
+
     private GateState gateState = GateState.IDLE;
     private long gateTimer = 0;
     private boolean gateRequested = false;
@@ -72,7 +73,8 @@ public class ScrimTele extends LinearOpMode {
     private double absoluteTarget = 0.0;
 
     // --- Auto FSM (left intact; independent of D-pad revolver logic) ---
-    private enum AutoState { OFF, MOVE_TO_START, WAIT_TO_SETTLE, POP_UP, POP_DOWN, REVOLVE, DONE, RETURN_TO_START }
+    private enum AutoState {OFF, MOVE_TO_START, WAIT_TO_SETTLE, POP_UP, POP_DOWN, REVOLVE, DONE, RETURN_TO_START}
+
     private AutoState autoState = AutoState.OFF;
     private long autoTimer = 0;
     private int popCount = 0;
@@ -92,7 +94,8 @@ public class ScrimTele extends LinearOpMode {
     private static final int MAX_COLOR_DETECTIONS = 3;
     private static final long COLOR_REARM_DELAY_MS = 400;
 
-    private enum ParkState { OFF, RUNNING }
+    private enum ParkState {OFF, RUNNING}
+
     private ParkState parkState = ParkState.OFF;
 
     private boolean lastStickPress = false;
@@ -107,7 +110,7 @@ public class ScrimTele extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(-35, 1, Math.toRadians(180)));
+        follower.setStartingPose(new Pose(35, 1, Math.toRadians(0)));
         follower.updatePose();
         follower.setMaxPower(1);
 
@@ -212,8 +215,8 @@ public class ScrimTele extends LinearOpMode {
             double trigger = Range.clip(1 - gamepad2.right_trigger, 0.2, 1);
 
             if (!(gamepad2.left_trigger > 0.5)) {
-                y = gamepad2.left_stick_y;
-                x = -gamepad2.left_stick_x;
+                y = -gamepad2.left_stick_y;
+                x = gamepad2.left_stick_x;
                 rx = gamepad2.right_stick_x;
 
                 double botHeading = Math.toRadians(robotHeadingDeg);
@@ -231,7 +234,7 @@ public class ScrimTele extends LinearOpMode {
 
             if (gamepad2.b) {
                 bPressed = true;
-                follower.setPose(new Pose(-46.9, 55.1, Math.toRadians(137.7)));
+                follower.setPose(new Pose(46.9, 55.1, Math.toRadians(137.7-90)));
                 gamepad2.rumble(500);
             }
 
@@ -366,7 +369,7 @@ public class ScrimTele extends LinearOpMode {
             lastYButton = yButton;
 
             // --- RPM nudge ---
-            if (gamepad1.dpad_up)   wheelRPM = Range.clip(wheelRPM + 50, 0.0, 4200);
+            if (gamepad1.dpad_up) wheelRPM = Range.clip(wheelRPM + 50, 0.0, 4200);
             if (gamepad1.dpad_down) wheelRPM = Range.clip(wheelRPM - 50, 0.0, 4200);
             shooter.setTargetRPM(wheelRPM);
             shooter.update();
