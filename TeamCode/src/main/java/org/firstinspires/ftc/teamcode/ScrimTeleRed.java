@@ -19,13 +19,13 @@ import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 import com.pedropathing.paths.Path;
 
-@TeleOp(name = "A Srimmage teleop but for red alliance")
+@TeleOp(name = "A RED TELEOP")
 public class ScrimTeleRed extends LinearOpMode {
 
     // --- Subsystems / hardware ---
     private Follower follower;
-    private static final double TARGET_X = 68;
-    private static final double TARGET_Y = 69;
+    private static double TARGET_X = 68;
+    private static double TARGET_Y = 69;
     private Servo popperServo;
     private Servo gateServo;
     private Shooter shooter;
@@ -62,8 +62,7 @@ public class ScrimTeleRed extends LinearOpMode {
     private boolean gateLifted = false;
 
     // --- Gate FSM (kept intact for other actions; NOT used by revolver here) ---
-    private enum GateState {IDLE, WAITING, RAISING}
-
+    private enum GateState { IDLE, WAITING, RAISING }
     private GateState gateState = GateState.IDLE;
     private long gateTimer = 0;
     private boolean gateRequested = false;
@@ -73,8 +72,7 @@ public class ScrimTeleRed extends LinearOpMode {
     private double absoluteTarget = 0.0;
 
     // --- Auto FSM (left intact; independent of D-pad revolver logic) ---
-    private enum AutoState {OFF, MOVE_TO_START, WAIT_TO_SETTLE, POP_UP, POP_DOWN, REVOLVE, DONE, RETURN_TO_START}
-
+    private enum AutoState { OFF, MOVE_TO_START, WAIT_TO_SETTLE, POP_UP, POP_DOWN, REVOLVE, DONE, RETURN_TO_START }
     private AutoState autoState = AutoState.OFF;
     private long autoTimer = 0;
     private int popCount = 0;
@@ -94,8 +92,7 @@ public class ScrimTeleRed extends LinearOpMode {
     private static final int MAX_COLOR_DETECTIONS = 3;
     private static final long COLOR_REARM_DELAY_MS = 400;
 
-    private enum ParkState {OFF, RUNNING}
-
+    private enum ParkState { OFF, RUNNING }
     private ParkState parkState = ParkState.OFF;
 
     private boolean lastStickPress = false;
@@ -204,6 +201,21 @@ public class ScrimTeleRed extends LinearOpMode {
             }
             turret.update();
 
+            if (flywheelActive) {
+                // Use EXACTLY the same angle the turret control loop is receiving
+                double cmd = (wheelRPM != 0 && !gamepad2.a)
+                        ? -turretAngleNeeded
+                        : 0;
+
+                double limited = Range.clip(cmd, -205, 90);
+                boolean hardStopping = (cmd != limited);
+
+                if (hardStopping) {
+                    gamepad1.rumble(1.0, 1.0, 50);
+                    gamepad2.rumble(1.0, 1.0, 50);
+                }
+            }
+
             long now = System.currentTimeMillis();
 
             double rotatedX = 0;
@@ -244,17 +256,17 @@ public class ScrimTeleRed extends LinearOpMode {
             backLeft.setPower((rotatedY - rotatedX + rx) / denom * trigger);
             backRight.setPower((rotatedY + rotatedX - rx) / denom * trigger);
 
-            boolean stickPress = gamepad1.left_stick_button;
-
-            // Toggle logic
-            if (stickPress && !lastStickPress) {
-                if (parkState == ParkState.OFF) {
-                    startParkFSM();
-                } else {
-                    stopParkFSM();
-                }
-            }
-            lastStickPress = stickPress;
+//            boolean stickPress = gamepad1.left_stick_button;
+//
+//            // Toggle logic
+//            if (stickPress && !lastStickPress) {
+//                if (parkState == ParkState.OFF) {
+//                    startParkFSM();
+//                } else {
+//                    stopParkFSM();
+//                }
+//            }
+//            lastStickPress = stickPress;
 
             // FSM update
             if (parkState == ParkState.RUNNING) {
@@ -266,12 +278,6 @@ public class ScrimTeleRed extends LinearOpMode {
                     // But DO NOT block the loop — follower.update() still runs above
                     continue;
                 }
-            }
-
-            if (gamepad2.options) {
-                turret.setAngle(-90);
-            } else if (gamepad2.share) {
-                turret.setAngle(90);
             }
 
             boolean g2Left = gamepad2.dpad_left;
@@ -369,8 +375,14 @@ public class ScrimTeleRed extends LinearOpMode {
             lastYButton = yButton;
 
             // --- RPM nudge ---
-            if (gamepad1.dpad_up) wheelRPM = Range.clip(wheelRPM + 50, 0.0, 4200);
-            if (gamepad1.dpad_down) wheelRPM = Range.clip(wheelRPM - 50, 0.0, 4200);
+            if (gamepad1.dpad_up) {
+                wheelRPM = 3850;
+                TARGET_X = 63;
+            }
+            if (gamepad1.dpad_down){
+                wheelRPM = FLYWHEEL_RPM;
+                TARGET_X = 68;
+            }
             shooter.setTargetRPM(wheelRPM);
             shooter.update();
 
@@ -509,7 +521,7 @@ public class ScrimTeleRed extends LinearOpMode {
         parkPath.setConstantHeadingInterpolation(Math.toRadians(90));
 
         follower.breakFollowing();
-        follower.followPath(parkPath, true);
+        //follower.followPath(parkPath, true);
 
         parkState = ParkState.RUNNING;
     }

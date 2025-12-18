@@ -20,7 +20,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
-@Autonomous(name = "Srimmage Auto Red")
+@Autonomous(name = "A RED AUTO")
 public class SrimmageAutoRed extends OpMode {
 
     // Subsystems

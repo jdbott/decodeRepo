@@ -19,13 +19,13 @@ import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 import com.pedropathing.paths.Path;
 
-@TeleOp(name = "A Srimmage teleop")
+@TeleOp(name = "A BLUE TELEOP")
 public class ScrimTele extends LinearOpMode {
 
     // --- Subsystems / hardware ---
     private Follower follower;
-    private static final double TARGET_X = -68;
-    private static final double TARGET_Y = 69;
+    private static double TARGET_X = -68;
+    private static double TARGET_Y = 69;
     private Servo popperServo;
     private Servo gateServo;
     private Shooter shooter;
@@ -201,6 +201,21 @@ public class ScrimTele extends LinearOpMode {
             }
             turret.update();
 
+            if (flywheelActive) {
+                // Use EXACTLY the same angle the turret control loop is receiving
+                double cmd = (wheelRPM != 0 && !gamepad2.a)
+                        ? -turretAngleNeeded
+                        : 0;
+
+                double limited = Range.clip(cmd, -205, 90);
+                boolean hardStopping = (cmd != limited);
+
+                if (hardStopping) {
+                    gamepad1.rumble(1.0, 1.0, 50);
+                    gamepad2.rumble(1.0, 1.0, 50);
+                }
+            }
+
             long now = System.currentTimeMillis();
 
             double rotatedX = 0;
@@ -241,17 +256,17 @@ public class ScrimTele extends LinearOpMode {
             backLeft.setPower((rotatedY - rotatedX + rx) / denom * trigger);
             backRight.setPower((rotatedY + rotatedX - rx) / denom * trigger);
 
-            boolean stickPress = gamepad1.left_stick_button;
-
-            // Toggle logic
-            if (stickPress && !lastStickPress) {
-                if (parkState == ParkState.OFF) {
-                    startParkFSM();
-                } else {
-                    stopParkFSM();
-                }
-            }
-            lastStickPress = stickPress;
+//            boolean stickPress = gamepad1.left_stick_button;
+//
+//            // Toggle logic
+//            if (stickPress && !lastStickPress) {
+//                if (parkState == ParkState.OFF) {
+//                    startParkFSM();
+//                } else {
+//                    stopParkFSM();
+//                }
+//            }
+//            lastStickPress = stickPress;
 
             // FSM update
             if (parkState == ParkState.RUNNING) {
@@ -366,8 +381,14 @@ public class ScrimTele extends LinearOpMode {
             lastYButton = yButton;
 
             // --- RPM nudge ---
-            if (gamepad1.dpad_up)   wheelRPM = Range.clip(wheelRPM + 50, 0.0, 4200);
-            if (gamepad1.dpad_down) wheelRPM = Range.clip(wheelRPM - 50, 0.0, 4200);
+            if (gamepad1.dpad_up) {
+                wheelRPM = 3850;
+                TARGET_X = -63;
+            }
+            if (gamepad1.dpad_down){
+                wheelRPM = FLYWHEEL_RPM;
+                TARGET_X = -68;
+            }
             shooter.setTargetRPM(wheelRPM);
             shooter.update();
 
@@ -506,7 +527,7 @@ public class ScrimTele extends LinearOpMode {
         parkPath.setConstantHeadingInterpolation(Math.toRadians(90));
 
         follower.breakFollowing();
-        follower.followPath(parkPath, true);
+        //follower.followPath(parkPath, true);
 
         parkState = ParkState.RUNNING;
     }
