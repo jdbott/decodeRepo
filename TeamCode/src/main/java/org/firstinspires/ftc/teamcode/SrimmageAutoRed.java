@@ -177,7 +177,7 @@ public class SrimmageAutoRed extends OpMode {
                 // Spin up flywheel and start moving
                 shooter.setTargetRPM(3300);
                 Path toShoot1 = new Path(new BezierLine(
-                        new Pose(144-35.791, 135),
+                        new Pose(144-035.791, 135),
                         new Pose(144-57, 85))
                 );
                 toShoot1.setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(0), 0.8);
@@ -232,7 +232,7 @@ public class SrimmageAutoRed extends OpMode {
                     desiredPattern = "PPG";
                 }
                 if (pathTimer.getElapsedTimeSeconds() > 0.5) {
-                    turret.setAngle(-45);
+                    turret.setAngle(-46.5);
                     setPathState(2);
                 }
                 break;
@@ -347,11 +347,11 @@ public class SrimmageAutoRed extends OpMode {
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144-57, 85) // same shoot point
+                        new Pose(14-57, 85) // same shoot point
                 ));
                 toShootAgain.setLinearHeadingInterpolation(
                         follower.getPose().getHeading(),
-                        Math.toRadians(-45) // same target heading as before
+                        Math.toRadians(180-222) // same target heading as before
                 );
                 follower.followPath(toShootAgain, true);
                 chamberOrder = "GPP";
@@ -480,7 +480,7 @@ public class SrimmageAutoRed extends OpMode {
 
             case 21:
                 if (follower.getCurrentTValue() > 0.7) {
-                    toShootAgain.setConstantHeadingInterpolation(Math.toRadians(-45));
+                    toShootAgain.setConstantHeadingInterpolation(Math.toRadians(180-222));
                 }
                 if (!follower.isBusy()) {
                     setPathState(2); // reuse AutoShoot3BallsFSM to fire again
