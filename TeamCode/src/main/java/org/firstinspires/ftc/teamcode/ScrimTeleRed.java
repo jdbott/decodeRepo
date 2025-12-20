@@ -24,7 +24,7 @@ public class ScrimTeleRed extends LinearOpMode {
 
     // --- Subsystems / hardware ---
     private Follower follower;
-    private static double TARGET_X = 68;
+    private static double TARGET_X = 71;
     private static double TARGET_Y = 69;
     private Servo popperServo;
     private Servo gateServo;
@@ -377,11 +377,11 @@ public class ScrimTeleRed extends LinearOpMode {
             // --- RPM nudge ---
             if (gamepad1.dpad_up) {
                 wheelRPM = 3850;
-                TARGET_X = 63;
+                TARGET_X = 66;
             }
             if (gamepad1.dpad_down){
                 wheelRPM = FLYWHEEL_RPM;
-                TARGET_X = 68;
+                TARGET_X = 71;
             }
             shooter.setTargetRPM(wheelRPM);
             shooter.update();
