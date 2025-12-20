@@ -51,6 +51,9 @@ jobs:
       if: always()
       uses: actions/upload-artifact@v4
       with:
-        name: android-build-${{ github.run_number }}-${{ github.sha }}
+        name: android-build-${{ github.run_id }}-${{ github.sha }}
         path: artifacts/
         retention-days: 10
+
+    - name: Download a Build Artifact
+      uses: actions/download-artifact@v7.0.0
