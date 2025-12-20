@@ -14,8 +14,8 @@ public class BallDetectionPipeline extends OpenCvPipeline {
         public double area;
         public double radius;
         public Point center;
-        public double distanceFocal;
-        public double distanceRegression;
+        public double distanceFocal; //cm
+        public double distanceRegression; //m
     }
 
     private final double realBallDiameterCM = 12.7;
