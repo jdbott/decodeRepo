@@ -7,17 +7,23 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 
 public class ColorV3 {
 
-    RevColorSensorV3 colorSensor;
+    private final RevColorSensorV3 colorSensor;
+
+    private static final double PROXIMITY_THRESHOLD_IN = 1.5;
+    private static final int MIN_TOTAL_COLOR = 150;
 
     public ColorV3(HardwareMap hardwareMap) {
         colorSensor = hardwareMap.get(RevColorSensorV3.class, "Color");
     }
 
+    /**
+     * Returns "Green", "Purple", or "Out of range"
+     */
     public String proximityAndColor() {
-        double proximity = proximity();
+        String color = sampleColor();
 
-        if (proximity <= 1) { // Adjust threshold based on testing
-            return sampleColor();
+        if (isDominantColor(color) && proximity() < PROXIMITY_THRESHOLD_IN) {
+            return color;
         } else {
             return "Out of range";
         }
@@ -27,31 +33,42 @@ public class ColorV3 {
         return colorSensor.getDistance(DistanceUnit.INCH);
     }
 
+    /**
+     * Detects only Green or Purple
+     */
     public String sampleColor() {
         int red = colorSensor.red();
         int green = colorSensor.green();
         int blue = colorSensor.blue();
 
-        // Saturation threshold to avoid false detection when colors are too dim
-        int totalColor = red + green + blue;
-        if (totalColor < 300) { // Adjust this threshold based on testing
+        int total = red + green + blue;
+        if (total < MIN_TOTAL_COLOR) {
             return "Unknown";
         }
 
-        // Detect red, yellow, or blue based on RGB dominance
-        if (red > green && red > blue) {
-            return "Red";
-        } else if (blue > red && blue > green) {
-            return "Blue";
-        } else if (red > 2 * blue && green > 2 * blue) {
-            return "Yellow";
-        } else {
-            return "Unknown"; // If no clear color dominance is found
+        double rRatio = red / (double) total;
+        double gRatio = green / (double) total;
+        double bRatio = blue / (double) total;
+
+        // --- GREEN DETECTION ---
+        // Green dominant, but allow some blue; red must stay much lower.
+        if (gRatio > 0.38 && gRatio > rRatio + 0.15 && gRatio >= bRatio - 0.08) {
+            return "Green";
         }
+        // --- PURPLE DETECTION ---
+        // Blue dominant, noticeable red, low green.
+        if (bRatio > 0.45 && rRatio > 0.15 && gRatio < 0.38) {
+            return "Purple";
+        }
+
+        return "Unknown";
+    }
+
+    private boolean isDominantColor(String color) {
+        return color.equals("Green") || color.equals("Purple");
     }
 
     public boolean isConnected() {
         return proximity() != 6;
     }
-
 }
