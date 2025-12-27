@@ -1,6 +1,7 @@
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -10,6 +11,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
+@Disabled
 
 @TeleOp(name = "IntakeCRFC", group = "Tests")
 public class IntakeTestFC extends LinearOpMode {
@@ -254,7 +256,7 @@ public class IntakeTestFC extends LinearOpMode {
             telemetry.clearAll();
             telemetry.addLine("=== System Status ===");
             telemetry.addData("Gate State", gateState);
-            telemetry.addData("Servo Angle (deg)", "%.2f", servoController.getContinuousAngleDeg1());
+            telemetry.addData("Servo Angle (deg)", "%.2f", servoController.getTargetAngleDeg());
             telemetry.addData("Shooter Target RPM", "%.0f", wheelRPM);
             telemetry.addData("Color Detected", colorSensor.proximityAndColor());
             telemetry.addData("Color Detections", "%d / %d", colorCount, MAX_COLOR_DETECTIONS);

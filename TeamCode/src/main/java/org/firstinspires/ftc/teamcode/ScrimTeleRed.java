@@ -19,12 +19,12 @@ import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 import com.pedropathing.paths.Path;
 
-@TeleOp(name = "A BLUE TELEOP")
-public class ScrimTele extends LinearOpMode {
+@TeleOp(name = "A RED TELEOP")
+public class ScrimTeleRed extends LinearOpMode {
 
     // --- Subsystems / hardware ---
     private Follower follower;
-    private static double TARGET_X = -71;
+    private static double TARGET_X = 71;
     private static double TARGET_Y = 69;
     private Servo popperServo;
     private Servo gateServo;
@@ -107,7 +107,7 @@ public class ScrimTele extends LinearOpMode {
     public void runOpMode() throws InterruptedException {
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(-35, 1, Math.toRadians(180)));
+        follower.setStartingPose(new Pose(35, 1, Math.toRadians(0)));
         follower.updatePose();
         follower.setMaxPower(1);
 
@@ -227,8 +227,8 @@ public class ScrimTele extends LinearOpMode {
             double trigger = Range.clip(1 - gamepad2.right_trigger, 0.2, 1);
 
             if (!(gamepad2.left_trigger > 0.5)) {
-                y = gamepad2.left_stick_y;
-                x = -gamepad2.left_stick_x;
+                y = -gamepad2.left_stick_y;
+                x = gamepad2.left_stick_x;
                 rx = gamepad2.right_stick_x;
 
                 double botHeading = Math.toRadians(robotHeadingDeg);
@@ -246,7 +246,7 @@ public class ScrimTele extends LinearOpMode {
 
             if (gamepad2.b) {
                 bPressed = true;
-                follower.setPose(new Pose(-46.9, 55.1, Math.toRadians(137.7)));
+                follower.setPose(new Pose(46.9, 55.1, Math.toRadians(137.7-90)));
                 gamepad2.rumble(500);
             }
 
@@ -278,12 +278,6 @@ public class ScrimTele extends LinearOpMode {
                     // But DO NOT block the loop — follower.update() still runs above
                     continue;
                 }
-            }
-
-            if (gamepad2.options) {
-                turret.setAngle(-90);
-            } else if (gamepad2.share) {
-                turret.setAngle(90);
             }
 
             boolean g2Left = gamepad2.dpad_left;
@@ -383,11 +377,11 @@ public class ScrimTele extends LinearOpMode {
             // --- RPM nudge ---
             if (gamepad1.dpad_up) {
                 wheelRPM = 3850;
-                TARGET_X = -66;
+                TARGET_X = 66;
             }
             if (gamepad1.dpad_down){
                 wheelRPM = FLYWHEEL_RPM;
-                TARGET_X = -71;
+                TARGET_X = 71;
             }
             shooter.setTargetRPM(wheelRPM);
             shooter.update();
