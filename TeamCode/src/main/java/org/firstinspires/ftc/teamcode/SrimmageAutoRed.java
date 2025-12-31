@@ -147,7 +147,7 @@ public class SrimmageAutoRed extends OpMode {
 
     @Override
     public void start() {
-        turret.setAngle(-90);
+        turret.setAngle(-105);
         setPathState(0);
     }
 
@@ -347,7 +347,7 @@ public class SrimmageAutoRed extends OpMode {
                 follower.setMaxPower(1);
                 toShootAgain = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(14-57, 85) // same shoot point
+                        new Pose(144-57, 85) // same shoot point
                 ));
                 toShootAgain.setLinearHeadingInterpolation(
                         follower.getPose().getHeading(),
