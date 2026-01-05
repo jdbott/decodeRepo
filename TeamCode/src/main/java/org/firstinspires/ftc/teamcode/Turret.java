@@ -9,16 +9,16 @@ public class Turret {
     private DcMotorEx turretMotor;
 
     // Constants
-    private final double ticksPerRev = 384.5;
-    private final double gearRatio = 108.0 / 24.0; // Driven / Driver = 4.5:1
+    private final double ticksPerRev = 145.1;
+    private final double gearRatio = (108.0 / 18.0) * 2.0; // 12:1 motor revs per turret rev
     private final double ticksPerDegree = (ticksPerRev * gearRatio) / 360.0;
 
     // Tunable parameters
-    private double kP = 0.02;
-    private double kF = 0.015; // feedforward gain (adjust in test)
-    private double minPower = 0;
-    private double maxAngle = 180;
-    private double minAngle = -180;
+    private double kP = 0.01;
+    private double kF = 0.003; // feedforward gain (adjust in test)
+    private double minPower = 0.05;
+    private double maxAngle = 200;
+    private double minAngle = -160;
 
     // State variables
     private double lastSetAngle = 0;  // in degrees
@@ -32,6 +32,7 @@ public class Turret {
         turretMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
         turretMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
         turretMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
+        setLimits(minAngle, maxAngle);
     }
 
     // ===== Public Configuration =====
@@ -64,7 +65,7 @@ public class Turret {
         double currentTicks = turretMotor.getCurrentPosition();
         double error = targetTicks - currentTicks;
 
-        if (Math.abs(error) > ticksPerDegree) { // >1° tolerance
+        if (Math.abs(error) > (0.25 * ticksPerDegree)) { // >1° tolerance
             double power = kP * error + feedforward;
             power = applyMinPower(power);
             turretMotor.setPower(Range.clip(power, -1, 1));
