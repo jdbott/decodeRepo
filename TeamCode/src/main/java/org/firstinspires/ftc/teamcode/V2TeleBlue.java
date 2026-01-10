@@ -52,8 +52,14 @@ public class V2TeleBlue extends LinearOpMode {
     private long lastManualInputMs = 0;
     private static final long MANUAL_HOLD_MS = 4000;
 
+    boolean lbPrev = false;
+
+    private DcMotorEx shootMotor2; // mechanically linked
+
     @Override
     public void runOpMode() throws InterruptedException {
+
+        shootMotor2 = hardwareMap.get(DcMotorEx.class, "shooter2");
 
         // -----------------------------
         // Follower init
@@ -88,10 +94,10 @@ public class V2TeleBlue extends LinearOpMode {
 
         intake.intakeStop();
         gantry.moveGantryToPos("back");
-        basePlate.rampForward();
+        basePlate.rampBack();
         basePlate.frontPopperDown();
         basePlate.middlePopperDown();
-        basePlate.setPusherMm(0);
+        basePlate.cancelShootAndReset();
 
         // -----------------------------
         // IMU init
@@ -117,6 +123,7 @@ public class V2TeleBlue extends LinearOpMode {
 
         while (opModeInInit()) {
             turret.update();
+            basePlate.update();
         }
 
         waitForStart();
@@ -146,10 +153,8 @@ public class V2TeleBlue extends LinearOpMode {
                 intakeActive = !intakeActive;
                 if (intakeActive) {
                     intake.intakeIn();
-                    basePlate.rampBack();
                 } else {
                     intake.intakeStop();
-                    basePlate.rampForward();
                 }
             }
             lastSquareButton = squareButton;
@@ -216,6 +221,26 @@ public class V2TeleBlue extends LinearOpMode {
             }
 
             turret.update();
+
+            boolean lbNow = gamepad2.left_bumper;
+            if (lbNow && !lbPrev && !basePlate.isShootBusy()) {
+                basePlate.startFullShoot();
+            }
+            lbPrev = lbNow;
+            if (gamepad1.dpad_up) {
+                basePlate.prepShootOnly();
+            }
+            if (gamepad1.dpad_down) {
+                basePlate.startShootFromPrep();
+            }
+            if (gamepad1.dpad_left) {
+                basePlate.startShootFromPush1Wait();
+            }
+            if (gamepad2.right_bumper) {
+                basePlate.gateHoldBall1();
+                shootMotor2.setPower(0.785);
+            }
+            basePlate.update();
 
             telemetry.addData("ShootMode", shootingActive);
             telemetry.addData("ManualOverride", turretManualOverride);
