@@ -27,7 +27,9 @@ public class Shooter {
     private double lastPTerm = 0.0;
     private double lastVoltage = 12.0;
 
-    /** Initialize shooter motors */
+    /**
+     * Initialize shooter motors
+     */
     public void init(HardwareMap hw,
                      String masterName, String followerName,
                      DcMotorSimple.Direction masterDir, DcMotorSimple.Direction followerDir) {
@@ -49,23 +51,31 @@ public class Shooter {
         battery = hw.voltageSensor.iterator().next();
     }
 
-    /** Set desired velocity (RPM) */
+    /**
+     * Set desired velocity (RPM)
+     */
     public void setTargetRPM(double rpm) {
         targetRPM = rpm;
         targetTPS = rpm * TICKS_PER_REV / 60.0;
     }
 
-    /** Current velocity in ticks/sec */
+    /**
+     * Current velocity in ticks/sec
+     */
     public double getMasterVelocityTPS() {
         return masterMotor.getVelocity();
     }
 
-    /** Current velocity in RPM */
+    /**
+     * Current velocity in RPM
+     */
     public double getMasterRPM() {
         return getMasterVelocityTPS() * 60.0 / TICKS_PER_REV;
     }
 
-    /** Main velocity control loop */
+    /**
+     * Main velocity control loop
+     */
     public void update() {
         if (masterMotor == null || followerMotor == null) return;
 
@@ -97,7 +107,9 @@ public class Shooter {
         lastPTerm = pTerm;
     }
 
-    /** Stop both motors */
+    /**
+     * Stop both motors
+     */
     public void stop() {
         if (masterMotor != null) masterMotor.setPower(0);
         if (followerMotor != null) followerMotor.setPower(0);
@@ -106,11 +118,25 @@ public class Shooter {
     }
 
     // --- Telemetry accessors ---
-    public double getLastPower() { return lastPower; }
-    public double getLastErrorTPS() { return lastErrorTPS; }
-    public double getLastFF() { return lastFF; }
-    public double getLastPTerm() { return lastPTerm; }
-    public double getLastVoltage() { return lastVoltage; }
+    public double getLastPower() {
+        return lastPower;
+    }
+
+    public double getLastErrorTPS() {
+        return lastErrorTPS;
+    }
+
+    public double getLastFF() {
+        return lastFF;
+    }
+
+    public double getLastPTerm() {
+        return lastPTerm;
+    }
+
+    public double getLastVoltage() {
+        return lastVoltage;
+    }
 
     // --- Tuning setters ---
     public void setCoefficients(double kP, double kF_nominal) {
