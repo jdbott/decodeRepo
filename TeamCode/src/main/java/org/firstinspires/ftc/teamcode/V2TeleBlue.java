@@ -7,7 +7,6 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.util.Range;
 
@@ -28,6 +27,7 @@ public class V2TeleBlue extends LinearOpMode {
 
     // Shooter (mechanically linked)
     private DcMotorEx shootMotor2;
+    private DcMotorEx shootMotor1;
 
     // Turret object (kept as a field so we can init once)
     private final Turret turret = new Turret();
@@ -35,10 +35,37 @@ public class V2TeleBlue extends LinearOpMode {
     // Edge memory for basePlate LB trigger
     private boolean lbPrev = false;
 
+    // =========================
+    // Intake FSM
+    // =========================
+    private enum IntakeState {
+        OFF,
+        ON,
+        SHUTDOWN_WAIT // gate down now; wait 0.4s then stop intake motor
+    }
+
+    private IntakeState intakeState = IntakeState.OFF;
+    private boolean intakeToggleActive = false;
+    private boolean lastSquareButton = false;
+    private long intakeShutdownStartMs = 0;
+
+    private static final long INTAKE_SHUTDOWN_DELAY_MS = 400;
+
+    // =========================
+    // Gate toggle (RB)
+    // =========================
+    private boolean rbPrev = false;
+    private boolean gateToggleAllTheWayUp = true; // true = all-the-way-up, false = "one position"
+
+    // Shooter power (set this to whatever you actually want)
+    private static final double SHOOTER_POWER = .94;
+
     @Override
     public void runOpMode() throws InterruptedException {
 
         shootMotor2 = hardwareMap.get(DcMotorEx.class, "shooter2");
+        shootMotor1 = hardwareMap.get(DcMotorEx.class, "shooter1");
+        shootMotor1.setDirection(DcMotorSimple.Direction.REVERSE);
 
         // -----------------------------
         // Follower init
@@ -112,9 +139,6 @@ public class V2TeleBlue extends LinearOpMode {
         while (opModeIsActive()) {
             follower.update();
 
-            // -----------------------------
-            // Robot pose (for turret + telemetry)
-            // -----------------------------
             Pose pose = follower.getPose();
 
             // -----------------------------
@@ -124,29 +148,19 @@ public class V2TeleBlue extends LinearOpMode {
             drive(robotHeadingDeg);
 
             // -----------------------------
-            // Intake toggle (existing, gamepad2 square)
+            // Intake toggle + FSM (NEW)
             // -----------------------------
-            // Kept in-line, unchanged (your request was only to extract turret logic)
-            // If you want, we can extract intake similarly later.
-            // NOTE: You were using "square" already.
+            handleIntakeToggleAndFSM();
+
             // -----------------------------
-            // Intake toggle state is maintained inside the turret method? No.
-            // We'll keep the intake toggle fields inside the turret method per your request? No.
-            // You requested only turret logic extraction.
+            // Gate toggle on RB (NEW)
+            // (Intake FSM will override this while intake is ON or shutting down)
             // -----------------------------
-            // So we keep intake toggles here (unchanged).
-            // -----------------------------
-            // Intake toggle variables (local static-ish behavior) moved to fields? No—unchanged in your original.
-            // We'll implement exactly as your original had them, but as locals we need persistent state.
-            // Therefore, we keep them as fields inside run loop? Not possible.
-            // Best minimal change: promote to fields? That violates your request? It's not turret logic.
-            // We'll keep them as fields at class scope? You didn't ask, so I will keep as fields at class scope.
-            // (See fields below.)
-            // -----------------------------
-            handleIntakeToggle();
+            handleGateToggle();
 
             // -----------------------------
             // Turret logic (extracted)
+            // (Cross toggle now also spins flywheels)
             // -----------------------------
             handleTurretTrackingAndControl(pose);
 
@@ -168,45 +182,98 @@ public class V2TeleBlue extends LinearOpMode {
             if (gamepad1.dpad_left) {
                 basePlate.startShootFromPush1Wait();
             }
-            if (gamepad2.right_bumper) {
-                basePlate.gateHoldBall1();
-                shootMotor2.setPower(0.785);
-            }
 
             basePlate.update();
-
+            telemetry.addData("Pose", follower.getPose().toString());
+            telemetry.addData("IntakeState", intakeState);
+            telemetry.addData("GateMode", gateToggleAllTheWayUp ? "ALL_UP" : "ONE_POS");
+            telemetry.addData("ShootMode", turretShootingActive);
             telemetry.update();
         }
     }
 
     // =========================================================
-    // Intake toggle (unchanged behavior; promoted to a method
-    // because it needs persistent edge memory variables).
+    // Intake toggle + FSM
+    // - When toggled ON: intake motor ON + gate ALL THE WAY UP
+    // - When toggled OFF: gate DOWN immediately, then 0.4s later intake OFF
     // =========================================================
-    private boolean intakeActive = false;
-    private boolean lastSquareButton = false;
-
-    private void handleIntakeToggle() {
+    private void handleIntakeToggleAndFSM() {
+        // Toggle intent (gamepad2 square)
         boolean squareButton = gamepad2.square;
         if (squareButton && !lastSquareButton) {
-            intakeActive = !intakeActive;
-            if (intakeActive) {
-                intake.intakeIn();
+            intakeToggleActive = !intakeToggleActive;
+
+            if (intakeToggleActive) {
+                // Immediately go ON
+                intakeState = IntakeState.ON;
             } else {
-                intake.intakeStop();
+                // Begin shutdown sequence
+                // Gate goes down now; intake stops after delay
+                intakeState = IntakeState.SHUTDOWN_WAIT;
+                intakeShutdownStartMs = System.currentTimeMillis();
             }
         }
         lastSquareButton = squareButton;
+
+        // FSM execution
+        switch (intakeState) {
+            case OFF:
+                // Ensure intake is off (gate is handled by RB toggle or whatever default you prefer)
+                intake.intakeStop();
+                break;
+
+            case ON:
+                // Force gate ALL THE WAY UP while intake is running
+                intake.intakeIn();
+                gateAllTheWayUp();
+                break;
+
+            case SHUTDOWN_WAIT:
+                // Gate DOWN immediately, then wait before stopping intake motor
+                gateDown();
+
+                if (System.currentTimeMillis() - intakeShutdownStartMs >= INTAKE_SHUTDOWN_DELAY_MS) {
+                    intake.intakeStop();
+                    intakeState = IntakeState.OFF;
+                } else {
+                    // Keep intake motor running during the wait
+                    intake.intakeIn();
+                }
+                break;
+        }
+    }
+
+    // =========================================================
+    // Gate toggle (RB)
+    // - Toggles between ALL-THE-WAY-UP and ONE-POSITION
+    // - Intake FSM overrides gate while ON or shutting down
+    // =========================================================
+    private void handleGateToggle() {
+        // If intake is ON or shutting down, gate is controlled by the intake FSM.
+        if (intakeState == IntakeState.ON || intakeState == IntakeState.SHUTDOWN_WAIT) return;
+
+        boolean rbNow = gamepad2.right_bumper;
+        if (rbNow && !rbPrev) {
+            gateToggleAllTheWayUp = !gateToggleAllTheWayUp;
+
+            if (gateToggleAllTheWayUp) {
+                gateAllTheWayUp();
+            } else {
+                gateOnePosition();
+            }
+        }
+        rbPrev = rbNow;
     }
 
     // =========================================================
     // Turret control and tracking (ALL turret logic lives here)
+    // - Cross toggles turret tracking AND flywheels
     // =========================================================
     private void handleTurretTrackingAndControl(Pose pose) {
         // =========================
         // Configuration / constants
         // =========================
-        final double TARGET_X = 0;
+        final double TARGET_X = 9;
         final double TARGET_Y = 142;
 
         // Turret is rotated 180° relative to ScrimTele setup
@@ -219,17 +286,6 @@ public class V2TeleBlue extends LinearOpMode {
         // Manual override decay time
         final long MANUAL_HOLD_MS = 4000;
 
-        // =========================
-        // Persistent state (turret-specific)
-        // =========================
-        // Because you requested all turret logic not at the top of the class,
-        // we keep the turret state as static-like fields inside this method
-        // by storing them in member variables and only touching them here.
-        // (Java cannot have true static locals.)
-        //
-        // These fields are declared at the bottom of the class.
-        // =========================
-
         // -----------------------------
         // Pose / headings
         // -----------------------------
@@ -239,10 +295,21 @@ public class V2TeleBlue extends LinearOpMode {
 
         // =========================
         // Shooting toggle (gamepad2 cross)
+        // ALSO controls flywheel motors now
         // =========================
         boolean shootToggleBtn = gamepad2.cross;
         if (shootToggleBtn && !turretLastShootToggleBtn) {
             turretShootingActive = !turretShootingActive;
+
+            if (turretShootingActive) {
+                // Turn ON flywheels when enabling tracking
+                shootMotor2.setPower(SHOOTER_POWER);
+                shootMotor1.setPower(SHOOTER_POWER);
+            } else {
+                // Turn OFF flywheels when disabling tracking
+                shootMotor2.setPower(0.0);
+                shootMotor1.setPower(0.0);
+            }
         }
         turretLastShootToggleBtn = shootToggleBtn;
 
@@ -258,10 +325,7 @@ public class V2TeleBlue extends LinearOpMode {
         // Your existing logic: normalize180 and then apply offset
         double rawAutoCmdDeg = normalize180(turretAngleNeededDeg + TURRET_OFFSET_DEG);
 
-        // -----------------------------
-        // Helper: wrap a desired angle into the turret window via +/-360
-        // preferring the candidate closest to a reference (current target).
-        // -----------------------------
+        // Wrap into turret window, favoring candidate closest to current target
         double safeAutoCmdDeg = wrapIntoTurretWindow(rawAutoCmdDeg, turret.getTargetAngle(), TURRET_MIN_DEG, TURRET_MAX_DEG);
 
         // =========================
@@ -306,8 +370,8 @@ public class V2TeleBlue extends LinearOpMode {
             if (turretShootingActive) {
                 turret.setAngle(safeAutoCmdDeg);
             } else {
-                // Keep 0 legal via the same mapping (uniform behavior)
-                turret.setAngle(wrapIntoTurretWindow(0.0, turret.getTargetAngle(), TURRET_MIN_DEG, TURRET_MAX_DEG));
+                // When not tracking, park wherever you want (you had 135 here)
+                turret.setAngle(wrapIntoTurretWindow(135, turret.getTargetAngle(), TURRET_MIN_DEG, TURRET_MAX_DEG));
             }
         }
 
@@ -316,12 +380,11 @@ public class V2TeleBlue extends LinearOpMode {
         // -----------------------------
         // Telemetry (turret-specific)
         // -----------------------------
-        telemetry.addData("ShootMode", turretShootingActive);
         telemetry.addData("ManualOverride", turretManualOverride);
-        telemetry.addData("Pose", pose.toString());
         telemetry.addData("AngleToTargetDeg", angleToTargetDeg);
         telemetry.addData("AutoCmdDeg", turretShootingActive ? safeAutoCmdDeg : 0);
         telemetry.addData("TurretTargetDeg", turret.getTargetAngle());
+        telemetry.addData("Flywheels", turretShootingActive ? "ON" : "OFF");
     }
 
     /**
@@ -368,7 +431,7 @@ public class V2TeleBlue extends LinearOpMode {
         }
 
         if (gamepad2.circle) {
-            follower.setPose(new Pose(24.23, 125.24, Math.toRadians(144)));
+            follower.setPose(new Pose(27.9, 125.25, Math.toRadians(141.75)));
             gamepad2.rumble(500);
         }
     }
@@ -379,7 +442,29 @@ public class V2TeleBlue extends LinearOpMode {
     }
 
     // =========================================================
-    // Turret state fields (kept out of the "top" logic)
+    // Gate helpers
+    // IMPORTANT: adjust these 3 methods to match your BasePlate API.
+    // I used reasonable names based on what you've shown so far.
+    // =========================================================
+    private void gateAllTheWayUp() {
+        // If your BasePlate method name differs, change it here.
+        // Example possibilities: basePlate.gateUp(); basePlate.gateAllUp(); basePlate.gateOpen();
+        basePlate.gateUp(); // <-- likely exists; if not, rename to your actual method
+    }
+
+    private void gateOnePosition() {
+        // You already use this method in your codebase
+        basePlate.gateHoldBall1();
+    }
+
+    private void gateDown() {
+        // If your BasePlate method name differs, change it here.
+        // Example possibilities: basePlate.gateDown(); basePlate.gateClosed();
+        basePlate.gateHoldBall1(); // <-- likely exists; if not, rename to your actual method
+    }
+
+    // =========================================================
+    // Turret state fields
     // =========================================================
     private boolean turretShootingActive = false;
     private boolean turretLastShootToggleBtn = false;

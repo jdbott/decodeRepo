@@ -6,7 +6,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 public class Gantry {
     private static final double FRONT_POS = 0.1;
     private static final double MIDDLE_POS = 0.36;
-    private static final double BACK_POS = 0.76;
+    private static final double BACK_POS = 0.83;
 
     private static String CURRENT_POS = "null";
     private final Servo servo1;

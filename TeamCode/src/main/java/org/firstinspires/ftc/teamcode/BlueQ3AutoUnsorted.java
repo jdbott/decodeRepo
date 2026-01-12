@@ -12,6 +12,7 @@ import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
@@ -49,6 +50,23 @@ public class BlueQ3AutoUnsorted extends OpMode {
     // Intake carry flag: set TRUE when an intake path ends; cleared after we stop intake 0.5s into the shoot path.
     private boolean intakeCarryPending = false;
 
+    // -----------------------------
+// Turret tracking (AUTO) fields
+// -----------------------------
+    private static final double TURRET_TARGET_X = 1.5;
+    private static final double TURRET_TARGET_Y = 142.0;
+
+    private static final double TURRET_OFFSET_DEG = 180.0;
+    private static final double TURRET_MIN_DEG = -160.0;
+    private static final double TURRET_MAX_DEG =  200.0;
+
+    // Auto-tracking enable (for auto, usually always true)
+    private boolean turretAutoTrackingEnabled = true;
+
+    // Optional: state-based override (e.g., force turret to -80 during intake then resume)
+    private boolean turretOverrideActive = false;
+    private double turretOverrideAngleDeg = 0.0;
+
     @Override
     public void init() {
         follower = Constants.createFollower(hardwareMap);
@@ -57,7 +75,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
         follower.setMaxPower(1);
 
         shootMotor2 = hardwareMap.get(DcMotorEx.class, "shooter2");
-        shootMotor1 = hardwareMap.get(DcMotorEx.class, "shooter2");
+        shootMotor1 = hardwareMap.get(DcMotorEx.class, "shooter1");
         shootMotor1.setDirection(DcMotorSimple.Direction.REVERSE);
 
         intake = new Intake(hardwareMap);
@@ -91,7 +109,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
         follower.update();
         basePlate.update();
         turret.update();
-        turret.setAngle(180);
+        turret.setAngle(0);
     }
 
     @Override
@@ -106,6 +124,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
         follower.update();
         autoPathUpdate();
         basePlate.update();
+        updateTurretAutoTracking();
         turret.update();
 
         telemetryA.addData("State", pathState);
@@ -140,6 +159,76 @@ public class BlueQ3AutoUnsorted extends OpMode {
         basePlate.gateHoldBall1();     // "gate position to one" immediately after intake path ends
         intakeCarryPending = true;     // keep intake running into next shoot path
         // do NOT stop intake here
+    }
+
+    private double normalize180(double a) {
+        a = ((a + 180) % 360 + 360) % 360 - 180;
+        return a;
+    }
+
+    /**
+     * Maps desiredDeg to an equivalent angle within [minDeg, maxDeg] by trying desired +/- 360*k.
+     * If multiple equivalents are valid, chooses the one closest to referenceDeg.
+     */
+    private double wrapIntoTurretWindow(double desiredDeg, double referenceDeg, double minDeg, double maxDeg) {
+        double best = Double.NaN;
+
+        for (int k = -2; k <= 2; k++) {
+            double candidate = desiredDeg + 360.0 * k;
+            if (candidate >= minDeg && candidate <= maxDeg) {
+                if (Double.isNaN(best) || Math.abs(candidate - referenceDeg) < Math.abs(best - referenceDeg)) {
+                    best = candidate;
+                }
+            }
+        }
+
+        if (Double.isNaN(best)) {
+            best = Range.clip(desiredDeg, minDeg, maxDeg);
+        }
+
+        return best;
+    }
+
+    private void updateTurretAutoTracking() {
+        if (!turretAutoTrackingEnabled) return;
+
+        // If an override is active, hold the override angle instead of tracking.
+        if (turretOverrideActive) {
+            turret.setAngle(wrapIntoTurretWindow(
+                    turretOverrideAngleDeg,
+                    turret.getTargetAngle(),
+                    TURRET_MIN_DEG,
+                    TURRET_MAX_DEG
+            ));
+            return;
+        }
+
+        Pose pose = follower.getPose();
+        double botX = pose.getX();
+        double botY = pose.getY();
+        double robotHeadingDeg = Math.toDegrees(pose.getHeading());
+
+        double dx = TURRET_TARGET_X - botX;
+        double dy = TURRET_TARGET_Y - botY;
+
+        double angleToTargetDeg = Math.toDegrees(Math.atan2(dy, dx));
+
+        // same structure you used in TeleOp:
+        double turretAngleNeededDeg = normalize180(angleToTargetDeg - robotHeadingDeg);
+        double rawAutoCmdDeg = normalize180(turretAngleNeededDeg + TURRET_OFFSET_DEG);
+
+        double safeAutoCmdDeg = wrapIntoTurretWindow(
+                rawAutoCmdDeg,
+                turret.getTargetAngle(),
+                TURRET_MIN_DEG,
+                TURRET_MAX_DEG
+        );
+
+        turret.setAngle(safeAutoCmdDeg);
+
+        // Optional telemetry
+        telemetryA.addData("TurretAutoCmd", safeAutoCmdDeg);
+        telemetryA.addData("AngleToTarget", angleToTargetDeg);
     }
 
     private void autoPathUpdate() {
@@ -186,7 +275,6 @@ public class BlueQ3AutoUnsorted extends OpMode {
                         new Pose(24, 84 - 22))
                 );
                 toLine2.setTangentHeadingInterpolation();
-                turret.setAngle(-80);
                 follower.followPath(toLine2, false);
                 intake.intakeIn();
                 setPathState(4);
