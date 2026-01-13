@@ -34,8 +34,8 @@ public class ShooterV2 {
     private static final long READY_HOLD_MS = 80;
 
     // --- Fast spin-up behavior ---
-    private static final double SPINUP_ENTER_FRAC = 0.92;
-    private static final double SPINUP_EXIT_FRAC  = 0.88;
+    private static final double SPINUP_ENTER_FRAC = 0.95;
+    private static final double SPINUP_EXIT_FRAC  = 0.91;
 
     // --- PIDF hold gains ---
     // Matches your opmode values

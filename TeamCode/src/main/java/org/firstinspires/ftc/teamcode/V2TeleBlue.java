@@ -20,6 +20,7 @@ public class V2TeleBlue extends LinearOpMode {
     private Intake intake;
     private Gantry gantry;
     private BasePlate basePlate;
+    private ShooterV2 shooterV2;
 
     // Drivetrain
     private DcMotorEx frontLeft, frontRight, backLeft, backRight;
@@ -58,20 +59,16 @@ public class V2TeleBlue extends LinearOpMode {
     private boolean gateToggleAllTheWayUp = true; // true = all-the-way-up, false = "one position"
 
     // Shooter power (set this to whatever you actually want)
-    private static final double SHOOTER_POWER = .94;
+    private static final double SHOOTER_POWER = .7;
 
     @Override
     public void runOpMode() throws InterruptedException {
-
-        shootMotor2 = hardwareMap.get(DcMotorEx.class, "shooter2");
-        shootMotor1 = hardwareMap.get(DcMotorEx.class, "shooter1");
-        shootMotor1.setDirection(DcMotorSimple.Direction.REVERSE);
 
         // -----------------------------
         // Follower init
         // -----------------------------
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(35, 72, Math.toRadians(180)));
+        follower.setStartingPose(new Pose(36, 72, Math.toRadians(180)));
         follower.updatePose();
         follower.setMaxPower(1);
         follower.startTeleOpDrive();
@@ -98,6 +95,8 @@ public class V2TeleBlue extends LinearOpMode {
         intake = new Intake(hardwareMap);
         gantry = new Gantry(hardwareMap);
         basePlate = new BasePlate(hardwareMap);
+        shooterV2 = new ShooterV2();
+        shooterV2.init(hardwareMap, "shooter1", "shooter2", DcMotorSimple.Direction.REVERSE, DcMotorSimple.Direction.FORWARD);
 
         intake.intakeStop();
         gantry.moveGantryToPos("back");
@@ -138,6 +137,7 @@ public class V2TeleBlue extends LinearOpMode {
 
         while (opModeIsActive()) {
             follower.update();
+            shooterV2.update();
 
             Pose pose = follower.getPose();
 
@@ -168,18 +168,12 @@ public class V2TeleBlue extends LinearOpMode {
             // BasePlate controls (existing)
             // -----------------------------
             boolean lbNow = gamepad2.left_bumper;
-            if (lbNow && !lbPrev && !basePlate.isShootBusy()) {
-                basePlate.startFullShoot();
+            if (lbNow && !lbPrev) {
+                basePlate.startShootFromPrep();
             }
             lbPrev = lbNow;
 
-            if (gamepad1.dpad_up) {
-                basePlate.prepShootOnly();
-            }
-            if (gamepad1.dpad_down) {
-                basePlate.startShootFromPrep();
-            }
-            if (gamepad1.dpad_left) {
+            if (gamepad1.left_trigger > 0.5) {
                 basePlate.startShootFromPush1Wait();
             }
 
@@ -206,6 +200,7 @@ public class V2TeleBlue extends LinearOpMode {
             if (intakeToggleActive) {
                 // Immediately go ON
                 intakeState = IntakeState.ON;
+                basePlate.cancelShootAndReset(); // one-time on entry to intake mode
             } else {
                 // Begin shutdown sequence
                 // Gate goes down now; intake stops after delay
@@ -235,6 +230,7 @@ public class V2TeleBlue extends LinearOpMode {
                 if (System.currentTimeMillis() - intakeShutdownStartMs >= INTAKE_SHUTDOWN_DELAY_MS) {
                     intake.intakeStop();
                     intakeState = IntakeState.OFF;
+                    basePlate.prepShootOnly();
                 } else {
                     // Keep intake motor running during the wait
                     intake.intakeIn();
@@ -273,7 +269,7 @@ public class V2TeleBlue extends LinearOpMode {
         // =========================
         // Configuration / constants
         // =========================
-        final double TARGET_X = 9;
+        final double TARGET_X = 2;
         final double TARGET_Y = 142;
 
         // Turret is rotated 180° relative to ScrimTele setup
@@ -302,13 +298,11 @@ public class V2TeleBlue extends LinearOpMode {
             turretShootingActive = !turretShootingActive;
 
             if (turretShootingActive) {
-                // Turn ON flywheels when enabling tracking
-                shootMotor2.setPower(SHOOTER_POWER);
-                shootMotor1.setPower(SHOOTER_POWER);
+                shooterV2.setEnabled(true);
+                shooterV2.setTargetRPM(2900);
             } else {
                 // Turn OFF flywheels when disabling tracking
-                shootMotor2.setPower(0.0);
-                shootMotor1.setPower(0.0);
+                shooterV2.stop();
             }
         }
         turretLastShootToggleBtn = shootToggleBtn;
@@ -431,7 +425,7 @@ public class V2TeleBlue extends LinearOpMode {
         }
 
         if (gamepad2.circle) {
-            follower.setPose(new Pose(27.9, 125.25, Math.toRadians(141.75)));
+            follower.setPose(new Pose(24.4, 126, Math.toRadians(142)));
             gamepad2.rumble(500);
         }
     }
