@@ -149,6 +149,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
     private void stopIntakeIfHalfSecondIntoShootPath() {
         if (intakeCarryPending && pathTimer.getElapsedTimeSeconds() >= INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S) {
             intake.intakeStop();
+            basePlate.prepShootOnly();
             intakeCarryPending = false;
         }
     }
@@ -242,7 +243,6 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 );
                 toShoot1.setLinearHeadingInterpolation(Math.toRadians(-90), Math.toRadians(180), 0.8);
 
-                basePlate.prepShootOnly();
                 follower.followPath(toShoot1, true);
                 setPathState(1);
                 break;
@@ -301,7 +301,6 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 );
                 toShoot2.setConstantHeadingInterpolation(Math.toRadians(140));
 
-                basePlate.prepShootOnly();
                 follower.followPath(toShoot2, true);
                 setPathState(6);
                 break;
@@ -375,7 +374,6 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 );
                 toShootAfterLastGate.setConstantHeadingInterpolation(Math.toRadians(180));
 
-                basePlate.prepShootOnly();
                 follower.followPath(toShootAfterLastGate, true);
                 setPathState(11);
                 break;
@@ -435,7 +433,6 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 toShoot3.setTangentHeadingInterpolation();
                 toShoot3.reverseHeadingInterpolation();
 
-                basePlate.prepShootOnly();
                 follower.followPath(toShoot3, true);
                 setPathState(16);
                 break;
@@ -497,7 +494,6 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 toShoot4.setTangentHeadingInterpolation();
                 toShoot4.reverseHeadingInterpolation();
 
-                basePlate.prepShootOnly();
                 follower.followPath(toShoot4, true);
                 setPathState(21);
                 break;
