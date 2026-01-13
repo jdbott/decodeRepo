@@ -9,11 +9,17 @@ import com.qualcomm.robotcore.util.Range;
 /**
  * Shooter velocity controller with:
  *  - Full-power spinup until near target
+ *  - Fast recovery ("boost") after a droop event
  *  - PIDF hold once near target
  *  - "Ready" gating (within tolerance for hold time)
  *
- * This is a refactor of ServoZeroPopper's shooter control portion into a hardware class format.
- * Shot detection logic has been intentionally removed.
+ * Notes on changes vs your prior version:
+ *  1) More aggressive re-entry to full-power after droop (SPINUP_EXIT_FRAC raised)
+ *  2) Added a short "boost window" after a droop to snap back faster
+ *  3) Improved integral behavior:
+ *     - Do NOT reset integral on spinup->hold transitions
+ *     - Integrate even while saturated (with back-calculation anti-windup) so recovery isn't sluggish
+ *     - Optional slow decay of integral when disabled / target=0
  */
 public class ShooterV2 {
 
@@ -34,18 +40,31 @@ public class ShooterV2 {
     private static final long READY_HOLD_MS = 80;
 
     // --- Fast spin-up behavior ---
+    // Enter HOLD when we are close enough to target
     private static final double SPINUP_ENTER_FRAC = 0.95;
-    private static final double SPINUP_EXIT_FRAC  = 0.91;
+
+    // Re-enter SPINUP more aggressively when we droop.
+    // Raised from 0.91 so even moderate droop kicks you back to 1.0 power.
+    private static final double SPINUP_EXIT_FRAC  = 0.97;
+
+    // --- Droop boost behavior ---
+    // If droop exceeds this fraction of target, apply full power for BOOST_MS.
+    // This triggers even if you haven't crossed SPINUP_EXIT_FRAC yet.
+    private static final double BOOST_DROOP_FRAC = 0.04;   // 4% droop
+    private static final long   BOOST_MS         = 130;    // 80-200ms typical
 
     // --- PIDF hold gains ---
-    // Matches your opmode values
     private double kF = 0.00058;
     private double kP = 0.00030;
     private double kD = 0.00008;
     private double kI = 0.00012;
 
     // Anti-windup clamp on integral accumulator (tick-sec)
-    private static final double I_CLAMP = 100.0;
+    private static final double I_CLAMP = 200.0; // increased a bit for stronger recovery authority
+
+    // Back-calculation strength for anti-windup (higher = unwind faster when saturated)
+    // Units roughly: 1/sec. Keep modest to avoid oscillation.
+    private static final double AW_BACKCALC = 6.0;
 
     private static final double MIN_POWER = 0.0;
     private static final double MAX_POWER = 1.0;
@@ -59,6 +78,9 @@ public class ShooterV2 {
     private double lastError = 0.0;
     private double iSum = 0.0;
     private long lastTimeNs = 0;
+
+    // Droop boost state
+    private long boostUntilMs = 0;
 
     // Ready gating state
     private long readySinceMs = 0;
@@ -103,16 +125,26 @@ public class ShooterV2 {
     }
 
     // ----------------------------
-    // Public API (similar spirit to your Shooter class)
+    // Public API
     // ----------------------------
 
     /** Enable/disable shooter control (like shooterOn toggle). */
     public void setEnabled(boolean enabled) {
         if (this.enabled != enabled) {
             this.enabled = enabled;
-            resetControllerState();
+
+            // Keep integral rather than nuking it; just reset timing/ready/boost.
+            lastTimeNs = 0;
+            lastError = 0.0;
+            readySinceMs = 0;
+            readyStable = false;
+            boostUntilMs = 0;
+
             if (!enabled) {
                 setMotorPower(0.0);
+            } else {
+                // Re-enter spinup when first enabling (but keep iSum)
+                spinupMode = true;
             }
         }
     }
@@ -121,15 +153,21 @@ public class ShooterV2 {
         return enabled;
     }
 
-    /** Set desired velocity in ticks/sec (same variable concept as old code). */
+    /** Set desired velocity in ticks/sec. */
     public void setTargetTPS(double ticksPerSec) {
         targetTPS = Math.max(0.0, ticksPerSec);
-        // when changing target while enabled, it’s typically safest to re-enter spinup
+
+        // If target is effectively zero, don't keep integral piled up.
+        if (targetTPS <= 1.0) {
+            iSum *= 0.5; // mild decay, avoids weirdness next time you spin up
+        }
+
         if (enabled) {
+            // Typically re-enter spinup on target changes, but keep iSum (don’t reset).
             spinupMode = true;
             readySinceMs = 0;
             readyStable = false;
-            iSum = 0.0;
+            boostUntilMs = 0;
         }
     }
 
@@ -151,7 +189,7 @@ public class ShooterV2 {
         return getVelocityTPS() * 60.0 / TICKS_PER_REV;
     }
 
-    /** True when within tolerance for READY_HOLD_MS and not in spinup mode. */
+    /** True when within tolerance for READY_HOLD_MS and not in spinup/boost mode. */
     public boolean isReady() {
         return readyStable;
     }
@@ -178,33 +216,69 @@ public class ShooterV2 {
         if (dt <= 0) dt = 1e-3;
         lastTimeNs = nowNs;
 
-        // Decide spinup vs hold
+        long nowMs = System.currentTimeMillis();
+
+        // Fraction of target achieved
         double frac = (targetTPS <= 1.0) ? 0.0 : (vel / targetTPS);
 
-        if (spinupMode) {
-            if (frac >= SPINUP_ENTER_FRAC) {
-                spinupMode = false;
-                lastError = targetTPS - vel;
-                iSum = 0.0; // keep as in your opmode
-            }
-        } else {
-            if (frac <= SPINUP_EXIT_FRAC) {
-                spinupMode = true;
-                iSum = 0.0;
-                // readiness resets when we droop hard
-                readySinceMs = 0;
-                readyStable = false;
+        // ----------------------------
+        // Droop detection -> boost window
+        // ----------------------------
+        // If we are in HOLD (not spinup) and we droop by more than BOOST_DROOP_FRAC,
+        // slam to full power briefly to refill flywheel energy quickly.
+        if (!spinupMode && targetTPS > 1.0) {
+            double droopFrac = 1.0 - frac; // positive when below target
+            if (droopFrac >= BOOST_DROOP_FRAC) {
+                boostUntilMs = Math.max(boostUntilMs, nowMs + BOOST_MS);
             }
         }
 
+        boolean boostActive = (nowMs < boostUntilMs);
+
+        // ----------------------------
+        // Decide spinup vs hold
+        // ----------------------------
+        if (spinupMode) {
+            if (frac >= SPINUP_ENTER_FRAC) {
+                spinupMode = false;
+                // Do NOT reset integral; only refresh derivative baseline.
+                lastError = targetTPS - vel;
+            }
+        } else {
+            // More aggressive re-entry to spinup when drooping
+            if (frac <= SPINUP_EXIT_FRAC) {
+                spinupMode = true;
+                // readiness resets when we droop
+                readySinceMs = 0;
+                readyStable = false;
+                // keep iSum
+            }
+        }
+
+        // ----------------------------
+        // Compute command
+        // ----------------------------
         double cmdPower;
 
-        if (spinupMode) {
+        if (spinupMode || boostActive) {
+            // Full power in spinup or boost.
             cmdPower = 1.0;
+
             lastFF = 0.0;
             lastPTerm = 0.0;
             lastITerm = 0.0;
             lastDTerm = 0.0;
+
+            // While saturating high, unwind integral via back-calculation to prevent slow recovery/overshoot.
+            // This avoids "stuck integral" when you're pinned at 1.0 for a while.
+            if (targetTPS > 1.0) {
+                double error = targetTPS - vel;
+                // Desired unclipped = 1.0, so actual - unclipped approx 0; but we still want to prevent runaway iSum.
+                // Use a gentle decay under full-power to keep iSum sane.
+                iSum *= Math.max(0.0, 1.0 - (0.8 * dt));
+                iSum = Range.clip(iSum, -I_CLAMP, I_CLAMP);
+                lastError = error;
+            }
         } else {
             // PIDF hold
             double error = targetTPS - vel;
@@ -213,26 +287,26 @@ public class ShooterV2 {
 
             double ff = kF * targetTPS;
 
-            // Anti-windup: only integrate when near target and not saturated
-            double nearFrac = (targetTPS <= 1.0) ? 0.0 : (Math.abs(error) / targetTPS);
-            boolean nearTarget = nearFrac <= 0.10; // within 10%
-
-            double unclipped = ff + (kP * error) + (kD * dError) + (kI * iSum);
-
-            boolean wouldSaturateHigh = unclipped >= (MAX_POWER - 0.02);
-            boolean wouldSaturateLow  = unclipped <= (MIN_POWER + 0.02);
-
-            if (nearTarget && !wouldSaturateHigh && !wouldSaturateLow) {
-                iSum += error * dt;
-                iSum = Range.clip(iSum, -I_CLAMP, I_CLAMP);
-            }
-
             double pTerm = kP * error;
             double dTerm = kD * dError;
             double iTerm = kI * iSum;
 
-            cmdPower = ff + pTerm + dTerm + iTerm;
-            cmdPower = Range.clip(cmdPower, MIN_POWER, MAX_POWER);
+            double unclipped = ff + pTerm + dTerm + iTerm;
+            double clipped = Range.clip(unclipped, MIN_POWER, MAX_POWER);
+
+            // Back-calculation anti-windup:
+            // If we clip, feed back the difference to iSum so it doesn't wind up and doesn't get "slow" after saturation.
+            // Integrate error always, but correct for saturation.
+            double satError = (clipped - unclipped); // negative when we're clipped high, positive when clipped low
+            iSum += (error * dt) + (AW_BACKCALC * satError * dt / Math.max(1e-6, kI)); // scale by kI so effect is consistent
+            iSum = Range.clip(iSum, -I_CLAMP, I_CLAMP);
+
+            // Recompute with updated integral (optional but helps)
+            iTerm = kI * iSum;
+            unclipped = ff + pTerm + dTerm + iTerm;
+            clipped = Range.clip(unclipped, MIN_POWER, MAX_POWER);
+
+            cmdPower = clipped;
 
             lastFF = ff;
             lastPTerm = pTerm;
@@ -243,9 +317,14 @@ public class ShooterV2 {
         setMotorPower(cmdPower);
         lastCmdPower = cmdPower;
 
-        // Ready gating: within tolerance, held for READY_HOLD_MS, only in HOLD mode
-        long nowMs = System.currentTimeMillis();
-        boolean readyNow = (errFrac <= READY_TOLERANCE_FRAC) && !spinupMode && (targetTPS > 1.0);
+        // ----------------------------
+        // Ready gating
+        // ----------------------------
+        // Only ready when not spinup and not boosting.
+        boolean readyNow = (errFrac <= READY_TOLERANCE_FRAC)
+                && !spinupMode
+                && !boostActive
+                && (targetTPS > 1.0);
 
         if (readyNow) {
             if (readySinceMs == 0) readySinceMs = nowMs;
@@ -262,6 +341,10 @@ public class ShooterV2 {
         enabled = false;
         setMotorPower(0.0);
         targetTPS = 0.0;
+
+        // Keep iSum from being weird next time; don’t hard reset unless you want to.
+        iSum = 0.0;
+
         resetControllerState();
     }
 
@@ -301,8 +384,9 @@ public class ShooterV2 {
     private void resetControllerState() {
         spinupMode = true;
         lastError = 0.0;
-        iSum = 0.0;
         lastTimeNs = 0;
+
+        boostUntilMs = 0;
 
         readySinceMs = 0;
         readyStable = false;
