@@ -41,17 +41,17 @@ public class ShooterV2 {
 
     // --- Fast spin-up behavior ---
     // Enter HOLD when we are close enough to target
-    private static final double SPINUP_ENTER_FRAC = 0.95;
+    private static final double SPINUP_ENTER_FRAC = 0.94;
 
     // Re-enter SPINUP more aggressively when we droop.
     // Raised from 0.91 so even moderate droop kicks you back to 1.0 power.
-    private static final double SPINUP_EXIT_FRAC  = 0.97;
+    private static final double SPINUP_EXIT_FRAC  = 0.96;
 
     // --- Droop boost behavior ---
     // If droop exceeds this fraction of target, apply full power for BOOST_MS.
     // This triggers even if you haven't crossed SPINUP_EXIT_FRAC yet.
     private static final double BOOST_DROOP_FRAC = 0.04;   // 4% droop
-    private static final long   BOOST_MS         = 130;    // 80-200ms typical
+    private static final long   BOOST_MS         = 200;    // 80-200ms typical
 
     // --- PIDF hold gains ---
     private double kF = 0.00058;

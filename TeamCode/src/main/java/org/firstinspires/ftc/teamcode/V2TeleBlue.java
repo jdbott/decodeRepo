@@ -73,6 +73,8 @@ public class V2TeleBlue extends LinearOpMode {
     private double lastHeadingDeg = 0.0;
     private long lastHeadingMs = 0;
 
+    private boolean sharePrev = false;
+
     @Override
     public void runOpMode() throws InterruptedException {
 
@@ -198,7 +200,7 @@ public class V2TeleBlue extends LinearOpMode {
             lbPrev = lbNow;
 
             if (gamepad2.left_trigger > 0.5) {
-                basePlate.startShootFromPush1Wait();
+                basePlate.startFullShoot();
             }
 
             basePlate.update();
@@ -282,6 +284,16 @@ public class V2TeleBlue extends LinearOpMode {
         rbPrev = rbNow;
     }
 
+    private double getShooterRPMForDistance(double distanceInches) {
+        if (distanceInches < 60) {
+            return 2300;
+        } else if (distanceInches < 85) {
+            return 2300;
+        } else {
+            return 2300;
+        }
+    }
+
     // =========================================================
     // Turret control and tracking (fixed targeting)
     //
@@ -296,7 +308,7 @@ public class V2TeleBlue extends LinearOpMode {
         final double TARGET_X = 0;
         final double TARGET_Y = 148;
 
-        // Backwards is 0 => forward is 180 => offset is +180
+        // Backwards is 0 => forward is 180
         final double TURRET_OFFSET_DEG = 180.0;
 
         final double TURRET_MIN_DEG = -160.0;
@@ -304,30 +316,7 @@ public class V2TeleBlue extends LinearOpMode {
 
         final long MANUAL_HOLD_MS = 4000;
 
-        // =========================
-        // Headings
-        // =========================
-        double botX = pose.getX();
-        double botY = pose.getY();
-        double robotHeadingDeg = Math.toDegrees(pose.getHeading());
-
-        // =========================
-        // Heading-rate feedforward (reduces drift while spinning)
-        // =========================
         long now = System.currentTimeMillis();
-        if (lastHeadingMs != 0) {
-            double dHeading = normalize180(robotHeadingDeg - lastHeadingDeg);
-            double dt = (now - lastHeadingMs) / 1000.0;
-            if (dt > 0.0) {
-                double omegaDegPerSec = dHeading / dt;
-
-                // Start with negative (turret counters robot rotation).
-                // If it gets worse while turning, flip the sign.
-                turret.setFeedforward(-omegaDegPerSec);
-            }
-        }
-        lastHeadingDeg = robotHeadingDeg;
-        lastHeadingMs = now;
 
         // =========================
         // Toggle tracking + flywheels (gamepad2 cross)
@@ -338,7 +327,8 @@ public class V2TeleBlue extends LinearOpMode {
 
             if (turretShootingActive) {
                 shooterV2.setEnabled(true);
-                shooterV2.setTargetRPM(2200);
+                // RPM now should be distance-based (from your earlier change)
+                // We'll compute distance below and set RPM there.
             } else {
                 shooterV2.stop();
             }
@@ -346,18 +336,27 @@ public class V2TeleBlue extends LinearOpMode {
         turretLastShootToggleBtn = shootToggleBtn;
 
         // =========================
-        // Compute desired turret command
+        // Pose / geometry
         // =========================
+        double botX = pose.getX();
+        double botY = pose.getY();
+        double robotHeadingDeg = Math.toDegrees(pose.getHeading());
+
         double dx = TARGET_X - botX;
         double dy = TARGET_Y - botY;
 
-        double angleToTargetDeg = Math.toDegrees(Math.atan2(dy, dx));              // field frame
-        double angleToTargetRobotDeg = normalize180(angleToTargetDeg - robotHeadingDeg); // robot frame
+        double distanceToTarget = Math.hypot(dx, dy);
 
-        // Convert robot-frame desired to turret coordinates (0 is backwards)
+        // Field-frame angle from robot -> target
+        double angleToTargetFieldDeg = Math.toDegrees(Math.atan2(dy, dx));
+
+        // Convert to robot frame (relative bearing)
+        double angleToTargetRobotDeg = normalize180(angleToTargetFieldDeg - robotHeadingDeg);
+
+        // Convert robot-frame bearing to your turret coordinates (0 = backwards)
         double desiredTurretDeg = normalize180(angleToTargetRobotDeg + TURRET_OFFSET_DEG);
 
-        // Use ACTUAL turret angle as reference for window wrapping
+        // Use actual turret angle to pick the best wrapped equivalent in limits
         double turretCurrentDeg = turret.getCurrentAngle();
 
         double safeCmdDeg = wrapIntoTurretWindow(
@@ -374,13 +373,13 @@ public class V2TeleBlue extends LinearOpMode {
 
         if (gamepad2.dpad_left) {
             double desired = turret.getTargetAngle() - 1.0;
-            turret.setAngle(wrapIntoTurretWindow(desired, turret.getCurrentAngle(), TURRET_MIN_DEG, TURRET_MAX_DEG));
+            turret.setAngle(wrapIntoTurretWindow(desired, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG));
             manualInput = true;
         }
 
         if (gamepad2.dpad_right) {
             double desired = turret.getTargetAngle() + 1.0;
-            turret.setAngle(wrapIntoTurretWindow(desired, turret.getCurrentAngle(), TURRET_MIN_DEG, TURRET_MAX_DEG));
+            turret.setAngle(wrapIntoTurretWindow(desired, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG));
             manualInput = true;
         }
 
@@ -389,27 +388,39 @@ public class V2TeleBlue extends LinearOpMode {
             turretLastManualInputMs = now;
         }
 
-        // Zero turret: clears override and resumes auto behavior
-        if (gamepad2.share) {
+        boolean shareNow = gamepad2.share;
+        if (shareNow && !sharePrev) {
+            turret.stop();       // optional but recommended
             turret.zeroTurret();
-            turretManualOverride = false;
-            turretLastManualInputMs = 0;
+            turretManualOverride = true;          // keep auto-park from instantly fighting you
+            turretLastManualInputMs = System.currentTimeMillis();
             gamepad2.rumble(500);
         }
+        sharePrev = shareNow;
 
-        // If we haven't manually touched it recently, allow auto again
         if (turretManualOverride && (now - turretLastManualInputMs) > MANUAL_HOLD_MS) {
             turretManualOverride = false;
         }
 
         // =========================
-        // Turret auto-aim (gated)
+        // Auto aim + shooter RPM
         // =========================
-        if (!turretManualOverride) {
-            if (turretShootingActive) {
+        if (turretShootingActive) {
+            // Flywheel RPM selection by distance (your 3-bucket logic)
+            double rpmCmd = getShooterRPMForDistance(distanceToTarget);
+            shooterV2.setTargetRPM(rpmCmd);
+            if (!(gamepad2.right_trigger > 0.5)) {
+                turret.setAngle(0);
+            }
+                if (!turretManualOverride && !(gamepad2.right_trigger > 0.5)) {
                 turret.setAngle(safeCmdDeg);
-            } else {
-                // Park angle when not tracking
+            }
+        } else {
+            // Not tracking: stop shooter; park turret (unless manual override)
+            // (Shooter stop handled by toggle block, but this keeps it safe if state drifts)
+            // shooterV2.stop();
+
+            if (!turretManualOverride) {
                 double park = wrapIntoTurretWindow(135, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG);
                 turret.setAngle(park);
             }
@@ -418,19 +429,18 @@ public class V2TeleBlue extends LinearOpMode {
         turret.update();
 
         // =========================
-        // Telemetry (turret-specific)
+        // Telemetry
         // =========================
-        telemetry.addData("TurretCurDeg", turretCurrentDeg);
-        telemetry.addData("TurretTgtDeg", turret.getTargetAngle());
-        telemetry.addData("TurretErrDeg", turret.getError());
-        telemetry.addData("AngleToTargetField", angleToTargetDeg);
+        telemetry.addData("DistToTarget", distanceToTarget);
+        telemetry.addData("AngleToTargetField", angleToTargetFieldDeg);
         telemetry.addData("AngleToTargetRobot", angleToTargetRobotDeg);
         telemetry.addData("DesiredTurretDeg", desiredTurretDeg);
         telemetry.addData("SafeCmdDeg", safeCmdDeg);
+        telemetry.addData("TurretCurDeg", turretCurrentDeg);
+        telemetry.addData("TurretTgtDeg", turret.getTargetAngle());
         telemetry.addData("ManualOverride", turretManualOverride);
         telemetry.addData("Flywheels", turretShootingActive ? "ON" : "OFF");
         telemetry.addData("ShooterRPM", shooterV2.getVelocityRPM());
-        telemetry.addData("ShooterCmd", shooterV2.getLastCmdPower());
     }
 
     /**
@@ -462,25 +472,25 @@ public class V2TeleBlue extends LinearOpMode {
     private void drive(double robotHeadingDeg) {
         double trigger = Range.clip(1 - gamepad1.right_trigger, 0.2, 1);
 
-        if (!(gamepad1.left_trigger > 0.5)) {
+        if (!(gamepad2.left_trigger > 0.5)) {
             follower.setTeleOpDrive(
-                    gamepad1.left_stick_y * trigger,
-                    gamepad1.left_stick_x * trigger,
-                    -gamepad1.right_stick_x * trigger,
+                    gamepad2.left_stick_y * trigger,
+                    gamepad2.left_stick_x * trigger,
+                    -gamepad2.right_stick_x * trigger,
                     false
             );
         } else {
             follower.setTeleOpDrive(
-                    -gamepad1.left_stick_y * trigger,
-                    -gamepad1.left_stick_x * trigger,
-                    -gamepad1.right_stick_x * trigger,
+                    -gamepad2.left_stick_y * trigger,
+                    -gamepad2.left_stick_x * trigger,
+                    -gamepad2.right_stick_x * trigger,
                     true
             );
         }
 
-        if (gamepad1.circle) {
+        if (gamepad2.circle) {
             follower.setPose(new Pose(24.4, 126, Math.toRadians(142)));
-            gamepad1.rumble(500);
+            gamepad2.rumble(500);
         }
     }
 

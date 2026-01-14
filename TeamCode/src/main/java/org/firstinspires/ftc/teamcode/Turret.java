@@ -103,8 +103,13 @@ public class Turret {
     }
 
     public void zeroTurret() {
+        turretMotor.setPower(0);
+        turretBusy = false;
+        feedforward = 0;
+
         turretMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
         turretMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
+
         lastSetAngle = 0;
     }
 }
