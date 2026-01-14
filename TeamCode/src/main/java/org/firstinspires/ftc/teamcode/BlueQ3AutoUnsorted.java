@@ -52,7 +52,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
     // -----------------------------
 // Turret tracking (AUTO) fields
 // -----------------------------
-    private static final double TURRET_TARGET_X = 2;
+    private static final double TURRET_TARGET_X = 4;
     private static final double TURRET_TARGET_Y = 142.0;
 
     private static final double TURRET_OFFSET_DEG = 180.0;
@@ -112,7 +112,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
     @Override
     public void start() {
         shooterV2.setEnabled(true);
-        shooterV2.setTargetRPM(3000);
+        shooterV2.setTargetRPM(2000);
         setPathState(0);
     }
 
@@ -239,7 +239,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
             case 0: {
                 Path toShoot1 = new Path(new BezierLine(
                         new Pose(35.791, 135),
-                        new Pose(57, 80))
+                        new Pose(57, 100))
                 );
                 toShoot1.setLinearHeadingInterpolation(Math.toRadians(-90), Math.toRadians(180), 0.8);
 
@@ -269,10 +269,10 @@ public class BlueQ3AutoUnsorted extends OpMode {
             case 3: {
                 Path toLine2 = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(48, 84 - 20),
-                        new Pose(19, 84 - 22))
+                        new Pose(48, 84 - 25),
+                        new Pose(15, 84 - 27))
                 );
-                toLine2.setTangentHeadingInterpolation();
+                toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(toLine2, false);
                 intake.intakeIn();
                 setPathState(4);
@@ -297,7 +297,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
             case 5: {
                 toShoot2 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(57, 80))
+                        new Pose(57, 100))
                 );
                 toShoot2.setConstantHeadingInterpolation(Math.toRadians(140));
 
@@ -331,7 +331,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
             case 8: {
                 toGateIntake = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(14, 64))
+                        new Pose(14, 63))
                 );
                 toGateIntake.setTangentHeadingInterpolation();
 
@@ -370,7 +370,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
             case 10: {
                 Path toShootAfterLastGate = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(57, 80))
+                        new Pose(57, 100))
                 );
                 toShootAfterLastGate.setConstantHeadingInterpolation(Math.toRadians(180));
 
@@ -428,7 +428,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
             case 15: {
                 Path toShoot3 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(57, 80))
+                        new Pose(57, 100))
                 );
                 toShoot3.setTangentHeadingInterpolation();
                 toShoot3.reverseHeadingInterpolation();
@@ -489,7 +489,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
             case 20: {
                 Path toShoot4 = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(57, 80))
+                        new Pose(57, 100))
                 );
                 toShoot4.setTangentHeadingInterpolation();
                 toShoot4.reverseHeadingInterpolation();
@@ -520,6 +520,8 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 intake.intakeStop();
                 basePlate.rampBack();
                 basePlate.gateUp();
+                turretAutoTrackingEnabled = false;
+                turret.setAngle(0);
                 break;
             }
 

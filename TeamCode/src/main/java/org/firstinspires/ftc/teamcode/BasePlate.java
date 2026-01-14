@@ -86,7 +86,7 @@ public class BasePlate {
     public void gateHoldBall1() { gate.setPosition(0.67); }
     public void gateHoldBall2() { gate.setPosition(0.6); }
     public void gateHoldBall3() { gate.setPosition(0.66); }
-    public void gateHoldBall4() { gate.setPosition(0.3); }
+    public void gateHoldBall4() { gate.setPosition(0.25); }
 
     // -----------------------
     // Shooting FSM (split-start capable)
@@ -104,6 +104,7 @@ public class BasePlate {
         // Mid/late execution
         PUSH_1_WAIT,
         PUSH_1_WAIT_MID,
+        PUSH_1_WAIT_END,
         PUSH_2_AND_GATE_WAIT,
         RESET_RAMP_BACK_GATE_UP_WAIT,
         PUSHER_HOME_WAIT
@@ -114,15 +115,16 @@ public class BasePlate {
 
     // Tunables
     private static final double SHOOT_PUSH_1_MM = 60;
-    private static final double SHOOT_PUSH_2_MM = 50;
+    private static final double SHOOT_PUSH_2_MM = 25;
 
     private static final double DELAY_RAMP_FORWARD_S = 0.5;
     private static final double DELAY_DOWN_LITTLE_S = 0.2;
     private static final double DELAY_PUSH1_S = 0.2;
     private static final double DELAY_PUSH1_MID_S = 0.2;
+    private static final double DELAY_PUSH1_END_S = 0.5;
     private static final double DELAY_PUSH2_AND_GATE_S = 0.5;
-    private static final double DELAY_RESET_GATEUP_S = 0.3;
-    private static final double DELAY_PUSHER_HOME_S = 0.3;
+    private static final double DELAY_RESET_GATEUP_S = 0.2;
+    private static final double DELAY_PUSHER_HOME_S = 0.2;
 
     // -----------------------
     // Public entry points you asked for
@@ -223,6 +225,15 @@ public class BasePlate {
 
             case PUSH_1_WAIT_MID:
                 if (shootTimer.seconds() >= DELAY_PUSH1_MID_S) {
+                    gateHoldBall4();
+                    shootTimer.reset();
+                    shootState = ShootState.PUSH_1_WAIT_END;
+                }
+                break;
+
+            case PUSH_1_WAIT_END:
+                if (shootTimer.seconds() >= DELAY_PUSH1_END_S) {
+                    setPusherMm(SHOOT_PUSH_1_MM + SHOOT_PUSH_2_MM - 50);
                     gateBackFullShoot();
                     shootTimer.reset();
                     shootState = ShootState.PUSH_2_AND_GATE_WAIT;
