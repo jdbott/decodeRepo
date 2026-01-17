@@ -12,8 +12,8 @@ import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
-@TeleOp(name = "V2 TELEOP BLUE")
-public class V2TeleBlue extends LinearOpMode {
+@TeleOp(name = "V2 TELEOP RED")
+public class V2TeleRed extends LinearOpMode {
 
     // --- Subsystems / hardware ---
     private Follower follower;
@@ -82,7 +82,7 @@ public class V2TeleBlue extends LinearOpMode {
         // Follower init
         // -----------------------------
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(25, 85, Math.toRadians(180)));
+        follower.setStartingPose(new Pose(144-25, 85, Math.toRadians(180)));
         follower.updatePose();
         follower.setMaxPower(1);
         follower.startTeleOpDrive();
@@ -303,7 +303,7 @@ public class V2TeleBlue extends LinearOpMode {
         // =========================
         // Config
         // =========================
-        final double TARGET_X = 0;
+        final double TARGET_X = 144;
         final double TARGET_Y = 148;
 
         // Backwards is 0 => forward is 180
@@ -409,7 +409,7 @@ public class V2TeleBlue extends LinearOpMode {
             if (!(gamepad2.right_trigger > 0.5)) {
                 turret.setAngle(0);
             }
-                if (!turretManualOverride && !(gamepad2.right_trigger > 0.5)) {
+            if (!turretManualOverride && !(gamepad2.right_trigger > 0.5)) {
                 turret.setAngle(safeCmdDeg);
             }
         } else {
@@ -471,8 +471,8 @@ public class V2TeleBlue extends LinearOpMode {
 
         if (!(gamepad1.left_trigger > 0.5)) {
             follower.setTeleOpDrive(
-                    gamepad1.left_stick_y * trigger,
-                    gamepad1.left_stick_x * trigger,
+                    -gamepad1.left_stick_y * trigger,
+                    -gamepad1.left_stick_x * trigger,
                     -gamepad1.right_stick_x * trigger,
                     false
             );
@@ -486,7 +486,7 @@ public class V2TeleBlue extends LinearOpMode {
         }
 
         if (gamepad1.circle) {
-            follower.setPose(new Pose(24.4, 126, Math.toRadians(142)));
+            follower.setPose(new Pose(144-24.4, 126, Math.toRadians(180-142)));
             gamepad1.rumble(500);
         }
     }

@@ -16,8 +16,8 @@ import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
-@Autonomous(name = "Blue Auto Unsorted (Refactored Shoot)")
-public class BlueQ3AutoUnsorted extends OpMode {
+@Autonomous(name = "Blue Auto Unsorted Quals (Refactored Shoot)")
+public class BlueQ3AutoUnsortedQuals extends OpMode {
 
     // Subsystems
     private Follower follower;
@@ -367,7 +367,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 if (pathTimer.getElapsedTimeSeconds() > 1.5) {
                     follower.setMaxPower(1);
                     markIntakePathFinishedGateDownAndCarry();
-                    if (gateTrips < 2) {
+                    if (gateTrips < 1) {
                         setPathState(51);   // back to SHOOT 2
                     } else {
                         setPathState(10);  // shoot after last gate
@@ -461,7 +461,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
             case 17: {
                 oneTime(() -> basePlate.startShootFromPrep());
                 if (pathTimer.getElapsedTimeSeconds() >= SHOOT_WAIT_S) {
-                    setPathState(23);
+                    setPathState(18);
                 }
                 break;
             }
@@ -473,7 +473,8 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 Path toBottomLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84 - 48),
-                        new Pose(21, 84 - 50))
+                        new Pose(21, 84 - 50),
+                        new Pose(15, 84-50))
                 );
                 toBottomLine.setTangentHeadingInterpolation();
 

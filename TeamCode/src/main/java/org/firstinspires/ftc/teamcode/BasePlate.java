@@ -121,7 +121,7 @@ public class BasePlate {
     private static final double DELAY_DOWN_LITTLE_S = 0.2;
     private static final double DELAY_PUSH1_S = 0.2;
     private static final double DELAY_PUSH1_MID_S = 0.2;
-    private static final double DELAY_PUSH1_END_S = 0.7;
+    private static final double DELAY_PUSH1_END_S = 0.5;
     private static final double DELAY_PUSH2_AND_GATE_S = 0.5;
     private static final double DELAY_RESET_GATEUP_S = 0.2;
     private static final double DELAY_PUSHER_HOME_S = 0.2;
