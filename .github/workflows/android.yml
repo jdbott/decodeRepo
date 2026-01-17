@@ -1,10 +1,7 @@
 name: Android CI
 
 on:
-  push:
-    branches: [ "AddyVeerendra-patch-1" ]
-  pull_request:
-    branches: [ "AddyVeerendra-patch-1" ]
+  [push, pull_request]
 
 jobs:
   build:
