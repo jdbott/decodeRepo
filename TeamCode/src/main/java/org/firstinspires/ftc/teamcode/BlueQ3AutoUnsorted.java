@@ -346,7 +346,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 );
                 toGateIntake.setTangentHeadingInterpolation();
                 follower.followPath(toGateIntake, true);
-                intake.intakeIn();
+                //intake.intakeIn();
                 setPathState(9);
                 break;
             }
@@ -357,6 +357,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
                     follower.setMaxPower(0.7);
                 }
                 if (!follower.isBusy()) {
+                    intake.intakeIn();
                     gateTrips++;
                     setPathState(91);
                 }
