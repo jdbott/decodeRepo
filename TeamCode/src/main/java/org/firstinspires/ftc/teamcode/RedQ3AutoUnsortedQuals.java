@@ -43,7 +43,7 @@ public class RedQ3AutoUnsortedQuals extends OpMode {
     private int gateTrips = 0;
 
     // Tunables
-    private static final double SHOOT_WAIT_S = 1.4;
+    private static final double SHOOT_WAIT_S = 1.6;
     private static final double INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.5;
 
     // Intake carry flag: set TRUE when an intake path ends; cleared after we stop intake 0.5s into the shoot path.
@@ -53,7 +53,7 @@ public class RedQ3AutoUnsortedQuals extends OpMode {
 // Turret tracking (AUTO) fields
 // -----------------------------
     private static final double TURRET_TARGET_X = 138;
-    private static final double TURRET_TARGET_Y = 142.0;
+    private static final double TURRET_TARGET_Y = 140;
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
@@ -269,8 +269,8 @@ public class RedQ3AutoUnsortedQuals extends OpMode {
                 Path toLine2 = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(144-48, 84 - 25),
-                        new Pose(144-40, 84 - 28),
-                        new Pose(144-15, 84 - 29))
+                        new Pose(144-40, 84 - 24),
+                        new Pose(144-15, 84 - 23))
                 );
                 toLine2.setConstantHeadingInterpolation(Math.toRadians(0));
                 follower.followPath(toLine2, false);
@@ -341,7 +341,7 @@ public class RedQ3AutoUnsortedQuals extends OpMode {
                 toGateIntake = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(144-53.779, 53.946),
-                        new Pose(144-9, 74),
+                        new Pose(144-9, 73),
                         new Pose(144-12.2, 62))
                 );
                 toGateIntake.setTangentHeadingInterpolation();
