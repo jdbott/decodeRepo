@@ -107,7 +107,9 @@ public class BasePlate {
         PUSH_1_WAIT_END,
         PUSH_2_AND_GATE_WAIT,
         RESET_RAMP_BACK_GATE_UP_WAIT,
-        PUSHER_HOME_WAIT
+        PUSHER_HOME_WAIT,
+
+        TEST
     }
 
     private ShootState shootState = ShootState.IDLE;
@@ -115,7 +117,7 @@ public class BasePlate {
 
     // Tunables
     private static final double SHOOT_PUSH_1_MM = 60;
-    private static final double SHOOT_PUSH_2_MM = 25;
+    private static final double SHOOT_PUSH_2_MM = 20;
 
     private static final double DELAY_RAMP_FORWARD_S = 0.5;
     private static final double DELAY_DOWN_LITTLE_S = 0.2;
@@ -234,6 +236,14 @@ public class BasePlate {
             case PUSH_1_WAIT_END:
                 if (shootTimer.seconds() >= DELAY_PUSH1_END_S) {
                     setPusherMm(SHOOT_PUSH_1_MM + SHOOT_PUSH_2_MM - 40);
+                    gateHoldBall2();
+                    shootTimer.reset();
+                    shootState = ShootState.TEST;
+                }
+                break;
+
+            case TEST:
+                if (shootTimer.seconds() >= 0.2) {
                     gateBackFullShoot();
                     shootTimer.reset();
                     shootState = ShootState.PUSH_2_AND_GATE_WAIT;

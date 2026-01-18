@@ -53,7 +53,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 // Turret tracking (AUTO) fields
 // -----------------------------
     private static final double TURRET_TARGET_X = 6;
-    private static final double TURRET_TARGET_Y = 142.0;
+    private static final double TURRET_TARGET_Y = 140;
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
@@ -269,8 +269,8 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 Path toLine2 = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84 - 25),
-                        new Pose(40, 84 - 28),
-                        new Pose(15, 84 - 29))
+                        new Pose(40, 84 - 23),
+                        new Pose(15, 84 - 24))
                 );
                 toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(toLine2, false);
@@ -280,7 +280,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             }
 
             case 4: {
-                if (follower.getCurrentTValue() > 0.5) {
+                if (follower.getCurrentTValue() > 0.4) {
                     follower.setMaxPower(0.5);
                 }
                 if (!follower.isBusy()) {
@@ -416,7 +416,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 Path toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84),
-                        new Pose(22, 84))
+                        new Pose(20.5, 84))
                 );
                 toCloseLine.setTangentHeadingInterpolation();
 

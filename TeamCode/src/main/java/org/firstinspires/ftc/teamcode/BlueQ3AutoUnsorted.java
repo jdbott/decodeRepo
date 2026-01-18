@@ -43,7 +43,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
     private int gateTrips = 0;
 
     // Tunables
-    private static final double SHOOT_WAIT_S = 1.4;
+    private static final double SHOOT_WAIT_S = 1.6;
     private static final double INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.5;
 
     // Intake carry flag: set TRUE when an intake path ends; cleared after we stop intake 0.5s into the shoot path.
@@ -269,8 +269,8 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 Path toLine2 = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84 - 25),
-                        new Pose(40, 84 - 28),
-                        new Pose(15, 84 - 29))
+                        new Pose(40, 84 - 31),
+                        new Pose(15, 84 - 31))
                 );
                 toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(toLine2, false);
@@ -280,7 +280,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
             }
 
             case 4: {
-                if (follower.getCurrentTValue() > 0.5) {
+                if (follower.getCurrentTValue() > 0.4) {
                     follower.setMaxPower(0.5);
                 }
                 if (!follower.isBusy()) {
@@ -416,7 +416,7 @@ public class BlueQ3AutoUnsorted extends OpMode {
                 Path toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84),
-                        new Pose(22, 84))
+                        new Pose(20, 84))
                 );
                 toCloseLine.setTangentHeadingInterpolation();
 

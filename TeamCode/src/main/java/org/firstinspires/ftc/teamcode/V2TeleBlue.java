@@ -162,6 +162,10 @@ public class V2TeleBlue extends LinearOpMode {
         lastHeadingMs = System.currentTimeMillis();
 
         while (opModeIsActive()) {
+            if (gamepad2.dpad_down) {
+                basePlate.gateBackFullShoot();
+            }
+
             follower.update();
             shooter.update();
 
