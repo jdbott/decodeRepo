@@ -88,6 +88,11 @@ public class BasePlate {
     public void gateHoldBall3() { gate.setPosition(0.66); }
     public void gateHoldBall4() { gate.setPosition(0.25); }
 
+    public void gateRotateBack() { gateHoldBall2(); }
+    public void gateRotateStage2() { gateHoldBall3(); }
+    public void gateRotateStage3() { gateHoldBall4(); }
+    public void gateRotateShoot() { gateBackFullShoot(); }
+
     // -----------------------
     // Shooting FSM (split-start capable)
     // -----------------------
@@ -127,6 +132,21 @@ public class BasePlate {
     private static final double DELAY_PUSH2_AND_GATE_S = 0.5;
     private static final double DELAY_RESET_GATEUP_S = 0.2;
     private static final double DELAY_PUSHER_HOME_S = 0.2;
+
+    public double getShootPush1Mm() { return SHOOT_PUSH_1_MM; }
+    public double getShootPush2Mm() { return SHOOT_PUSH_2_MM; }
+
+    public long getDelayPush1Ms() { return secondsToMs(DELAY_PUSH1_S); }
+    public long getDelayPush1MidMs() { return secondsToMs(DELAY_PUSH1_MID_S); }
+    public long getDelayPush1EndMs() { return secondsToMs(DELAY_PUSH1_END_S); }
+    public long getDelayGateRotateMs() { return secondsToMs(DELAY_DOWN_LITTLE_S); }
+    public long getDelayResetGateUpMs() { return secondsToMs(DELAY_RESET_GATEUP_S); }
+    public long getDelayRotateBackMs() { return secondsToMs(DELAY_PUSH1_MID_S); }
+    public long getDelayRotateResetMs() { return secondsToMs(DELAY_PUSHER_HOME_S); }
+
+    private long secondsToMs(double seconds) {
+        return (long) (seconds * 1000.0);
+    }
 
     // -----------------------
     // Public entry points you asked for
