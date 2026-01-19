@@ -1,43 +1,36 @@
 package org.firstinspires.ftc.teamcode;
 
-import java.util.ArrayList;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-
 /**
- * Three-ball pattern shooter with a 9-case plan table and generic executor.
- *
- * <p>This class coordinates BasePlate (ramp, poppers, pusher) and Gantry (shooter carriage)
- * to achieve a desired color shoot order from a known 3-ball chamber state.</p>
+ * Three-ball pattern shooter with explicit micro-step sequences for all 9 cases.
  */
 public class ThreeBallPatternShooter {
-    public enum MacroStep {
-        POP_MID,
-        POP_FRONT,
-        PUSH_ONE,
-        ROTATE_LAST,
-        RAPID_TWO_LEFT,
-        RAPID_TWO_FIRST
+    private enum CaseId {
+        GPP_TO_GPP,
+        GPP_TO_PGP,
+        GPP_TO_PPG,
+        PGP_TO_GPP,
+        PGP_TO_PGP,
+        PGP_TO_PPG,
+        PPG_TO_GPP,
+        PPG_TO_PGP,
+        PPG_TO_PPG
     }
 
-    private enum RampMode { BACK, FORWARD }
-    private enum ShooterPos { BACK, MID, FRONT }
+    private final BasePlate basePlate;
+    private final Gantry gantry;
 
-    private enum StepPhase {
-        START,
-        WAIT_POSITION,
-        WAIT_GATE,
-        POPPER_UP_WAIT,
-        POPPER_DOWN_WAIT,
-        RETENSION_WAIT,
-        PUSH_STROKE_WAIT,
-        PUSH_RETURN_WAIT,
-        ROTATE_BACK_WAIT,
-        ROTATE_SHOVE_WAIT,
-        ROTATE_RESET_WAIT,
-        COMPLETE
-    }
+    private CaseId activeCase;
+    private int stepIndex;
+    private boolean stepStarted;
+    private long stepStartMs;
+
+    private int ballsRemaining;
+    private int shotsFired;
+    private char[] desiredShots;
+
+    private long lastReleaseMs;
+    private long lastPushReleaseMs;
+    private Character lastShotColor;
 
     private static final long COLOR_DELAY_MS = 500;
     private static final long PUSH_SPACING_MS = 200;
@@ -47,46 +40,11 @@ public class ThreeBallPatternShooter {
     private static final long POPPER_UP_MS = 120;
     private static final long POPPER_DOWN_MS = 120;
     private static final long SHOT_CLEAR_MS = 120;
-    private static final long PUSH_STROKE_MS = 200;
-    private static final long PUSH_RETURN_MS = 160;
-    private static final long ROTATE_BACK_MS = 160;
-    private static final long ROTATE_SHOVE_MS = 200;
-    private static final long ROTATE_RESET_MS = 160;
     private static final long RETENSION_MS = 150;
-
-    private static final double PUSH_HOME_MM = 0.0;
-    private static final double PUSH_ONE_MM = 60.0;
-    private static final double ROTATE_BACK_MM = 40.0;
-    private static final double ROTATE_SHOVE_MM = 80.0;
 
     private static final double TENSION_BACK_MM = 0.0;
     private static final double RAMP_TRAVEL_MM = 70.0;
     private static final double TENSION_TUNE_OFFSET_MM = 0.0;
-
-    private static final Map<String, Map<String, MacroStep[]>> PLAN_TABLE = buildPlanTable();
-
-    private final BasePlate basePlate;
-    private final Gantry gantry;
-
-    private List<MacroStep> plan;
-    private char[] desiredShots;
-    private int planIndex;
-    private int shotsFired;
-    private int ballsRemaining;
-
-    private MacroStep currentStep;
-    private StepPhase stepPhase;
-    private int rapidStep;
-
-    private RampMode rampMode = RampMode.BACK;
-    private ShooterPos shooterPos = ShooterPos.BACK;
-    private long rampCommandMs = 0;
-    private long shooterCommandMs = 0;
-    private long waitUntilMs = 0;
-
-    private long lastReleaseMs = 0;
-    private long lastPushReleaseMs = 0;
-    private Character lastShotColor = null;
 
     public ThreeBallPatternShooter(BasePlate basePlate, Gantry gantry) {
         this.basePlate = basePlate;
@@ -94,37 +52,35 @@ public class ThreeBallPatternShooter {
     }
 
     public void startShootThree(String currentPattern, String desiredPattern) {
-        if (!isValidPattern(currentPattern) || !isValidPattern(desiredPattern)) {
+        activeCase = resolveCase(currentPattern, desiredPattern);
+        if (activeCase == null) {
             reset();
             return;
         }
-
-        Map<String, MacroStep[]> planRow = PLAN_TABLE.get(currentPattern);
-        if (planRow == null || !planRow.containsKey(desiredPattern)) {
-            reset();
-            return;
-        }
-
-        plan = new ArrayList<>();
-        for (MacroStep step : planRow.get(desiredPattern)) {
-            plan.add(step);
-        }
-
-        desiredShots = desiredPattern.toCharArray();
-        planIndex = 0;
-        shotsFired = 0;
+        stepIndex = 0;
+        stepStarted = false;
         ballsRemaining = 3;
+        shotsFired = 0;
+        desiredShots = desiredPattern.toCharArray();
         lastReleaseMs = 0;
         lastPushReleaseMs = 0;
         lastShotColor = null;
-
-        currentStep = plan.get(0);
-        stepPhase = StepPhase.START;
-        rapidStep = 0;
     }
 
     public boolean isBusy() {
-        return plan != null && planIndex < plan.size();
+        return activeCase != null;
+    }
+
+    public void reset() {
+        activeCase = null;
+        stepIndex = 0;
+        stepStarted = false;
+        ballsRemaining = 0;
+        shotsFired = 0;
+        desiredShots = null;
+        lastReleaseMs = 0;
+        lastPushReleaseMs = 0;
+        lastShotColor = null;
     }
 
     public void update() {
@@ -133,291 +89,1096 @@ public class ThreeBallPatternShooter {
         }
 
         long now = System.currentTimeMillis();
-        switch (currentStep) {
-            case POP_MID:
-                handlePopperStep(true, now);
+        switch (activeCase) {
+            case GPP_TO_GPP:
+                runGppToGpp(now);
                 break;
-
-            case POP_FRONT:
-                handlePopperStep(false, now);
+            case GPP_TO_PGP:
+                runGppToPgp(now);
                 break;
-
-            case PUSH_ONE:
-                handlePushOne(now, true);
+            case GPP_TO_PPG:
+                runGppToPpg(now);
                 break;
-
-            case ROTATE_LAST:
-                handleRotateShot(true, now, true, true);
+            case PGP_TO_GPP:
+                runPgpToGpp(now);
                 break;
-
-            case RAPID_TWO_LEFT:
-                handleRapidTwoLeft(now);
+            case PGP_TO_PGP:
+                runPgpToPgp(now);
                 break;
-
-            case RAPID_TWO_FIRST:
-                handleRapidTwoFirst(now);
+            case PGP_TO_PPG:
+                runPgpToPpg(now);
                 break;
-
+            case PPG_TO_GPP:
+                runPpgToGpp(now);
+                break;
+            case PPG_TO_PGP:
+                runPpgToPgp(now);
+                break;
+            case PPG_TO_PPG:
+                runPpgToPpg(now);
+                break;
             default:
-                advancePlan();
+                reset();
                 break;
         }
     }
 
-    public void reset() {
-        plan = null;
-        desiredShots = null;
-        planIndex = 0;
-        shotsFired = 0;
-        ballsRemaining = 0;
-        currentStep = null;
-        stepPhase = StepPhase.COMPLETE;
-        rapidStep = 0;
-        waitUntilMs = 0;
-        lastReleaseMs = 0;
-        lastPushReleaseMs = 0;
-        lastShotColor = null;
-    }
+    // ---------------- Case logic ----------------
 
-    private void handlePopperStep(boolean midPopper, long now) {
-        if (stepPhase == StepPhase.START) {
-            waitUntilMs = now;
-            setRampMode(RampMode.BACK, now);
-            setShooterPos(midPopper ? ShooterPos.MID : ShooterPos.FRONT, now);
-            stepPhase = StepPhase.WAIT_POSITION;
-        }
-
-        if (stepPhase == StepPhase.WAIT_POSITION && now >= waitUntilMs) {
-            if (!gateRelease(false, now)) {
-                stepPhase = StepPhase.WAIT_GATE;
-                return;
-            }
-            if (midPopper) {
-                basePlate.middlePopperUp();
-            } else {
-                basePlate.frontPopperUp();
-            }
-            waitUntilMs = now + POPPER_UP_MS;
-            stepPhase = StepPhase.POPPER_UP_WAIT;
-        }
-
-        if (stepPhase == StepPhase.WAIT_GATE && now >= waitUntilMs) {
-            stepPhase = StepPhase.WAIT_POSITION;
-            return;
-        }
-
-        if (stepPhase == StepPhase.POPPER_UP_WAIT && now >= waitUntilMs) {
-            recordRelease(false, now);
-            if (midPopper) {
-                basePlate.middlePopperDown();
-            } else {
-                basePlate.frontPopperDown();
-            }
-            waitUntilMs = Math.max(waitUntilMs, now + POPPER_DOWN_MS);
-            stepPhase = StepPhase.POPPER_DOWN_WAIT;
-        }
-
-        if (stepPhase == StepPhase.POPPER_DOWN_WAIT && now >= waitUntilMs) {
-            if (ballsRemaining >= 2) {
-                basePlate.setPusherMm(TENSION_BACK_MM);
-                waitUntilMs = now + RETENSION_MS;
-                stepPhase = StepPhase.RETENSION_WAIT;
-            } else {
-                advancePlan();
-            }
-        }
-
-        if (stepPhase == StepPhase.RETENSION_WAIT && now >= waitUntilMs) {
-            advancePlan();
-        }
-    }
-
-    private boolean handlePushOne(long now, boolean advanceOnComplete) {
-        if (stepPhase == StepPhase.START) {
-            waitUntilMs = now;
-            setRampMode(RampMode.FORWARD, now);
-            setShooterPos(ShooterPos.BACK, now);
-            stepPhase = StepPhase.WAIT_POSITION;
-        }
-
-        if (stepPhase == StepPhase.WAIT_POSITION && now >= waitUntilMs) {
-            if (!gateRelease(true, now)) {
-                stepPhase = StepPhase.WAIT_GATE;
-                return false;
-            }
-            basePlate.setPusherMm(PUSH_ONE_MM);
-            waitUntilMs = now + PUSH_STROKE_MS;
-            stepPhase = StepPhase.PUSH_STROKE_WAIT;
-        }
-
-        if (stepPhase == StepPhase.WAIT_GATE && now >= waitUntilMs) {
-            stepPhase = StepPhase.WAIT_POSITION;
-            return false;
-        }
-
-        if (stepPhase == StepPhase.PUSH_STROKE_WAIT && now >= waitUntilMs) {
-            recordRelease(true, now);
-            basePlate.setPusherMm(PUSH_HOME_MM);
-            waitUntilMs = Math.max(waitUntilMs, now + PUSH_RETURN_MS);
-            stepPhase = StepPhase.PUSH_RETURN_WAIT;
-        }
-
-        if (stepPhase == StepPhase.PUSH_RETURN_WAIT && now >= waitUntilMs) {
-            if (advanceOnComplete) {
-                advancePlan();
-            } else {
-                stepPhase = StepPhase.START;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    private boolean handleRotateShot(boolean rotateBackFirst,
-                                     long now,
-                                     boolean advanceOnComplete,
-                                     boolean resetToHome) {
-        if (stepPhase == StepPhase.START) {
-            waitUntilMs = now;
-            setRampMode(RampMode.FORWARD, now);
-            setShooterPos(ShooterPos.BACK, now);
-            stepPhase = StepPhase.WAIT_POSITION;
-        }
-
-        if (stepPhase == StepPhase.WAIT_POSITION && now >= waitUntilMs) {
-            if (!gateRelease(true, now)) {
-                stepPhase = StepPhase.WAIT_GATE;
-                return false;
-            }
-            if (rotateBackFirst) {
-                basePlate.setPusherMm(ROTATE_BACK_MM);
-                waitUntilMs = now + ROTATE_BACK_MS;
-                stepPhase = StepPhase.ROTATE_BACK_WAIT;
-            } else {
-                basePlate.setPusherMm(ROTATE_SHOVE_MM);
-                waitUntilMs = now + ROTATE_SHOVE_MS;
-                stepPhase = StepPhase.ROTATE_SHOVE_WAIT;
-            }
-        }
-
-        if (stepPhase == StepPhase.WAIT_GATE && now >= waitUntilMs) {
-            stepPhase = StepPhase.WAIT_POSITION;
-            return false;
-        }
-
-        if (stepPhase == StepPhase.ROTATE_BACK_WAIT && now >= waitUntilMs) {
-            basePlate.setPusherMm(ROTATE_SHOVE_MM);
-            waitUntilMs = now + ROTATE_SHOVE_MS;
-            stepPhase = StepPhase.ROTATE_SHOVE_WAIT;
-        }
-
-        if (stepPhase == StepPhase.ROTATE_SHOVE_WAIT && now >= waitUntilMs) {
-            recordRelease(true, now);
-            if (resetToHome) {
-                basePlate.setPusherMm(PUSH_HOME_MM);
-                waitUntilMs = Math.max(waitUntilMs, now + ROTATE_RESET_MS);
-            }
-            stepPhase = StepPhase.ROTATE_RESET_WAIT;
-        }
-
-        if (stepPhase == StepPhase.ROTATE_RESET_WAIT && now >= waitUntilMs) {
-            if (advanceOnComplete) {
-                advancePlan();
-            } else {
-                stepPhase = StepPhase.START;
-            }
-            return true;
-        }
-        return false;
-    }
-
-    private void handleRapidTwoLeft(long now) {
-        if (stepPhase == StepPhase.START && rapidStep == 0) {
-            waitUntilMs = now;
-        }
-
-        if (rapidStep == 0) {
-            if (handlePushOne(now, false)) {
-                rapidStep = 1;
-            }
-            return;
-        }
-
-        if (rapidStep == 1) {
-            if (handleRotateShot(true, now, false, true)) {
-                rapidStep = 0;
-                advancePlan();
-            }
-        }
-    }
-
-    private void handleRapidTwoFirst(long now) {
-        if (stepPhase == StepPhase.START && rapidStep == 0) {
-            waitUntilMs = now;
-        }
-
-        if (rapidStep == 0) {
-            if (handlePushOne(now, false)) {
-                rapidStep = 1;
-            }
-            return;
-        }
-
-        if (rapidStep == 1) {
-            if (handleRotateShot(false, now, false, false)) {
-                rapidStep = 0;
-                advancePlan();
-            }
-        }
-    }
-
-    private void advancePlan() {
-        planIndex++;
-        if (planIndex >= plan.size()) {
-            reset();
-            return;
-        }
-        currentStep = plan.get(planIndex);
-        stepPhase = StepPhase.START;
-        rapidStep = 0;
-    }
-
-    private void setRampMode(RampMode target, long now) {
-        if (rampMode != target) {
-            rampMode = target;
-            if (target == RampMode.BACK) {
-                basePlate.rampBack();
-                basePlate.setPusherMm(TENSION_BACK_MM);
-            } else {
-                basePlate.rampForward();
-                basePlate.setPusherMm(tensionForwardMm());
-            }
-            rampCommandMs = now;
-        }
-        waitUntilMs = Math.max(waitUntilMs, rampCommandMs + RAMP_SETTLE_MS);
-    }
-
-    private void setShooterPos(ShooterPos target, long now) {
-        if (shooterPos != target) {
-            shooterPos = target;
-            switch (target) {
-                case MID:
-                    gantry.moveGantryToPos("middle");
-                    break;
-                case FRONT:
-                    gantry.moveGantryToPos("front");
-                    break;
-                case BACK:
-                default:
+    private void runGppToGpp(long now) {
+        double push1 = basePlate.getShootPush1Mm();
+        double push2 = basePlate.getShootPush2Mm();
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
                     gantry.moveGantryToPos("back");
-                    break;
-            }
-            shooterCommandMs = now;
+                    basePlate.gateRotateBack();
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> basePlate.setPusherMm(push1), basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.setPusherMm(push1);
+                }, basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 10:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 11:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 12:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 13:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 14:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 15:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
         }
-        waitUntilMs = Math.max(waitUntilMs, shooterCommandMs + SHOOTER_SETTLE_MS);
     }
 
-    private boolean gateRelease(boolean pushBased, long now) {
+    private void runGppToPgp(long now) {
+        double push1 = basePlate.getShootPush1Mm();
+        double push2 = basePlate.getShootPush2Mm();
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampBackWithSafeTension();
+                    gantry.moveGantryToPos("middle");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, false)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.middlePopperUp();
+                    recordRelease(false, now);
+                }, POPPER_UP_MS)) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, basePlate::middlePopperDown, POPPER_DOWN_MS)) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (ballsRemaining >= 2) {
+                    if (runTimedStep(now, () -> basePlate.setPusherMm(TENSION_BACK_MM), RETENSION_MS)) {
+                        nextStep();
+                    }
+                } else {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                    basePlate.gateRotateBack();
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> basePlate.setPusherMm(push1), basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 10:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 11:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 12:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 13:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
+        }
+    }
+
+    private void runGppToPpg(long now) {
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampBackWithSafeTension();
+                    gantry.moveGantryToPos("middle");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, false)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.middlePopperUp();
+                    recordRelease(false, now);
+                }, POPPER_UP_MS)) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, basePlate::middlePopperDown, POPPER_DOWN_MS)) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (runTimedStep(now, () -> basePlate.setPusherMm(TENSION_BACK_MM), RETENSION_MS)) {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (!gateRelease(now, false)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.middlePopperUp();
+                    recordRelease(false, now);
+                }, POPPER_UP_MS)) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (runTimedStep(now, basePlate::middlePopperDown, POPPER_DOWN_MS)) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
+        }
+    }
+
+    private void runPgpToGpp(long now) {
+        double push1 = basePlate.getShootPush1Mm();
+        double push2 = basePlate.getShootPush2Mm();
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampBackWithSafeTension();
+                    gantry.moveGantryToPos("middle");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, false)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.middlePopperUp();
+                    recordRelease(false, now);
+                }, POPPER_UP_MS)) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, basePlate::middlePopperDown, POPPER_DOWN_MS)) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (ballsRemaining >= 2) {
+                    if (runTimedStep(now, () -> basePlate.setPusherMm(TENSION_BACK_MM), RETENSION_MS)) {
+                        nextStep();
+                    }
+                } else {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                    basePlate.gateRotateBack();
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> basePlate.setPusherMm(push1), basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 10:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 11:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 12:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 13:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
+        }
+    }
+
+    private void runPgpToPgp(long now) {
+        double push1 = basePlate.getShootPush1Mm();
+        double push2 = basePlate.getShootPush2Mm();
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                    basePlate.gateRotateBack();
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> basePlate.setPusherMm(push1), basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.setPusherMm(push1);
+                }, basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 10:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 11:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 12:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 13:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 14:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 15:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
+        }
+    }
+
+    private void runPgpToPpg(long now) {
+        double push1 = basePlate.getShootPush1Mm();
+        double push2 = basePlate.getShootPush2Mm();
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                    basePlate.gateRotateBack();
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> basePlate.setPusherMm(push1), basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (runTimedStep(now, () -> {
+                    setRampBackWithSafeTension();
+                    gantry.moveGantryToPos("middle");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (!gateRelease(now, false)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.middlePopperUp();
+                    recordRelease(false, now);
+                }, POPPER_UP_MS)) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (runTimedStep(now, basePlate::middlePopperDown, POPPER_DOWN_MS)) {
+                    nextStep();
+                }
+                break;
+            case 10:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 11:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 12:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 13:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
+        }
+    }
+
+    private void runPpgToGpp(long now) {
+        double push1 = basePlate.getShootPush1Mm();
+        double push2 = basePlate.getShootPush2Mm();
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampBackWithSafeTension();
+                    gantry.moveGantryToPos("front");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, false)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.frontPopperUp();
+                    recordRelease(false, now);
+                }, POPPER_UP_MS)) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, basePlate::frontPopperDown, POPPER_DOWN_MS)) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (ballsRemaining >= 2) {
+                    if (runTimedStep(now, () -> basePlate.setPusherMm(TENSION_BACK_MM), RETENSION_MS)) {
+                        nextStep();
+                    }
+                } else {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                    basePlate.gateRotateBack();
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> basePlate.setPusherMm(push1), basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 10:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 11:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 12:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 13:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
+        }
+    }
+
+    private void runPpgToPgp(long now) {
+        double push1 = basePlate.getShootPush1Mm();
+        double push2 = basePlate.getShootPush2Mm();
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                    basePlate.gateRotateBack();
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> basePlate.setPusherMm(push1), basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(0.0);
+                    basePlate.gateUp();
+                }, basePlate.getDelayResetGateUpMs())) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (runTimedStep(now, () -> {
+                    setRampBackWithSafeTension();
+                    gantry.moveGantryToPos("middle");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (!gateRelease(now, false)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.middlePopperUp();
+                    recordRelease(false, now);
+                }, POPPER_UP_MS)) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (runTimedStep(now, basePlate::middlePopperDown, POPPER_DOWN_MS)) {
+                    nextStep();
+                }
+                break;
+            case 10:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 11:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 12:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 13:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
+        }
+    }
+
+    private void runPpgToPpg(long now) {
+        double push1 = basePlate.getShootPush1Mm();
+        double push2 = basePlate.getShootPush2Mm();
+        switch (stepIndex) {
+            case 0:
+                if (runTimedStep(now, () -> {
+                    setRampForwardWithSafeTension();
+                    gantry.moveGantryToPos("back");
+                    basePlate.gateRotateBack();
+                }, Math.max(RAMP_SETTLE_MS, SHOOTER_SETTLE_MS))) {
+                    nextStep();
+                }
+                break;
+            case 1:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> basePlate.setPusherMm(push1), basePlate.getDelayPush1Ms())) {
+                    nextStep();
+                }
+                break;
+            case 2:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2);
+                    basePlate.gateRotateStage2();
+                }, basePlate.getDelayPush1MidMs())) {
+                    nextStep();
+                }
+                break;
+            case 3:
+                if (runTimedStep(now, basePlate::gateRotateStage3, basePlate.getDelayPush1EndMs())) {
+                    nextStep();
+                }
+                break;
+            case 4:
+                if (runTimedStep(now, () -> {
+                    basePlate.setPusherMm(push1 + push2 - 40.0);
+                    basePlate.gateRotateBack();
+                }, basePlate.getDelayGateRotateMs())) {
+                    nextStep();
+                }
+                break;
+            case 5:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 6:
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateBackMs())) {
+                    nextStep();
+                }
+                break;
+            case 7:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 8:
+                if (runTimedStep(now, basePlate::gateRotateBack, basePlate.getDelayRotateResetMs())) {
+                    nextStep();
+                }
+                break;
+            case 9:
+                if (!gateRelease(now, true)) break;
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateShoot();
+                    recordRelease(true, now);
+                }, SHOT_CLEAR_MS)) {
+                    nextStep();
+                }
+                break;
+            case 10:
+                if (runTimedStep(now, () -> {
+                    basePlate.gateRotateBack();
+                    basePlate.gateUp();
+                    basePlate.setPusherMm(0.0);
+                }, basePlate.getDelayRotateResetMs())) {
+                    finishCase();
+                }
+                break;
+            default:
+                reset();
+                break;
+        }
+    }
+
+    // ---------------- Helpers ----------------
+
+    private boolean runTimedStep(long now, Runnable action, long durationMs) {
+        if (!stepStarted) {
+            action.run();
+            stepStarted = true;
+            stepStartMs = now;
+        }
+        if (now - stepStartMs >= durationMs) {
+            stepStarted = false;
+            return true;
+        }
+        return false;
+    }
+
+    private void nextStep() {
+        stepIndex++;
+        stepStarted = false;
+    }
+
+    private void finishCase() {
+        reset();
+    }
+
+    private boolean gateRelease(long now, boolean pushBased) {
         long earliest = now;
         char nextColor = nextShotColor();
         if (lastShotColor != null && nextColor != lastShotColor) {
@@ -426,11 +1187,7 @@ public class ThreeBallPatternShooter {
         if (pushBased) {
             earliest = Math.max(earliest, lastPushReleaseMs + PUSH_SPACING_MS);
         }
-        if (now < earliest) {
-            waitUntilMs = earliest;
-            return false;
-        }
-        return true;
+        return now >= earliest;
     }
 
     private void recordRelease(boolean pushBased, long now) {
@@ -441,7 +1198,6 @@ public class ThreeBallPatternShooter {
         lastShotColor = nextShotColor();
         shotsFired++;
         ballsRemaining = Math.max(0, ballsRemaining - 1);
-        waitUntilMs = Math.max(waitUntilMs, now + SHOT_CLEAR_MS);
     }
 
     private char nextShotColor() {
@@ -451,34 +1207,47 @@ public class ThreeBallPatternShooter {
         return desiredShots[shotsFired];
     }
 
+    private void setRampBackWithSafeTension() {
+        basePlate.rampBack();
+        basePlate.setPusherMm(TENSION_BACK_MM);
+    }
+
+    private void setRampForwardWithSafeTension() {
+        basePlate.rampForward();
+        basePlate.setPusherMm(tensionForwardMm());
+    }
+
     private double tensionForwardMm() {
         return TENSION_BACK_MM - RAMP_TRAVEL_MM + TENSION_TUNE_OFFSET_MM;
     }
 
-    private static boolean isValidPattern(String pattern) {
-        return pattern != null
-                && pattern.length() == 3
-                && (pattern.equals("GPP") || pattern.equals("PGP") || pattern.equals("PPG"));
-    }
-
-    private static Map<String, Map<String, MacroStep[]>> buildPlanTable() {
-        Map<String, Map<String, MacroStep[]>> table = new HashMap<>();
-
-        table.put("GPP", new HashMap<>());
-        table.get("GPP").put("GPP", new MacroStep[]{MacroStep.PUSH_ONE, MacroStep.RAPID_TWO_LEFT});
-        table.get("GPP").put("PGP", new MacroStep[]{MacroStep.POP_MID, MacroStep.PUSH_ONE, MacroStep.ROTATE_LAST});
-        table.get("GPP").put("PPG", new MacroStep[]{MacroStep.POP_MID, MacroStep.POP_MID, MacroStep.ROTATE_LAST});
-
-        table.put("PGP", new HashMap<>());
-        table.get("PGP").put("GPP", new MacroStep[]{MacroStep.POP_MID, MacroStep.RAPID_TWO_LEFT});
-        table.get("PGP").put("PGP", new MacroStep[]{MacroStep.PUSH_ONE, MacroStep.PUSH_ONE, MacroStep.ROTATE_LAST});
-        table.get("PGP").put("PPG", new MacroStep[]{MacroStep.PUSH_ONE, MacroStep.POP_MID, MacroStep.ROTATE_LAST});
-
-        table.put("PPG", new HashMap<>());
-        table.get("PPG").put("GPP", new MacroStep[]{MacroStep.POP_FRONT, MacroStep.RAPID_TWO_LEFT});
-        table.get("PPG").put("PGP", new MacroStep[]{MacroStep.PUSH_ONE, MacroStep.POP_MID, MacroStep.ROTATE_LAST});
-        table.get("PPG").put("PPG", new MacroStep[]{MacroStep.RAPID_TWO_FIRST, MacroStep.ROTATE_LAST});
-
-        return table;
+    private static CaseId resolveCase(String currentPattern, String desiredPattern) {
+        if (currentPattern == null || desiredPattern == null
+                || currentPattern.length() != 3 || desiredPattern.length() != 3) {
+            return null;
+        }
+        String key = currentPattern.toUpperCase() + ":" + desiredPattern.toUpperCase();
+        switch (key) {
+            case "GPP:GPP":
+                return CaseId.GPP_TO_GPP;
+            case "GPP:PGP":
+                return CaseId.GPP_TO_PGP;
+            case "GPP:PPG":
+                return CaseId.GPP_TO_PPG;
+            case "PGP:GPP":
+                return CaseId.PGP_TO_GPP;
+            case "PGP:PGP":
+                return CaseId.PGP_TO_PGP;
+            case "PGP:PPG":
+                return CaseId.PGP_TO_PPG;
+            case "PPG:GPP":
+                return CaseId.PPG_TO_GPP;
+            case "PPG:PGP":
+                return CaseId.PPG_TO_PGP;
+            case "PPG:PPG":
+                return CaseId.PPG_TO_PPG;
+            default:
+                return null;
+        }
     }
 }
