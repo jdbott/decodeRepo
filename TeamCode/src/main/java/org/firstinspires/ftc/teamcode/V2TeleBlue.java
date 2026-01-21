@@ -12,6 +12,12 @@ import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
+import java.util.ArrayList;
+import java.util.Locale;
+/* =========================
+   >>> ADDED IMPORTS END <<<
+   ========================= */
+
 @TeleOp(name = "V2 TELEOP BLUE")
 public class V2TeleBlue extends LinearOpMode {
 
@@ -20,17 +26,11 @@ public class V2TeleBlue extends LinearOpMode {
     private Intake intake;
     private Gantry gantry;
     private BasePlate basePlate;
-    private Shooter shooter;
+    private ShooterV2 shooter;
 
     // Drivetrain
     private DcMotorEx frontLeft, frontRight, backLeft, backRight;
     private IMU imu;
-
-    // Shooter (mechanically linked) (kept for reference; ShooterV2 owns the actual control)
-    @SuppressWarnings("unused")
-    private DcMotorEx shootMotor2;
-    @SuppressWarnings("unused")
-    private DcMotorEx shootMotor1;
 
     // Turret object (kept as a field so we can init once)
     private final Turret turret = new Turret();
@@ -75,6 +75,53 @@ public class V2TeleBlue extends LinearOpMode {
 
     private boolean sharePrev = false;
 
+    /* ============================================
+       >>> ADDED: DISTANCE + FLYWHEEL TUNING START <<<
+       ============================================ */
+
+    // --- Target location (same as turret logic) ---
+    private static final double TARGET_X = 0.0;
+    private static final double TARGET_Y = 148.0;
+
+    // Latest distance (inches) so we can display/log from anywhere.
+    private double lastDistanceToTargetIn = 0.0;
+
+    // Manual tuning RPM (driver-controlled). Start at something reasonable.
+    private double flywheelTuneRPM = 3500.0;
+
+    // Driver edge-detect for tuning controls
+    private boolean gp1DpadUpPrev = false;
+    private boolean gp1DpadDownPrev = false;
+    private boolean gp1SquarePrev = false;
+    private boolean gp1TrianglePrev = false;
+
+    // Logged data points: x = distance (in), y = RPM
+    private final ArrayList<Double> logDist = new ArrayList<>();
+    private final ArrayList<Double> logRPM = new ArrayList<>();
+
+    // Last logged point (for quick feedback)
+    private double lastLoggedDist = Double.NaN;
+    private double lastLoggedRPM = Double.NaN;
+
+    // Polynomial fit storage
+    private int fittedDegree = -1;
+    private double[] fittedCoeffs = null; // a0 + a1*x + a2*x^2 + ...
+
+    // Limits / controls
+    private static final double FLYWHEEL_RPM_STEP = 20.0;
+    private static final double FLYWHEEL_RPM_MIN = 0.0;
+    private static final double FLYWHEEL_RPM_MAX = 6000.0;
+
+    // Degrees to consider when fitting (kept conservative for on-robot compute)
+    private static final int POLY_MAX_DEGREE = 4;
+
+    private double minLoggedDist = Double.NaN;
+    private double maxLoggedDist = Double.NaN;
+
+    /* ==========================================
+       >>> ADDED: DISTANCE + FLYWHEEL TUNING END <<<
+       ========================================== */
+
     @Override
     public void runOpMode() throws InterruptedException {
 
@@ -110,7 +157,7 @@ public class V2TeleBlue extends LinearOpMode {
         gantry = new Gantry(hardwareMap);
         basePlate = new BasePlate(hardwareMap);
 
-        shooter = new Shooter();
+        shooter = new ShooterV2();
         shooter.init(hardwareMap,
                 "shooter2",
                 "shooter1",
@@ -177,11 +224,19 @@ public class V2TeleBlue extends LinearOpMode {
             double robotHeadingDeg = Math.toDegrees(pose.getHeading());
             drive(robotHeadingDeg);
 
+            /* ============================================
+               >>> ADDED: UPDATE DISTANCE + HANDLE TUNING <<<
+               ============================================ */
+            lastDistanceToTargetIn = computeDistanceToTargetInches(pose);
+            handleDriverFlywheelTuningAndPolyFit(); // uses gamepad1
+            /* ==========================================
+               >>> ADDED: UPDATE DISTANCE + HANDLE TUNING END
+               ========================================== */
+
             // -----------------------------
             // Intake toggle + FSM
             // -----------------------------
-
-            if (gamepad2.right_bumper) {
+            if (gamepad2.dpad_up) {
                 intake.intakeOut();
             }
             handleIntakeToggleAndFSM();
@@ -207,16 +262,32 @@ public class V2TeleBlue extends LinearOpMode {
             }
             lbPrev = lbNow;
 
-            if (gamepad2.left_trigger > 0.5) {
-                basePlate.startFullShoot();
-            }
-
             basePlate.update();
 
             telemetry.addData("Pose", follower.getPose().toString());
             telemetry.addData("IntakeState", intakeState);
             telemetry.addData("GateMode", gateToggleAllTheWayUp ? "ALL_UP" : "ONE_POS");
             telemetry.addData("ShootMode", turretShootingActive);
+
+            /* ============================================
+               >>> ADDED: TELEMETRY FOR TUNING + FIT <<<
+               ============================================ */
+            telemetry.addData("DistToTarget(in)", String.format(Locale.US, "%.2f", lastDistanceToTargetIn));
+            telemetry.addData("TuneRPM(gamepad1)", String.format(Locale.US, "%.0f", flywheelTuneRPM));
+            telemetry.addData("LoggedPoints", logDist.size());
+            if (!Double.isNaN(lastLoggedDist)) {
+                telemetry.addData("LastLog", String.format(Locale.US, "d=%.2f, rpm=%.0f", lastLoggedDist, lastLoggedRPM));
+            }
+            if (fittedCoeffs != null) {
+                telemetry.addData("PolyFit", "deg=" + fittedDegree);
+                telemetry.addData("PolyEq", polynomialToString(fittedCoeffs));
+            } else {
+                telemetry.addData("PolyFit", "none");
+            }
+            /* ==========================================
+               >>> ADDED: TELEMETRY FOR TUNING + FIT END
+               ========================================== */
+
             telemetry.update();
         }
     }
@@ -327,10 +398,7 @@ public class V2TeleBlue extends LinearOpMode {
         if (shootToggleBtn && !turretLastShootToggleBtn) {
             turretShootingActive = !turretShootingActive;
 
-            if (turretShootingActive) {
-                // RPM now should be distance-based (from your earlier change)
-                // We'll compute distance below and set RPM there.
-            } else {
+            if (!turretShootingActive) {
                 shooter.stop();
             }
         }
@@ -372,13 +440,21 @@ public class V2TeleBlue extends LinearOpMode {
         // =========================
         boolean manualInput = false;
 
-        if (gamepad2.dpad_left) {
+        if (gamepad2.dpad_left && (gamepad2.left_trigger > 0.5)) {
+            double desired = turret.getTargetAngle() - 10;
+            turret.setAngle(wrapIntoTurretWindow(desired, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG));
+            manualInput = true;
+        } else if (gamepad2.dpad_left) {
             double desired = turret.getTargetAngle() - 1.0;
             turret.setAngle(wrapIntoTurretWindow(desired, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG));
             manualInput = true;
         }
 
-        if (gamepad2.dpad_right) {
+        if (gamepad2.dpad_right && (gamepad2.left_trigger > 0.5)) {
+            double desired = turret.getTargetAngle() + 10;
+            turret.setAngle(wrapIntoTurretWindow(desired, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG));
+            manualInput = true;
+        } else if (gamepad2.dpad_right) {
             double desired = turret.getTargetAngle() + 1.0;
             turret.setAngle(wrapIntoTurretWindow(desired, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG));
             manualInput = true;
@@ -407,20 +483,45 @@ public class V2TeleBlue extends LinearOpMode {
         // Auto aim + shooter RPM
         // =========================
         if (turretShootingActive) {
-            // Flywheel RPM selection by distance (your 3-bucket logic)
-            double rpmCmd = getShooterRPMForDistance(distanceToTarget);
+
+            /* =========================================================
+               >>> ADDED: RPM COMMAND SOURCE (TUNING vs POLY AUTO) <<<
+               ========================================================= */
+
+            // During tuning, we drive the RPM from gamepad1 increments:
+            double rpmCmd = flywheelTuneRPM;
+
+            // When you're ready to enable automatic RPM from your polynomial fit,
+            // uncomment the block below. It uses the fitted polynomial coefficients
+            // (distance in inches -> RPM), and clips to your allowed range.
+
+            /*
+            if (fittedCoeffs != null && !Double.isNaN(minLoggedDist) && !Double.isNaN(maxLoggedDist)) {
+
+                // Clamp distance to the region you actually sampled
+                double dClamped = Range.clip(distanceToTarget, minLoggedDist, maxLoggedDist);
+
+                rpmCmd = evalPolynomial(fittedCoeffs, dClamped);
+                rpmCmd = Range.clip(rpmCmd, FLYWHEEL_RPM_MIN, FLYWHEEL_RPM_MAX);
+            }
+            */
+
+            shooter.setEnabled(true);
             shooter.setTargetRPM(rpmCmd);
-            if (!(gamepad2.right_trigger > 0.5)) {
+
+            /* =======================================================
+               >>> ADDED: RPM COMMAND SOURCE (TUNING vs POLY AUTO) END
+               ======================================================= */
+
+            if ((gamepad2.right_trigger > 0.5)) {
                 turret.setAngle(0);
             }
-                if (!turretManualOverride && !(gamepad2.right_trigger > 0.5)) {
+            if (!turretManualOverride && !(gamepad2.right_trigger > 0.5)) {
                 turret.setAngle(safeCmdDeg);
             }
+
         } else {
             // Not tracking: stop shooter; park turret (unless manual override)
-            // (Shooter stop handled by toggle block, but this keeps it safe if state drifts)
-            // shooterV2.stop();
-
             if (!turretManualOverride) {
                 double park = wrapIntoTurretWindow(135, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG);
                 turret.setAngle(park);
@@ -430,7 +531,7 @@ public class V2TeleBlue extends LinearOpMode {
         turret.update();
 
         // =========================
-        // Telemetry
+        // Telemetry (existing)
         // =========================
         telemetry.addData("DistToTarget", distanceToTarget);
         telemetry.addData("AngleToTargetField", angleToTargetFieldDeg);
@@ -441,7 +542,8 @@ public class V2TeleBlue extends LinearOpMode {
         telemetry.addData("TurretTgtDeg", turret.getTargetAngle());
         telemetry.addData("ManualOverride", turretManualOverride);
         telemetry.addData("Flywheels", turretShootingActive ? "ON" : "OFF");
-        telemetry.addData("ShooterRPM", shooter.getMasterRPM());
+        telemetry.addData("ShooterRPM", shooter.getVelocityRPM());
+        telemetry.addData("TargetRPM", shooter.getTargetRPM());
     }
 
     /**
@@ -505,7 +607,6 @@ public class V2TeleBlue extends LinearOpMode {
     // IMPORTANT: adjust these 3 methods to match your BasePlate API.
     // =========================================================
     private void gateAllTheWayUp() {
-        // Change if your BasePlate method name differs
         basePlate.gateUp();
     }
 
@@ -514,9 +615,238 @@ public class V2TeleBlue extends LinearOpMode {
     }
 
     private void gateDown() {
-        // IMPORTANT: this is probably NOT correct in your current codebase.
-        // Replace with your true "gate down/closed" method when you confirm it.
-        // For now it matches what you had, but you should fix it.
         basePlate.gateHoldBall1();
     }
+
+    /* ============================================================
+       >>> ADDED: DISTANCE + TUNING + POLY FIT IMPLEMENTATION START <<<
+       ============================================================ */
+
+    private double computeDistanceToTargetInches(Pose pose) {
+        double dx = TARGET_X - pose.getX();
+        double dy = TARGET_Y - pose.getY();
+        return Math.hypot(dx, dy);
+    }
+
+    /**
+     * gamepad1 controls:
+     * - dpad_up/down: adjust flywheelTuneRPM by 20
+     * - square: log point (distance, RPM)
+     * - triangle: fit polynomial, choose best degree, print equation
+     */
+    private void handleDriverFlywheelTuningAndPolyFit() {
+        // --- Adjust RPM by 20 using dpad up/down (edge-triggered) ---
+        boolean upNow = gamepad1.dpad_up;
+        if (upNow && !gp1DpadUpPrev) {
+            flywheelTuneRPM = Range.clip(flywheelTuneRPM + FLYWHEEL_RPM_STEP, FLYWHEEL_RPM_MIN, FLYWHEEL_RPM_MAX);
+            gamepad1.rumble(80);
+        }
+        gp1DpadUpPrev = upNow;
+
+        boolean downNow = gamepad1.dpad_down;
+        if (downNow && !gp1DpadDownPrev) {
+            flywheelTuneRPM = Range.clip(flywheelTuneRPM - FLYWHEEL_RPM_STEP, FLYWHEEL_RPM_MIN, FLYWHEEL_RPM_MAX);
+            gamepad1.rumble(80);
+        }
+        gp1DpadDownPrev = downNow;
+
+        // --- Log a data point (distance, RPM) ---
+        boolean squareNow = gamepad1.square;
+        if (squareNow && !gp1SquarePrev) {
+            logDist.add(lastDistanceToTargetIn);
+            logRPM.add(flywheelTuneRPM);
+            lastLoggedDist = lastDistanceToTargetIn;
+            lastLoggedRPM = flywheelTuneRPM;
+            if (Double.isNaN(minLoggedDist) || lastDistanceToTargetIn < minLoggedDist)
+                minLoggedDist = lastDistanceToTargetIn;
+            if (Double.isNaN(maxLoggedDist) || lastDistanceToTargetIn > maxLoggedDist)
+                maxLoggedDist = lastDistanceToTargetIn;
+            gamepad1.rumble(200);
+        }
+        gp1SquarePrev = squareNow;
+
+        // --- Fit polynomial and output equation ---
+        boolean triNow = gamepad1.triangle;
+        if (triNow && !gp1TrianglePrev) {
+            if (logDist.size() >= 2) {
+                FitResult fit = fitBestPolynomialAIC(logDist, logRPM, POLY_MAX_DEGREE);
+                fittedDegree = fit.degree;
+                fittedCoeffs = fit.coeffs;
+                gamepad1.rumble(400);
+            } else {
+                // Not enough points to fit anything meaningful
+                fittedDegree = -1;
+                fittedCoeffs = null;
+                gamepad1.rumble(120);
+            }
+        }
+        gp1TrianglePrev = triNow;
+    }
+
+    // ---------- Polynomial fit utilities ----------
+
+    private static class FitResult {
+        int degree;
+        double[] coeffs;
+        double aic;
+        double sse;
+
+        FitResult(int degree, double[] coeffs, double aic, double sse) {
+            this.degree = degree;
+            this.coeffs = coeffs;
+            this.aic = aic;
+            this.sse = sse;
+        }
+    }
+
+    /**
+     * Chooses best polynomial degree via AIC over degrees 1..min(maxDeg, n-1).
+     * - Fits y = a0 + a1 x + ... + ad x^d by least squares (normal equations).
+     * - Uses AIC = n*ln(SSE/n) + 2k, k = (d+1) parameters.
+     */
+    private FitResult fitBestPolynomialAIC(ArrayList<Double> x, ArrayList<Double> y, int maxDeg) {
+        int n = x.size();
+        int upper = Math.min(maxDeg, n - 1);
+        FitResult best = null;
+
+        for (int deg = 1; deg <= upper; deg++) {
+            double[] coeffs = leastSquaresPolyFit(x, y, deg);
+            if (coeffs == null) continue;
+
+            double sse = 0.0;
+            for (int i = 0; i < n; i++) {
+                double yi = evalPolynomial(coeffs, x.get(i));
+                double err = (y.get(i) - yi);
+                sse += err * err;
+            }
+
+            // Avoid log(0) if perfect fit (rare); clamp to tiny.
+            double ssePer = Math.max(sse / n, 1e-9);
+            int k = deg + 1;
+            double aic = n * Math.log(ssePer) + 2.0 * k;
+
+            FitResult r = new FitResult(deg, coeffs, aic, sse);
+            if (best == null || r.aic < best.aic) best = r;
+        }
+
+        return best;
+    }
+
+    /**
+     * Least squares polynomial fit using normal equations:
+     * (A^T A) c = (A^T y), where A[i,j] = x_i^j.
+     * Solves with Gaussian elimination with partial pivoting.
+     */
+    private double[] leastSquaresPolyFit(ArrayList<Double> x, ArrayList<Double> y, int degree) {
+        int n = x.size();
+        int m = degree + 1;
+
+        double[][] ata = new double[m][m];
+        double[] aty = new double[m];
+
+        // Build normal equations
+        for (int i = 0; i < n; i++) {
+            double xi = x.get(i);
+            double yi = y.get(i);
+
+            // Powers of xi up to 2*degree for ata accumulation
+            double[] pow = new double[2 * degree + 1];
+            pow[0] = 1.0;
+            for (int p = 1; p < pow.length; p++) pow[p] = pow[p - 1] * xi;
+
+            for (int row = 0; row < m; row++) {
+                for (int col = 0; col < m; col++) {
+                    ata[row][col] += pow[row + col];
+                }
+                aty[row] += yi * pow[row];
+            }
+        }
+
+        return solveLinearSystem(ata, aty);
+    }
+
+    /**
+     * Solves Mx = b using Gaussian elimination w/ partial pivoting.
+     * Returns null if singular/ill-conditioned.
+     */
+    private double[] solveLinearSystem(double[][] M, double[] b) {
+        int n = b.length;
+
+        // Augment matrix
+        double[][] A = new double[n][n + 1];
+        for (int r = 0; r < n; r++) {
+            System.arraycopy(M[r], 0, A[r], 0, n);
+            A[r][n] = b[r];
+        }
+
+        for (int p = 0; p < n; p++) {
+            // Pivot
+            int maxRow = p;
+            double maxVal = Math.abs(A[p][p]);
+            for (int r = p + 1; r < n; r++) {
+                double v = Math.abs(A[r][p]);
+                if (v > maxVal) {
+                    maxVal = v;
+                    maxRow = r;
+                }
+            }
+
+            // Singular?
+            if (maxVal < 1e-10) return null;
+
+            // Swap
+            if (maxRow != p) {
+                double[] tmp = A[p];
+                A[p] = A[maxRow];
+                A[maxRow] = tmp;
+            }
+
+            // Normalize pivot row
+            double pivot = A[p][p];
+            for (int c = p; c < n + 1; c++) A[p][c] /= pivot;
+
+            // Eliminate
+            for (int r = 0; r < n; r++) {
+                if (r == p) continue;
+                double factor = A[r][p];
+                for (int c = p; c < n + 1; c++) {
+                    A[r][c] -= factor * A[p][c];
+                }
+            }
+        }
+
+        double[] x = new double[n];
+        for (int i = 0; i < n; i++) x[i] = A[i][n];
+        return x;
+    }
+
+    private double evalPolynomial(double[] coeffs, double x) {
+        // Horner's method
+        double y = 0.0;
+        for (int i = coeffs.length - 1; i >= 0; i--) {
+            y = y * x + coeffs[i];
+        }
+        return y;
+    }
+
+    private String polynomialToString(double[] coeffs) {
+        // y = a0 + a1 x + a2 x^2 + ...
+        StringBuilder sb = new StringBuilder("rpm = ");
+        for (int i = 0; i < coeffs.length; i++) {
+            double a = coeffs[i];
+            if (i == 0) {
+                sb.append(String.format(Locale.US, "%.6f", a));
+            } else {
+                sb.append(a >= 0 ? " + " : " - ");
+                sb.append(String.format(Locale.US, "%.6f", Math.abs(a)));
+                sb.append("*d");
+                if (i >= 2) sb.append("^").append(i);
+            }
+        }
+        return sb.toString();
+    }
+
+    /* ==========================================================
+       >>> ADDED: DISTANCE + TUNING + POLY FIT IMPLEMENTATION END <<<
+       ========================================================== */
 }

@@ -78,6 +78,10 @@ public class BasePlate {
         pusher.setPosition(cmd);
     }
 
+    public double getLastPusherMmCmd() {
+        return lastPusherMmCmd;
+    }
+
     // -----------------------
     // Gate positions
     // -----------------------
@@ -133,6 +137,60 @@ public class BasePlate {
     private static final double DELAY_RESET_GATEUP_S = 0.2;
     private static final double DELAY_PUSHER_HOME_S = 0.2;
 
+    // ============================================================
+    // Inter-shot spacing (AUTO-only feature; TeleOp leaves at 0)
+    // ============================================================
+
+    // Extra required delay between shot 1->2 and shot 2->3
+    private double extraDelay12S = 0.0;
+    private double extraDelay23S = 0.0;
+
+    // Timer that measures time since the last "shot event"
+    private final ElapsedTime interShotTimer = new ElapsedTime();
+
+    // Which spacing we are waiting for next: 0=none, 1=waiting before shot2, 2=waiting before shot3
+    private int nextSpacingIndex = 0;
+
+    /** Set explicit extra delays (seconds) between shot1->shot2 and shot2->shot3. */
+    public void setInterShotExtraDelays(double delay12S, double delay23S) {
+        this.extraDelay12S = Math.max(0.0, delay12S);
+        this.extraDelay23S = Math.max(0.0, delay23S);
+    }
+
+    /**
+     * Convenience: compute extra delays based on ball colors.
+     * If color changes between i and i+1, apply delayColorChangeS; otherwise 0.
+     */
+    public void setInterShotDelaysFromColors(char c1, char c2, char c3, double delayColorChangeS) {
+        double d = Math.max(0.0, delayColorChangeS);
+        this.extraDelay12S = (c1 == c2) ? 0.0 : d;
+        this.extraDelay23S = (c2 == c3) ? 0.0 : d;
+    }
+
+    /** Returns the active required delay for the next boundary we're about to enforce. */
+    private double getRequiredExtraDelayForNextBoundary() {
+        if (nextSpacingIndex == 1) return extraDelay12S;
+        if (nextSpacingIndex == 2) return extraDelay23S;
+        return 0.0;
+    }
+
+    /** Call when a shot happens so we start timing spacing until the next shot. */
+    private void markShotFired() {
+        interShotTimer.reset();
+    }
+
+    /** True if we've satisfied the extra spacing requirement for the next boundary. */
+    private boolean spacingSatisfied() {
+        double req = getRequiredExtraDelayForNextBoundary();
+        return interShotTimer.seconds() >= req;
+    }
+
+    // Small settle time after meeting spacing (optional but nice)
+    private static final double HOLD_SETTLE_S = 0.0;
+
+    // -----------------------
+    // Existing getters (unchanged signatures)
+    // -----------------------
     public double getShootPush1Mm() { return SHOOT_PUSH_1_MM; }
     public double getShootPush2Mm() { return SHOOT_PUSH_2_MM; }
 
@@ -149,48 +207,61 @@ public class BasePlate {
     }
 
     // -----------------------
-    // Public entry points you asked for
+    // Public entry points (unchanged names)
     // -----------------------
 
-    // 1) PREP ONLY: ramp forward + gate hold ball2, then stop.
-    //    No pusher movement.
+    // 1) PREP ONLY: ramp forward + gate hold ball2, then stop. No pusher movement.
     public void prepShootOnly() {
         if (shootState != ShootState.IDLE) return;
 
         rampForward();
         gateHoldBall2();
+
+        // spacing bookkeeping
+        nextSpacingIndex = 0;
+
         shootTimer.reset();
         shootState = ShootState.PREPPED;
     }
 
     // 2) From PREP: immediately move pusher to SHOOT_PUSH_1_MM, then run the rest.
-    //    (This skips the earlier ramp-forward wait + down-little wait.)
     public void startShootFromPrep() {
         if (shootState != ShootState.PREPPED) return;
 
         setPusherMm(SHOOT_PUSH_1_MM);
+
+        // Shot 1 begins now
+        markShotFired();
+        nextSpacingIndex = 1; // next boundary is "before shot 2"
+
         shootTimer.reset();
         shootState = ShootState.PUSH_1_WAIT;
     }
 
     // 3) Start at PUSH_1_WAIT directly (late start).
-    //    Assumes you already have ramp forward + gate positions where you want them,
-    //    and (typically) pusher already at SHOOT_PUSH_1_MM.
     public void startShootFromPush1Wait() {
         if (shootState != ShootState.IDLE && shootState != ShootState.PREPPED) return;
 
         rampForward();
         gateHoldBall2();
+
+        // conservative: treat as shot 1 starting now
+        markShotFired();
+        nextSpacingIndex = 1;
+
         shootTimer.reset();
         shootState = ShootState.PUSH_1_WAIT;
     }
 
-    // Optional convenience: do the original “one-call full sequence” start.
+    // Optional convenience: original “one-call full sequence” start.
     public void startFullShoot() {
         if (shootState != ShootState.IDLE) return;
 
         rampForward();
         gateHoldBall1();
+
+        nextSpacingIndex = 0;
+
         shootTimer.reset();
         shootState = ShootState.RAMP_FORWARD_WAIT;
     }
@@ -203,12 +274,36 @@ public class BasePlate {
         return shootState == ShootState.PREPPED;
     }
 
+    public ShootState getShootState() {
+        return shootState;
+    }
+
+    /** True when FSM is currently being held by inter-shot spacing logic. */
+    public boolean isHoldingForInterShotSpacing() {
+        if (nextSpacingIndex == 1) {
+            // Holding happens right before we command gateHoldBall4 (shot #2 moment),
+            // which is inside PUSH_1_WAIT_MID.
+            return shootState == ShootState.PUSH_1_WAIT_MID && !spacingSatisfied();
+        }
+        if (nextSpacingIndex == 2) {
+            // Holding happens right before we command gateBackFullShoot (shot #3 moment),
+            // which is inside TEST.
+            return shootState == ShootState.TEST && !spacingSatisfied();
+        }
+        return false;
+    }
+
     public void cancelShootAndReset() {
         shootState = ShootState.IDLE;
 
         rampBack();
         gateUp();
         setPusherMm(0.0);
+
+        // reset spacing bookkeeping (safe default for tests)
+        nextSpacingIndex = 0;
+        extraDelay12S = 0.0;
+        extraDelay23S = 0.0;
     }
 
     // Call every loop
@@ -231,6 +326,11 @@ public class BasePlate {
             case DOWN_LITTLE_WAIT:
                 if (shootTimer.seconds() >= DELAY_DOWN_LITTLE_S) {
                     setPusherMm(SHOOT_PUSH_1_MM);
+
+                    // Shot 1 begins now (full-start path)
+                    markShotFired();
+                    nextSpacingIndex = 1;
+
                     shootTimer.reset();
                     shootState = ShootState.PUSH_1_WAIT;
                 }
@@ -247,7 +347,25 @@ public class BasePlate {
 
             case PUSH_1_WAIT_MID:
                 if (shootTimer.seconds() >= DELAY_PUSH1_MID_S) {
+
+                    // BEFORE shot #2 moment: enforce extra spacing from shot #1.
+                    if (!spacingSatisfied()) {
+                        // Hold here until satisfied; don't reset timers.
+                        break;
+                    }
+
+                    if (HOLD_SETTLE_S > 0.0 && interShotTimer.seconds() < getRequiredExtraDelayForNextBoundary() + HOLD_SETTLE_S) {
+                        // optional extra settle; uses same timer without changing state
+                        break;
+                    }
+
+                    // Shot #2 moment
                     gateHoldBall4();
+
+                    // Now measure spacing until shot 3
+                    markShotFired();
+                    nextSpacingIndex = 2;
+
                     shootTimer.reset();
                     shootState = ShootState.PUSH_1_WAIT_END;
                 }
@@ -264,7 +382,23 @@ public class BasePlate {
 
             case TEST:
                 if (shootTimer.seconds() >= 0.2) {
+
+                    // BEFORE shot #3 moment: enforce extra spacing from shot #2.
+                    if (!spacingSatisfied()) {
+                        break;
+                    }
+
+                    if (HOLD_SETTLE_S > 0.0 && interShotTimer.seconds() < getRequiredExtraDelayForNextBoundary() + HOLD_SETTLE_S) {
+                        break;
+                    }
+
+                    // Shot #3 moment
                     gateBackFullShoot();
+
+                    // No further spacing
+                    markShotFired();
+                    nextSpacingIndex = 0;
+
                     shootTimer.reset();
                     shootState = ShootState.PUSH_2_AND_GATE_WAIT;
                 }

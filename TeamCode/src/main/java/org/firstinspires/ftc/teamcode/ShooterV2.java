@@ -181,8 +181,8 @@ public class ShooterV2 {
 
     /** Velocity source (matches your opmode: shootMotor2.getVelocity()). */
     public double getVelocityTPS() {
-        if (shootMotor2 == null) return 0.0;
-        return shootMotor2.getVelocity();
+        if (shootMotor1 == null) return 0.0;
+        return shootMotor1.getVelocity();
     }
 
     public double getVelocityRPM() {
