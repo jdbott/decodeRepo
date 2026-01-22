@@ -4,7 +4,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
 public class Gantry {
-    private static final double FRONT_POS = 0.1;
+    private static final double FRONT_POS = 0.05;
     private static final double MIDDLE_POS = 0.36;
     private static final double BACK_POS = 0.83;
 

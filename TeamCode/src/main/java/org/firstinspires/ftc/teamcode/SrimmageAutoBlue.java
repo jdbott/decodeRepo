@@ -92,7 +92,6 @@ public class SrimmageAutoBlue extends OpMode {
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
         turret.setKP(0.008);
         turret.setKF(0.003);
-        turret.setLimits(-210, 90);
         turret.setAngle(0);
 
         gateServo = hardwareMap.get(Servo.class, "gateServo");

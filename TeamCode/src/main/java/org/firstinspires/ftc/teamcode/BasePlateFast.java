@@ -4,7 +4,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
-public class BasePlate {
+public class BasePlateFast {
     private static final double POPPER_DOWN = 0.07;
     private static final double POPPER_UP = 0.35;
     private static final double RAMP_BACK = 0.07;
@@ -17,7 +17,7 @@ public class BasePlate {
     private final Servo pusher;
     private final Servo gate;
 
-    public BasePlate(HardwareMap hardwareMap) {
+    public BasePlateFast(HardwareMap hardwareMap) {
         popperFront = hardwareMap.get(Servo.class, "popperFront");
         popperMiddle = hardwareMap.get(Servo.class, "popperMiddle");
         ramp = hardwareMap.get(Servo.class, "ramp");
@@ -126,12 +126,12 @@ public class BasePlate {
 
     // Tunables
     private static final double SHOOT_PUSH_1_MM = 60;
-    private static final double SHOOT_PUSH_2_MM = 20;
+    private static final double SHOOT_PUSH_2_MM = 30;
 
     private static final double DELAY_RAMP_FORWARD_S = 0.5;
     private static final double DELAY_DOWN_LITTLE_S = 0.2;
-    private static final double DELAY_PUSH1_S = 0.2;
-    private static final double DELAY_PUSH1_MID_S = 0.2;
+    private static final double DELAY_PUSH1_S = 0.1;
+    private static final double DELAY_PUSH1_MID_S = 0.0;
     private static final double DELAY_PUSH1_END_S = 0.5;
     private static final double DELAY_PUSH2_AND_GATE_S = 0.5;
     private static final double DELAY_RESET_GATEUP_S = 0.2;
@@ -378,7 +378,7 @@ public class BasePlate {
                     }
 
                     // Shot #2 moment
-                    gateHoldBall4();
+                    gateBackFullShoot();
 
                     // Now measure spacing until shot 3
                     markShotFired();

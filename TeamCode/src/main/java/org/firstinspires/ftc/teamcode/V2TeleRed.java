@@ -142,7 +142,6 @@ public class V2TeleRed extends LinearOpMode {
         // Turret init
         // -----------------------------
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
-        turret.setLimits(-160, 200);
         turret.update();
 
         telemetry.addLine("Initialized. Press START to begin.");

@@ -17,7 +17,7 @@ public class Turret {
     private double kP = 0.01;
     private double kF = 0.003; // feedforward gain (adjust in test)
     private double minPower = 0.05;
-    private double maxAngle = 200;
+    private double maxAngle = 160;
     private double minAngle = -160;
 
     // State variables
@@ -32,14 +32,14 @@ public class Turret {
         turretMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
         turretMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
         turretMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
-        setLimits(minAngle, maxAngle);
+        minAngle = minAngle; maxAngle = maxAngle;
     }
 
     // ===== Public Configuration =====
     public void setKP(double newKP) { kP = newKP; }
     public void setKF(double newKF) { kF = newKF; }
     public void setMinPower(double minPwr) { minPower = Math.abs(minPwr); }
-    public void setLimits(double minDeg, double maxDeg) { minAngle = minDeg; maxAngle = maxDeg; }
+    //public void setLimits(double minDeg, double maxDeg) { minAngle = minDeg; maxAngle = maxDeg; }
 
     // Feedforward setter
     public void setFeedforward(double angularVelDegPerSec) {

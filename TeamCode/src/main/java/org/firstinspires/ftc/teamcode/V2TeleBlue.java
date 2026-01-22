@@ -25,7 +25,7 @@ public class V2TeleBlue extends LinearOpMode {
     private Follower follower;
     private Intake intake;
     private Gantry gantry;
-    private BasePlate basePlate;
+    private BasePlateFast basePlate;
     private ShooterV2 shooter;
 
     // Drivetrain
@@ -87,7 +87,7 @@ public class V2TeleBlue extends LinearOpMode {
     private double lastDistanceToTargetIn = 0.0;
 
     // Manual tuning RPM (driver-controlled). Start at something reasonable.
-    private double flywheelTuneRPM = 3500.0;
+    private double flywheelTuneRPM = 2950;
 
     // Driver edge-detect for tuning controls
     private boolean gp1DpadUpPrev = false;
@@ -155,7 +155,7 @@ public class V2TeleBlue extends LinearOpMode {
         // Subsystems
         intake = new Intake(hardwareMap);
         gantry = new Gantry(hardwareMap);
-        basePlate = new BasePlate(hardwareMap);
+        basePlate = new BasePlateFast(hardwareMap);
 
         shooter = new ShooterV2();
         shooter.init(hardwareMap,
@@ -189,7 +189,6 @@ public class V2TeleBlue extends LinearOpMode {
         // Turret init
         // -----------------------------
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
-        turret.setLimits(-160, 200);
         turret.update();
 
         telemetry.addLine("Initialized. Press START to begin.");

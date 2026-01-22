@@ -98,7 +98,6 @@ public class IntakeTestFC extends LinearOpMode {
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
         turret.setKP(kP);
         turret.setKF(ff);
-        turret.setLimits(-180, 180);
 
         imu = hardwareMap.get(IMU.class, "imu");
         imu.initialize(new IMU.Parameters(

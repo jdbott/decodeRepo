@@ -140,7 +140,6 @@ public class ScrimTeleRed extends LinearOpMode {
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
         turret.setKP(kP);
         turret.setKF(ff);
-        turret.setLimits(-205, 90);
 
         imu = hardwareMap.get(IMU.class, "imu");
         imu.initialize(new IMU.Parameters(

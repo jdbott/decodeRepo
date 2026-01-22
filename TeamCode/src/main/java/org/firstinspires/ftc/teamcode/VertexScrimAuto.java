@@ -136,7 +136,6 @@ public class VertexScrimAuto extends OpMode {
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
         turret.setKP(0.008);
         turret.setKF(0.003);
-        turret.setLimits(-210, 90);
         turret.setAngle(FieldTransform.turretAngle(0, alliance));
 
         gateServo = hardwareMap.get(Servo.class, "gateServo");

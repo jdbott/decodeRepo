@@ -21,7 +21,6 @@ public class TurretTest extends LinearOpMode {
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
         turret.setKP(0.01);
         turret.setKF(0.003);
-        turret.setLimits(-160, 200);
 
         telemetry.addLine("Turret + IMU Initialized");
         telemetry.update();
