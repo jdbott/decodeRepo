@@ -87,7 +87,7 @@ public class V2TeleBlue extends LinearOpMode {
     private double lastDistanceToTargetIn = 0.0;
 
     // Manual tuning RPM (driver-controlled). Start at something reasonable.
-    private double flywheelTuneRPM = 2950;
+    private double flywheelTuneRPM = 3100;
 
     // Driver edge-detect for tuning controls
     private boolean gp1DpadUpPrev = false;
