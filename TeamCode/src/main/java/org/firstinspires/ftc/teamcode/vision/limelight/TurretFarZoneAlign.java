@@ -15,7 +15,7 @@ import com.qualcomm.robotcore.hardware.IMU;
 
 import org.firstinspires.ftc.robotcore.external.navigation.Pose3D;
 import org.firstinspires.ftc.robotcore.external.navigation.YawPitchRollAngles;
-import org.firstinspires.ftc.teamcode.Turret;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 
 public class TurretFarZoneAlign {
     private Limelight3A limelight;
