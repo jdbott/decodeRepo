@@ -2,300 +2,670 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.hardware.DcMotor;
 
-@TeleOp(name="TEST InterShot Spacing (Selectable FSM)", group="TEST")
+@TeleOp(name="TEST Sort Harness (Current->Desired, Prep+Execute)", group="TEST")
 public class TestSorting extends LinearOpMode {
 
+    // ============================================================
+    // Adjustable variables (tune here)
+    // ============================================================
+
+    // --- Shooter motor spin (optional for testing) ---
+    private static final double SHOOTER_POWER = -0.50; // negative for your config
+
+    // --- Inter-shot spacing for COLOR changes (applies ONLY inside BasePlate rapid-fire) ---
+    // This is the "total spacing between shot events" target; BasePlate counts time spent on motions too.
+    private static final double COLOR_CHANGE_DELAY_S = 1.00;
+
+    // --- Gantry move timing assumptions (used as timed waits inside prep/execute) ---
+    // Make these conservative at first; you can shorten after testing.
+    private static final double GANTRY_BACK_TO_FRONT_S  = 0.90;
+    private static final double GANTRY_BACK_TO_MIDDLE_S = 0.45; // about half of back->front
+    private static final double GANTRY_ANY_SETTLE_S      = 0.10; // extra settle time after a move
+
+    // --- Popper timing (up/down holds) ---
+    private static final double POPPER_UP_HOLD_S     = 0.35; // how long to hold popper "up"
+    private static final double POPPER_DOWN_SETTLE_S = 0.25; // settle after popper goes down
+
+    // --- FSM "ball2 rapid fire" staging waits ---
+    // After staging gantry back + ramp forward + pusher/gate staged, wait before starting BasePlate
+    private static final double ALLOW_GANTRY_BACK_BEFORE_FIRE_S = 0.50;
+
+    // --- Case B specific: "retension" pusher move ---
+    // After first middle-pop, move pusher to retension remaining balls.
+    // This should be a position that pulls balls into consistent seating.
+    private static final double RETENSION_PUSHER_MM = 127.0;
+    private static final double RETENSION_HOLD_S    = 0.25;
+
+    // --- End-of-case reset behavior ---
+    private static final boolean RESET_SHOOTER_MOTOR_AT_END = false;
+
+    // ============================================================
+    // Subsystems
+    // ============================================================
     private BasePlate basePlate;
     private Gantry gantry;
 
-    // ============================================================
-    // Selectable MODE (FSM1 = your existing test, FSM2 = new sequence)
-    // ============================================================
-    private enum Mode { FSM1, FSM2 }
-    private Mode mode = Mode.FSM2;
+    private DcMotor shooterMotor;
 
     // ============================================================
-    // Ball order (used for FSM1; and for FSM2 we only care about shots 2->3)
+    // Patterns (always 2P + 1G)
+    // back->front (inside robot): [shot1, shot2, shot3]
     // ============================================================
-    // 'P' = purple, 'G' = green
-    private final char[] order = new char[]{'P','P','G'};
+    private enum Pattern {
+        GPP(new char[]{'G','P','P'}),
+        PGP(new char[]{'P','G','P'}),
+        PPG(new char[]{'P','P','G'});
 
-    // Delay applied ONLY when a color changes between consecutive shots (FSM1)
-    private static final double COLOR_CHANGE_DELAY_S = 2.0;
+        final char[] backToFront;
+        Pattern(char[] b2f) { this.backToFront = b2f; }
 
-    // ============================================================
-    // FSM2 tunables (all in seconds)
-    // ============================================================
-    private static final double FSM2_DELAY_BEFORE_FRONT_POPPER_UP_S = 0.9;  // after gate-down+ramp-back+gantry-front start
-    private static final double FSM2_FRONT_POPPER_UP_HOLD_S         = 0.35;  // how long to keep it "up"
-    private static final double FSM2_FRONT_POPPER_DOWN_SETTLE_S     = 0.25;  // allow time to come down / settle
-    private static final double FSM2_DELAY_ALLOW_GANTRY_BACK_S      = 0.5;  // after commanding gantry back + ramp forward + pusher/gate staging
-
-    // ============================================================
-    // FSM1 states (your existing flow)
-    // ============================================================
-    private enum StateFSM1 {
-        INIT,
-        PREP,
-        START_SHOOT,
-        RUN,
-        DONE
+        @Override public String toString() {
+            return "" + backToFront[0] + backToFront[1] + backToFront[2];
+        }
     }
-    private StateFSM1 state1 = StateFSM1.INIT;
+
+    // User-selectable during init
+    private Pattern currentPattern = Pattern.GPP;  // balls currently inside robot (back->front)
+    private Pattern desiredPattern = Pattern.GPP;  // desired out order (shot1->shot3)
 
     // ============================================================
-    // FSM2 states (new flow)
+    // Strategy buckets (your 4 “unique actions”)
     // ============================================================
-    private enum StateFSM2 {
-        INIT,
+    private enum Strategy {
+        // Case A: current == desired -> normal rapid fire (3 shots) with BasePlate spacing
+        A_NORMAL_RAPID_FIRE,
 
-        // Step 1: gate down (hold), ramp BACK, gantry FRONT (all at once)
-        STEP1_COMMAND_CONCURRENT,
-        STEP1_WAIT_BEFORE_POPPER,
+        // Case B: middle pop, retension, middle pop, then shoot LAST ball only (via BasePlate)
+        // Applies to:
+        //   current=GPP desired=PPG
+        //   current=PPG desired=PGP
+        B_MIDDLE_POP_RETENSION_MIDDLE_POP_THEN_LAST,
 
-        // Step 2: front popper UP then DOWN with configurable timings
-        POPPER_UP,
-        POPPER_UP_WAIT,
-        POPPER_DOWN,
-        POPPER_DOWN_WAIT,
+        // Case C: go FRONT, front pop, then BasePlate from ball2 for remaining 2
+        // Applies to:
+        //   current=PPG desired=GPP
+        //   current=PGP desired=PPG
+        C_FRONT_POP_THEN_BALL2_RAPID,
 
-        // Step 3: ramp FORWARD, gantry BACK, stage gate+pusher to "about to fire ball 2" (all at once)
-        STEP3_STAGE_BEFORE_SHOT2,
-        STEP3_WAIT_ALLOW_GANTRY_BACK,
+        // Case D: go MIDDLE, middle pop, then BasePlate from ball2 for remaining 2
+        // Applies to:
+        //   current=PGP desired=GPP
+        //   current=GPP desired=PGP
+        D_MIDDLE_POP_THEN_BALL2_RAPID,
 
-        // Step 4: start BasePlate FSM beginning at ball 2, then run until complete
-        START_BASEPLATE_FROM_BALL2,
-        RUN_BASEPLATE,
-        DONE
+        INVALID
     }
-    private StateFSM2 state2 = StateFSM2.INIT;
 
-    private final ElapsedTime fsm2Timer = new ElapsedTime();
+    // ============================================================
+    // Harness FSM (high-level)
+    // ============================================================
+    private enum HarnessState {
+        INIT_HOLDING,    // just after start: set safe holding state
+        IDLE,            // waiting for LB (prepare)
+        PREPARING,       // running prepare sequence for selected case
+        ARMED,           // prepared; waiting for RB (execute)
+        EXECUTING,       // executing selected case
+        RESETTING        // end-of-case reset
+    }
+    private HarnessState harnessState = HarnessState.INIT_HOLDING;
 
+    // Sub-state for preparing and executing (keeps logic clean)
+    private int step = 0;
+    private double stepStartTimeS = 0.0;
+
+    // Edge-detect buttons so you don’t retrigger while holding
+    private boolean prevLB = false;
+    private boolean prevRB = false;
+    private boolean prevDpadUp = false, prevDpadDown = false, prevDpadLeft = false, prevDpadRight = false;
+
+    // ============================================================
+    // Main
+    // ============================================================
     @Override
     public void runOpMode() {
-
         basePlate = new BasePlate(hardwareMap);
         gantry = new Gantry(hardwareMap);
 
-        // Shooter motor spin (as in your test)
-        DcMotor motor = hardwareMap.get(DcMotorEx.class, "shooter1");
-        motor.setPower(-0.5);
+        shooterMotor = hardwareMap.get(DcMotorEx.class, "shooter1");
+        shooterMotor.setPower(0);
 
-        // ============================================================
-        // Mode select loop (before start)
-        //   X -> FSM1
-        //   Y -> FSM2
-        // ============================================================
+        // ----------------------------
+        // INIT LOOP: choose patterns
+        // ----------------------------
         while (!isStarted() && !isStopRequested()) {
-            if (gamepad1.x) mode = Mode.FSM1;
-            if (gamepad1.y) mode = Mode.FSM2;
 
-            telemetry.addLine("Select mode:");
-            telemetry.addLine("  X = FSM1 (inter-shot spacing test)");
-            telemetry.addLine("  Y = FSM2 (front-pop + reposition + start from ball 2)");
-            telemetry.addData("mode", mode);
+            // D-pad controls:
+            //   Left/Right = cycle CURRENT pattern
+            //   Up/Down    = cycle DESIRED pattern
+            boolean du = gamepad1.dpad_up;
+            boolean dd = gamepad1.dpad_down;
+            boolean dl = gamepad1.dpad_left;
+            boolean dr = gamepad1.dpad_right;
 
-            telemetry.addData("order", "" + order[0] + order[1] + order[2]);
-            telemetry.addData("colorChangeDelayS (FSM1)", COLOR_CHANGE_DELAY_S);
+            if (dl && !prevDpadLeft)  currentPattern = prevPattern(currentPattern);
+            if (dr && !prevDpadRight) currentPattern = nextPattern(currentPattern);
 
+            if (du && !prevDpadUp)    desiredPattern = prevPattern(desiredPattern);
+            if (dd && !prevDpadDown)  desiredPattern = nextPattern(desiredPattern);
+
+            prevDpadUp = du; prevDpadDown = dd; prevDpadLeft = dl; prevDpadRight = dr;
+
+            // Force safe hold during init (as you requested)
+            basePlate.rampBack();
+            basePlate.gateHoldBall1(); // “first hold” position to keep balls from moving
+            basePlate.frontPopperDown();
+            basePlate.middlePopperDown();
+            gantry.moveGantryToPos("back");
+
+            Strategy strat = resolveStrategy(currentPattern, desiredPattern);
+
+            telemetry.addLine("=== Sort Harness Init ===");
+            telemetry.addLine("D-pad LEFT/RIGHT: CURRENT (back->front)");
+            telemetry.addLine("D-pad UP/DOWN:    DESIRED (shot1->shot3)");
+            telemetry.addData("CURRENT", currentPattern.toString());
+            telemetry.addData("DESIRED", desiredPattern.toString());
+            telemetry.addData("Strategy", strat);
             telemetry.addLine();
-            telemetry.addLine("FSM2 tunables:");
-            telemetry.addData("delayBeforePopperUpS", FSM2_DELAY_BEFORE_FRONT_POPPER_UP_S);
-            telemetry.addData("popperUpHoldS", FSM2_FRONT_POPPER_UP_HOLD_S);
-            telemetry.addData("popperDownSettleS", FSM2_FRONT_POPPER_DOWN_SETTLE_S);
-            telemetry.addData("delayAllowGantryBackS", FSM2_DELAY_ALLOW_GANTRY_BACK_S);
 
+            telemetry.addData("COLOR_CHANGE_DELAY_S", COLOR_CHANGE_DELAY_S);
+            telemetry.addLine("After Start:");
+            telemetry.addLine("  LB = PREPARE (stage gantry/ramp/gate)");
+            telemetry.addLine("  RB = EXECUTE (run shots)");
+            telemetry.addLine();
+
+            telemetry.addLine("Init enforcement (always): rampBack + gateHoldBall1");
             telemetry.update();
+
             idle();
         }
 
         waitForStart();
         if (isStopRequested()) return;
 
-        // Optional: put things in a predictable starting state right after start
-        // (safe defaults; adjust if you prefer)
-        basePlate.frontPopperDown();
-        basePlate.middlePopperDown();
+        // Start shooter motor (optional)
+        shooterMotor.setPower(SHOOTER_POWER);
 
+        // Immediately put in safe holding state at start as well (you requested)
+        basePlate.cancelShootAndReset();
+        basePlate.rampBack();
+        basePlate.gateHoldBall1();
+        gantry.moveGantryToPos("back");
+
+        harnessState = HarnessState.IDLE;
+
+        // ----------------------------
+        // MAIN LOOP
+        // ----------------------------
         while (opModeIsActive()) {
 
-            // Always update BasePlate FSM so it can run when commanded
+            // Always update BasePlate FSM so it can run once we start it
             basePlate.update();
 
-            if (mode == Mode.FSM1) {
-                runFSM1();
-            } else {
-                runFSM2();
+            // Button edges
+            boolean lb = gamepad1.left_bumper;
+            boolean rb = gamepad1.right_bumper;
+            boolean lbPressed = lb && !prevLB;
+            boolean rbPressed = rb && !prevRB;
+            prevLB = lb;
+            prevRB = rb;
+
+            Strategy strat = resolveStrategy(currentPattern, desiredPattern);
+
+            switch (harnessState) {
+
+                case IDLE: {
+                    if (lbPressed) {
+                        // Begin PREPARE
+                        step = 0;
+                        stepStartTimeS = getRuntime();
+                        harnessState = HarnessState.PREPARING;
+                    }
+                    break;
+                }
+
+                case PREPARING: {
+                    if (runPrepare(strat)) {
+                        harnessState = HarnessState.ARMED;
+                    }
+                    break;
+                }
+
+                case ARMED: {
+                    if (rbPressed) {
+                        // Begin EXECUTE
+                        step = 0;
+                        stepStartTimeS = getRuntime();
+                        harnessState = HarnessState.EXECUTING;
+                    }
+                    break;
+                }
+
+                case EXECUTING: {
+                    if (runExecute(strat)) {
+                        // Begin RESET
+                        step = 0;
+                        stepStartTimeS = getRuntime();
+                        harnessState = HarnessState.RESETTING;
+                    }
+                    break;
+                }
+
+                case RESETTING: {
+                    if (runReset()) {
+                        harnessState = HarnessState.IDLE;
+                    }
+                    break;
+                }
+
+                default:
+                    harnessState = HarnessState.IDLE;
+                    break;
             }
 
-            telemetry.addData("mode", mode);
-            telemetry.addData("order", "" + order[0] + order[1] + order[2]);
+            // ----------------------------
+            // Telemetry
+            // ----------------------------
+            telemetry.addLine("=== Sort Harness Runtime ===");
+            telemetry.addData("CURRENT (back->front)", currentPattern.toString());
+            telemetry.addData("DESIRED (shot1->shot3)", desiredPattern.toString());
+            telemetry.addData("Strategy", strat);
+            telemetry.addData("HarnessState", harnessState);
+            telemetry.addData("step", step);
 
-            telemetry.addData("baseplateBusy", basePlate.isShootBusy());
-            telemetry.addData("shootState", String.valueOf(basePlate.getShootState()));
-            telemetry.addData("holdingForSpacing", basePlate.isHoldingForInterShotSpacing());
-            telemetry.addData("pusherMmCmd", basePlate.getLastPusherMmCmd());
-
-            if (mode == Mode.FSM1) telemetry.addData("fsm1State", state1);
-            if (mode == Mode.FSM2) telemetry.addData("fsm2State", state2);
+            telemetry.addLine();
+            telemetry.addData("BasePlateState", basePlate.getShootState());
+            telemetry.addData("BasePlateBusy", basePlate.isShootBusy());
+            telemetry.addData("HoldingForSpacing", basePlate.isHoldingForInterShotSpacing());
+            telemetry.addData("LastPusherMmCmd", basePlate.getLastPusherMmCmd());
 
             telemetry.update();
         }
     }
 
     // ============================================================
-    // FSM1 (your existing test, unchanged behavior)
+    // Prepare phase: stage gantry/ramp/gate for the chosen case
+    // LB triggers this; it runs until complete, then ARMED.
     // ============================================================
-    private void runFSM1() {
-        switch (state1) {
-            case INIT: {
-                basePlate.setInterShotDelaysFromColors(order[0], order[1], order[2], COLOR_CHANGE_DELAY_S);
-                state1 = StateFSM1.PREP;
+    private boolean runPrepare(Strategy strat) {
+
+        switch (strat) {
+
+            case A_NORMAL_RAPID_FIRE: {
+                // Prepare for a full 3-shot BasePlate rapid fire.
+                // We want ramp forward and gate staged (prepShootOnly).
+                if (step == 0) {
+                    basePlate.cancelShootAndReset();
+                    basePlate.rampBack();
+                    basePlate.gateHoldBall1();
+                    gantry.moveGantryToPos("back"); // “gantry stays”; choose back as default
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 1) {
+                    // Stage rapid-fire “prep”
+                    basePlate.prepShootOnly(); // rampForward + gateHoldBall2, then PREPPED
+                    return true;
+                }
                 break;
             }
 
-            case PREP: {
-                basePlate.prepShootOnly();
-                gantry.moveGantryToPos("back");
-                state1 = StateFSM1.START_SHOOT;
+            case B_MIDDLE_POP_RETENSION_MIDDLE_POP_THEN_LAST: {
+                // Prepare: gantry to middle, ramp back, gate holding (so balls don’t drift)
+                if (step == 0) {
+                    basePlate.cancelShootAndReset();
+                    basePlate.rampBack();
+                    basePlate.gateHoldBall1();
+                    gantry.moveGantryToPos("middle");
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 1) {
+                    if (elapsed(stepStartTimeS) >= (GANTRY_BACK_TO_MIDDLE_S + GANTRY_ANY_SETTLE_S)) {
+                        // Hold balls like you requested (gate down holding)
+                        basePlate.gateHoldBall2(); // “hold like rapid fire” style
+                        basePlate.rampBack();
+                        return true;
+                    }
+                }
                 break;
             }
 
-            case START_SHOOT: {
-                basePlate.startShootFromPrep();
-                state1 = StateFSM1.RUN;
+            case C_FRONT_POP_THEN_BALL2_RAPID: {
+                // Prepare: gantry to front; ramp back; gate holding
+                if (step == 0) {
+                    basePlate.cancelShootAndReset();
+                    basePlate.rampBack();
+                    basePlate.gateHoldBall1();
+                    gantry.moveGantryToPos("front");
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 1) {
+                    if (elapsed(stepStartTimeS) >= (GANTRY_BACK_TO_FRONT_S + GANTRY_ANY_SETTLE_S)) {
+                        basePlate.gateHoldBall2();
+                        basePlate.rampBack();
+                        return true;
+                    }
+                }
                 break;
             }
 
-            case RUN: {
-                if (!basePlate.isShootBusy()) state1 = StateFSM1.DONE;
+            case D_MIDDLE_POP_THEN_BALL2_RAPID: {
+                // Prepare: gantry to middle; ramp back; gate holding
+                if (step == 0) {
+                    basePlate.cancelShootAndReset();
+                    basePlate.rampBack();
+                    basePlate.gateHoldBall1();
+                    gantry.moveGantryToPos("middle");
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 1) {
+                    if (elapsed(stepStartTimeS) >= (GANTRY_BACK_TO_MIDDLE_S + GANTRY_ANY_SETTLE_S)) {
+                        basePlate.gateHoldBall2();
+                        basePlate.rampBack();
+                        return true;
+                    }
+                }
                 break;
             }
 
-            case DONE:
             default:
-                // idle
-                break;
+                // Invalid mapping; do nothing
+                return true;
         }
+
+        return false;
     }
 
     // ============================================================
-    // FSM2 (new sequence you described)
+    // Execute phase: run the actual action sequence for the case
+    // RB triggers this; it runs until complete, then RESETTING.
     // ============================================================
-    private void runFSM2() {
-        switch (state2) {
+    private boolean runExecute(Strategy strat) {
 
-            case INIT: {
-                // Reset + prepare. We do NOT call prepShootOnly because you explicitly want ramp BACK first.
-                // Put gantry somewhere deterministic if you want; not required.
-                state2 = StateFSM2.STEP1_COMMAND_CONCURRENT;
-                break;
-            }
+        // Desired order (shot1->shot3) as chars
+        char[] desired = desiredPattern.backToFront;
 
-            case STEP1_COMMAND_CONCURRENT: {
-                // "Gate down to hold balls (like rapid fire), but ramp BACK instead of forward"
-                basePlate.gateHoldBall2();
-                basePlate.rampBack();
+        switch (strat) {
 
-                // Concurrent: gantry to FRONT
-                gantry.moveGantryToPos("front");
-
-                fsm2Timer.reset();
-                state2 = StateFSM2.STEP1_WAIT_BEFORE_POPPER;
-                break;
-            }
-
-            case STEP1_WAIT_BEFORE_POPPER: {
-                if (fsm2Timer.seconds() >= FSM2_DELAY_BEFORE_FRONT_POPPER_UP_S) {
-                    state2 = StateFSM2.POPPER_UP;
+            case A_NORMAL_RAPID_FIRE: {
+                // Configure inter-shot delays from desired colors (shot1->shot2 and shot2->shot3)
+                if (step == 0) {
+                    basePlate.setInterShotDelaysFromColors(desired[0], desired[1], desired[2], COLOR_CHANGE_DELAY_S);
+                    step++;
+                }
+                else if (step == 1) {
+                    // Kick off BasePlate from PREPPED
+                    basePlate.startShootFromPrep();
+                    step++;
+                }
+                else if (step == 2) {
+                    // Wait until BasePlate finishes
+                    if (!basePlate.isShootBusy()) return true;
                 }
                 break;
             }
 
-            case POPPER_UP: {
-                basePlate.frontPopperUp();
-                fsm2Timer.reset();
-                state2 = StateFSM2.POPPER_UP_WAIT;
-                break;
-            }
-
-            case POPPER_UP_WAIT: {
-                if (fsm2Timer.seconds() >= FSM2_FRONT_POPPER_UP_HOLD_S) {
-                    state2 = StateFSM2.POPPER_DOWN;
-                }
-                break;
-            }
-
-            case POPPER_DOWN: {
-                basePlate.frontPopperDown();
-                fsm2Timer.reset();
-                state2 = StateFSM2.POPPER_DOWN_WAIT;
-                break;
-            }
-
-            case POPPER_DOWN_WAIT: {
-                if (fsm2Timer.seconds() >= FSM2_FRONT_POPPER_DOWN_SETTLE_S) {
-                    state2 = StateFSM2.STEP3_STAGE_BEFORE_SHOT2;
-                }
-                break;
-            }
-
-            case STEP3_STAGE_BEFORE_SHOT2: {
-                // "Once popper back down, back ramp forward, gantry back,
-                //  and gate+pusher to the point where about to fire the second ball" all concurrently.
-
-                basePlate.rampForward();
-                gantry.moveGantryToPos("back");
-
-                // Stage to *right before shot #2 moment* (i.e., at entry to PUSH_1_WAIT_MID):
-                // pusher at push1+push2, gate at holdBall3.
-                double stageMm = basePlate.getShootPush1Mm() + basePlate.getShootPush2Mm();
-                basePlate.setPusherMm(stageMm);
-                basePlate.gateHoldBall3();
-
-                fsm2Timer.reset();
-                state2 = StateFSM2.STEP3_WAIT_ALLOW_GANTRY_BACK;
-                break;
-            }
-
-            case STEP3_WAIT_ALLOW_GANTRY_BACK: {
-                // "After a delay has passed (e.g., 1s) to allow gantry to go all the way back"
-                if (fsm2Timer.seconds() >= FSM2_DELAY_ALLOW_GANTRY_BACK_S) {
-                    state2 = StateFSM2.START_BASEPLATE_FROM_BALL2;
-                }
-                break;
-            }
-
-            case START_BASEPLATE_FROM_BALL2: {
-                // Key point:
-                // We want to start the BasePlate FSM effectively at "before shot 2", then let it rapid-fire shot2+shot3.
+            case C_FRONT_POP_THEN_BALL2_RAPID: {
+                // Front popper fires the first ball, then BasePlate starts at ball2 to fire remaining two.
                 //
-                // We MUST ensure the shot1->shot2 spacing doesn’t hold us (since we’re starting at ball2).
-                // So we set delay12=0, and set delay23 based on colors between ball2 and ball3.
-                basePlate.setInterShotExtraDelays(0.0, 0);
+                // Color spacing is only enforced within BasePlate for shots 2->3 (i.e., desired[1] vs desired[2]).
+                if (step == 0) {
+                    // Ensure gate/ramp are in your “hold” staging
+                    basePlate.gateHoldBall2();
+                    basePlate.rampBack();
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 1) {
+                    // Front popper UP
+                    basePlate.frontPopperUp();
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 2) {
+                    if (elapsed(stepStartTimeS) >= POPPER_UP_HOLD_S) {
+                        basePlate.frontPopperDown();
+                        stepStartTimeS = getRuntime();
+                        step++;
+                    }
+                }
+                else if (step == 3) {
+                    if (elapsed(stepStartTimeS) >= POPPER_DOWN_SETTLE_S) {
+                        // Stage for “before shot2”: ramp forward, gantry back, pusher staged, gate staged
+                        basePlate.rampForward();
+                        gantry.moveGantryToPos("back");
 
-                // Start from the internal "before shot2" point.
-                // This method is NEW and must be added to BasePlate (see code below).
-                basePlate.startShootFromBeforeShot2();
+                        double stageMm = basePlate.getShootPush1Mm() + basePlate.getShootPush2Mm();
+                        basePlate.setPusherMm(stageMm);
+                        basePlate.gateHoldBall3();
 
-                state2 = StateFSM2.RUN_BASEPLATE;
+                        stepStartTimeS = getRuntime();
+                        step++;
+                    }
+                }
+                else if (step == 4) {
+                    if (elapsed(stepStartTimeS) >= ALLOW_GANTRY_BACK_BEFORE_FIRE_S) {
+                        // Configure only shot2->shot3 spacing based on desired colors
+                        double d23 = (desired[1] == desired[2]) ? 0.0 : COLOR_CHANGE_DELAY_S;
+                        basePlate.setInterShotExtraDelays(0.0, d23);
+
+                        basePlate.startShootFromBeforeShot2();
+                        step++;
+                    }
+                }
+                else if (step == 5) {
+                    if (!basePlate.isShootBusy()) return true;
+                }
                 break;
             }
 
-            case RUN_BASEPLATE: {
-                if (!basePlate.isShootBusy()) state2 = StateFSM2.DONE;
+            case D_MIDDLE_POP_THEN_BALL2_RAPID: {
+                // Middle popper fires first ball, then BasePlate from ball2 for remaining two.
+                if (step == 0) {
+                    basePlate.gateHoldBall2();
+                    basePlate.rampBack();
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 1) {
+                    // Middle popper UP
+                    basePlate.middlePopperUp();
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 2) {
+                    if (elapsed(stepStartTimeS) >= POPPER_UP_HOLD_S) {
+                        basePlate.middlePopperDown();
+                        stepStartTimeS = getRuntime();
+                        step++;
+                    }
+                }
+                else if (step == 3) {
+                    if (elapsed(stepStartTimeS) >= POPPER_DOWN_SETTLE_S) {
+                        // Stage for “before shot2”
+                        basePlate.rampForward();
+                        gantry.moveGantryToPos("back");
+
+                        double stageMm = basePlate.getShootPush1Mm() + basePlate.getShootPush2Mm();
+                        basePlate.setPusherMm(stageMm);
+                        basePlate.gateHoldBall3();
+
+                        stepStartTimeS = getRuntime();
+                        step++;
+                    }
+                }
+                else if (step == 4) {
+                    if (elapsed(stepStartTimeS) >= ALLOW_GANTRY_BACK_BEFORE_FIRE_S) {
+                        double d23 = (desired[1] == desired[2]) ? 0.0 : COLOR_CHANGE_DELAY_S;
+                        basePlate.setInterShotExtraDelays(0.0, d23);
+
+                        basePlate.startShootFromBeforeShot2();
+                        step++;
+                    }
+                }
+                else if (step == 5) {
+                    if (!basePlate.isShootBusy()) return true;
+                }
                 break;
             }
 
-            case DONE:
+            case B_MIDDLE_POP_RETENSION_MIDDLE_POP_THEN_LAST: {
+                // Two middle pops (with retension between), then “shoot last ball only”.
+                // You said we can ignore color spacing here for now because this sequence is slow enough.
+                if (step == 0) {
+                    basePlate.gateHoldBall2();
+                    basePlate.rampBack();
+                    step++;
+                }
+                else if (step == 1) {
+                    // Middle pop #1
+                    basePlate.middlePopperUp();
+                    stepStartTimeS = getRuntime();
+                    step++;
+                }
+                else if (step == 2) {
+                    if (elapsed(stepStartTimeS) >= POPPER_UP_HOLD_S) {
+                        basePlate.middlePopperDown();
+                        stepStartTimeS = getRuntime();
+                        step++;
+                    }
+                }
+                else if (step == 3) {
+                    if (elapsed(stepStartTimeS) >= POPPER_DOWN_SETTLE_S) {
+                        // Retension: move pusher back by RETENSION_PUSHER_MM
+                        basePlate.setPusherMm(RETENSION_PUSHER_MM);
+                        stepStartTimeS = getRuntime();
+                        step++;
+                    }
+                }
+                else if (step == 4) {
+                    if (elapsed(stepStartTimeS) >= RETENSION_HOLD_S) {
+                        // Middle pop #2
+                        basePlate.middlePopperUp();
+                        stepStartTimeS = getRuntime();
+                        step++;
+                    }
+                }
+                else if (step == 5) {
+                    if (elapsed(stepStartTimeS) >= POPPER_UP_HOLD_S) {
+                        basePlate.middlePopperDown();
+                        stepStartTimeS = getRuntime();
+                        step++;
+                    }
+                }
+                else if (step == 6) {
+                    if (elapsed(stepStartTimeS) >= POPPER_DOWN_SETTLE_S) {
+                        // Now shoot last ball only.
+                        // Stage conditions for BasePlate last-ball-only entry:
+                        // - ramp forward (ready to shoot)
+                        // - gate staged for the last ball (we choose gateHoldBall2 as the “ready” hold)
+                        // - pusher staged where your last-ball behavior expects (BasePlate handles internal timing)
+                        basePlate.rampForward();
+                        basePlate.gateHoldBall2();
+                        basePlate.setPusherMm(RETENSION_PUSHER_MM - 20);
+                        gantry.moveGantryToPos("back");
+
+                        // Use the new BasePlate entry that fires only the final ball then performs reset.
+                        basePlate.startLastBallOnlyFromStaged();
+
+                        step++;
+                    }
+                }
+                else if (step == 7) {
+                    if (!basePlate.isShootBusy()) return true;
+                }
+                break;
+            }
+
             default:
-                // idle
-                break;
+                return true;
         }
+
+        return false;
+    }
+
+    // ============================================================
+    // Reset phase: return everything to a known baseline
+    // ============================================================
+    private boolean runReset() {
+        if (step == 0) {
+            // Stop any BasePlate FSM and put hardware in baseline
+            basePlate.cancelShootAndReset();
+
+            // Your desired reset positions:
+            basePlate.rampBack();
+            basePlate.gateUp();
+            basePlate.setPusherMm(0.0);
+            gantry.moveGantryToPos("back");
+
+            if (RESET_SHOOTER_MOTOR_AT_END && shooterMotor != null) {
+                shooterMotor.setPower(0.0);
+            }
+
+            stepStartTimeS = getRuntime();
+            step++;
+        }
+        else if (step == 1) {
+            // Give a moment to settle
+            if (elapsed(stepStartTimeS) >= 0.20) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // ============================================================
+    // Strategy resolver (the “4 cases cover all 9” mapping)
+    // ============================================================
+    private Strategy resolveStrategy(Pattern current, Pattern desired) {
+
+        // Case A: current == desired
+        if (current == desired) return Strategy.A_NORMAL_RAPID_FIRE;
+
+        // Case B:
+        //   current=GPP -> desired=PPG
+        //   current=PPG -> desired=PGP
+        if (current == Pattern.GPP && desired == Pattern.PPG) return Strategy.B_MIDDLE_POP_RETENSION_MIDDLE_POP_THEN_LAST;
+        if (current == Pattern.PPG && desired == Pattern.PGP) return Strategy.B_MIDDLE_POP_RETENSION_MIDDLE_POP_THEN_LAST;
+
+        // Case C (front pop then ball2 rapid):
+        //   current=PPG -> desired=GPP
+        //   current=PGP -> desired=PPG
+        if (current == Pattern.PPG && desired == Pattern.GPP) return Strategy.C_FRONT_POP_THEN_BALL2_RAPID;
+        if (current == Pattern.PGP && desired == Pattern.PPG) return Strategy.C_FRONT_POP_THEN_BALL2_RAPID;
+
+        // Case D (middle pop then ball2 rapid):
+        //   current=PGP -> desired=GPP
+        //   current=GPP -> desired=PGP
+        if (current == Pattern.PGP && desired == Pattern.GPP) return Strategy.D_MIDDLE_POP_THEN_BALL2_RAPID;
+        if (current == Pattern.GPP && desired == Pattern.PGP) return Strategy.D_MIDDLE_POP_THEN_BALL2_RAPID;
+
+        return Strategy.INVALID;
+    }
+
+    // ============================================================
+    // Helpers
+    // ============================================================
+    private Pattern nextPattern(Pattern p) {
+        Pattern[] vals = Pattern.values();
+        int i = p.ordinal() + 1;
+        if (i >= 3) i = 0; // only first 3 are real patterns; enum has exactly 3
+        return vals[i];
+    }
+
+    private Pattern prevPattern(Pattern p) {
+        Pattern[] vals = Pattern.values();
+        int i = p.ordinal() - 1;
+        if (i < 0) i = 2;
+        return vals[i];
+    }
+
+    private double elapsed(double startS) {
+        return getRuntime() - startS;
     }
 }

@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 public class BasePlateFast {
-    private static final double POPPER_DOWN = 0.07;
+    private static final double POPPER_DOWN = 0.076;
     private static final double POPPER_UP = 0.35;
     private static final double RAMP_BACK = 0.07;
     private static final double RAMP_FORWARD = 0.615;

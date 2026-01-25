@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 public class BasePlate {
-    private static final double POPPER_DOWN = 0.07;
+    private static final double POPPER_DOWN = 0.076;
     private static final double POPPER_UP = 0.35;
     private static final double RAMP_BACK = 0.07;
     private static final double RAMP_FORWARD = 0.615;
@@ -117,8 +117,8 @@ public class BasePlate {
         PUSH_2_AND_GATE_WAIT,
         RESET_RAMP_BACK_GATE_UP_WAIT,
         PUSHER_HOME_WAIT,
-
-        TEST
+        TEST,
+        LAST_BALL_ONLY_FIRE_WAIT
     }
 
     private ShootState shootState = ShootState.IDLE;
@@ -264,6 +264,26 @@ public class BasePlate {
 
         shootTimer.reset();
         shootState = ShootState.RAMP_FORWARD_WAIT;
+    }
+
+    /**
+     * Fires ONLY the final ball (shot #3 equivalent), then performs the normal reset
+     * sequence (ramp back, gate up, pusher home).
+     *
+     * Assumes caller has already staged:
+     *   - rampForward()
+     *   - gate in a "ready" hold (we typically use gateHoldBall2())
+     *
+     * This intentionally does NOT enforce color spacing for now.
+     */
+    public void startLastBallOnlyFromStaged() {
+        if (shootState != ShootState.IDLE && shootState != ShootState.PREPPED) return;
+
+        // Ensure we are not using inter-shot spacing (single-shot mode)
+        nextSpacingIndex = 0;
+
+        shootTimer.reset();
+        shootState = ShootState.LAST_BALL_ONLY_FIRE_WAIT;
     }
 
     public boolean isShootBusy() {
@@ -442,6 +462,18 @@ public class BasePlate {
             case PUSHER_HOME_WAIT:
                 if (shootTimer.seconds() >= DELAY_PUSHER_HOME_S) {
                     shootState = ShootState.IDLE;
+                }
+                break;
+
+            case LAST_BALL_ONLY_FIRE_WAIT:
+                // Small delay to ensure staging settled before firing
+                if (shootTimer.seconds() >= 0.20) {
+                    // Fire the last ball (same actuation as your shot #3 moment)
+                    gateBackFullShoot();
+
+                    // Proceed into the normal post-fire reset sequence
+                    shootTimer.reset();
+                    shootState = ShootState.PUSH_2_AND_GATE_WAIT;
                 }
                 break;
 
