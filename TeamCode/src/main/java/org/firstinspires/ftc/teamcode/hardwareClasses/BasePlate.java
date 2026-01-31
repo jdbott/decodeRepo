@@ -124,6 +124,27 @@ public class BasePlate {
     private ShootState shootState = ShootState.IDLE;
     private final ElapsedTime shootTimer = new ElapsedTime();
 
+    // ===========================
+// Early-finish latch (NEW)
+// ===========================
+    private boolean earlyDoneFiring = false;
+    private final ElapsedTime earlyDoneTimer = new ElapsedTime();
+
+    private void clearEarlyDone() {
+        earlyDoneFiring = false;
+        earlyDoneTimer.reset();
+    }
+
+    private void markEarlyDoneFiring() {
+        earlyDoneFiring = true;
+        earlyDoneTimer.reset();
+    }
+
+    /** True once the LAST ball has been fired + small settle time has elapsed. */
+    public boolean isDoneFiringEarly(double settleSeconds) {
+        return earlyDoneFiring && earlyDoneTimer.seconds() >= settleSeconds;
+    }
+
     // Tunables
     private static final double SHOOT_PUSH_1_MM = 60;
     private static final double SHOOT_PUSH_2_MM = 20;
@@ -132,7 +153,7 @@ public class BasePlate {
     private static final double DELAY_DOWN_LITTLE_S = 0.2;
     private static final double DELAY_PUSH1_S = 0.2;
     private static final double DELAY_PUSH1_MID_S = 0.2;
-    private static final double DELAY_PUSH1_END_S = 0.5;
+    private static final double DELAY_PUSH1_END_S = 0.25;
     private static final double DELAY_PUSH2_AND_GATE_S = 0.5;
     private static final double DELAY_RESET_GATEUP_S = 0.2;
     private static final double DELAY_PUSHER_HOME_S = 0.2;
@@ -216,6 +237,7 @@ public class BasePlate {
 
         rampForward();
         gateHoldBall2();
+        clearEarlyDone();
 
         // spacing bookkeeping
         nextSpacingIndex = 0;
@@ -227,6 +249,8 @@ public class BasePlate {
     // 2) From PREP: immediately move pusher to SHOOT_PUSH_1_MM, then run the rest.
     public void startShootFromPrep() {
         if (shootState != ShootState.PREPPED) return;
+
+        clearEarlyDone(); // NEW
 
         setPusherMm(SHOOT_PUSH_1_MM);
 
@@ -242,6 +266,8 @@ public class BasePlate {
     public void startShootFromPush1Wait() {
         if (shootState != ShootState.IDLE && shootState != ShootState.PREPPED) return;
 
+        clearEarlyDone(); // NEW
+
         rampForward();
         gateHoldBall2();
 
@@ -256,6 +282,8 @@ public class BasePlate {
     // Optional convenience: original “one-call full sequence” start.
     public void startFullShoot() {
         if (shootState != ShootState.IDLE) return;
+
+        clearEarlyDone(); // NEW
 
         rampForward();
         gateHoldBall1();
@@ -278,6 +306,8 @@ public class BasePlate {
      */
     public void startLastBallOnlyFromStaged() {
         if (shootState != ShootState.IDLE && shootState != ShootState.PREPPED) return;
+
+        clearEarlyDone(); // NEW
 
         // Ensure we are not using inter-shot spacing (single-shot mode)
         nextSpacingIndex = 0;
@@ -316,6 +346,8 @@ public class BasePlate {
     public void cancelShootAndReset() {
         shootState = ShootState.IDLE;
 
+        clearEarlyDone(); // NEW
+
         rampBack();
         gateUp();
         setPusherMm(0.0);
@@ -334,6 +366,8 @@ public class BasePlate {
     public void startShootFromBeforeShot2() {
         // Allow starting from IDLE or PREPPED (don’t start if already in the middle of a shoot)
         if (shootState != ShootState.IDLE && shootState != ShootState.PREPPED) return;
+
+        clearEarlyDone(); // NEW
 
         // Treat as if "shot 1 happened already" for spacing bookkeeping.
         // If delay12 is set to 0 (recommended for this entry), spacingSatisfied() will be immediate.
@@ -419,7 +453,7 @@ public class BasePlate {
                 break;
 
             case TEST:
-                if (shootTimer.seconds() >= 0.2) {
+                if (shootTimer.seconds() >= 0.15) {
 
                     // BEFORE shot #3 moment: enforce extra spacing from shot #2.
                     if (!spacingSatisfied()) {
@@ -432,6 +466,7 @@ public class BasePlate {
 
                     // Shot #3 moment
                     gateBackFullShoot();
+                    markEarlyDoneFiring();
 
                     // No further spacing
                     markShotFired();
@@ -461,6 +496,7 @@ public class BasePlate {
 
             case PUSHER_HOME_WAIT:
                 if (shootTimer.seconds() >= DELAY_PUSHER_HOME_S) {
+                    clearEarlyDone();
                     shootState = ShootState.IDLE;
                 }
                 break;
@@ -470,6 +506,7 @@ public class BasePlate {
                 if (shootTimer.seconds() >= 0.20) {
                     // Fire the last ball (same actuation as your shot #3 moment)
                     gateBackFullShoot();
+                    markEarlyDoneFiring();
 
                     // Proceed into the normal post-fire reset sequence
                     shootTimer.reset();

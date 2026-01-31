@@ -59,10 +59,10 @@ public class BlueAutoQuals extends OpMode {
     private static final double SHOOTER_RAD = 315;
 
     // After leaving a line: keep intaking for this long, then STOP intake + gate down (lock).
-    private static final double POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S = 0;
+    private static final double POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S = 0.75;
 
     // Hold at gate before returning to shoot
-    private static final double GATE_HOLD_SECONDS = 1.25;
+    private static final double GATE_HOLD_SECONDS = 0.75;
 
     // ============================================================
     // Turret auto-tracking
@@ -337,7 +337,7 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 111: {
-                if (pathTimer.getElapsedTimeSeconds() > 0.5) setPathState(2);
+                if (pathTimer.getElapsedTimeSeconds() > 0.3) setPathState(2);
                 break;
             }
 
@@ -347,7 +347,7 @@ public class BlueAutoQuals extends OpMode {
                     basePlate.startShootFromPrep();
                 });
 
-                if (!basePlate.isShootBusy()) {
+                if (basePlate.isDoneFiringEarly(0.25)) {
                     setPathState(3);
                 }
                 break;
@@ -436,7 +436,6 @@ public class BlueAutoQuals extends OpMode {
                 toShoot2.reverseHeadingInterpolation();
                 follower.followPath(toShoot2, true);
 
-                // NO unconditional prepShootOnly here
                 setPathState(9);
                 break;
             }
@@ -449,7 +448,7 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 91: {
-                if (pathTimer.getElapsedTimeSeconds() > 0.5) {
+                if (pathTimer.getElapsedTimeSeconds() > 0.3) {
                     sortAllowFire = true;
                     setPathState(10);
                 }
@@ -486,7 +485,6 @@ public class BlueAutoQuals extends OpMode {
 
             case 12: {
                 if (!follower.isBusy()) {
-                    stopIntakeAndLockForSort();
                     setPathState(13);
                 }
             }
@@ -504,9 +502,18 @@ public class BlueAutoQuals extends OpMode {
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
                             new Pose(57, 85)
                     ));
-                    toShoot3.reverseHeadingInterpolation();
+                    toShoot3.setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(270), 0.8);
                     follower.followPath(toShoot3, true);
 
+                    startLeavingLineStillIntaking();
+                    setPathState(145);
+                }
+                break;
+            }
+
+            case 145: {
+                // After delay: stop intake, gate DOWN (lock), then begin strategy-aware sorting PREP (no unconditional prepShootOnly)
+                if (pathTimer.getElapsedTimeSeconds() >= 1.5) {
                     stopIntakeAndLockForSort();
                     setPathState(14);
                 }
@@ -521,7 +528,7 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 141: {
-                if (pathTimer.getElapsedTimeSeconds() > 0.5) {
+                if (pathTimer.getElapsedTimeSeconds() > 0.75) {
                     sortAllowFire = true;
                     setPathState(15);
                 }
@@ -544,10 +551,10 @@ public class BlueAutoQuals extends OpMode {
                 toFarLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84 - 48),
-                        new Pose(21, 84 - 50),
-                        new Pose(15, 84 - 50)
+                        new Pose(40, 84 - 49),
+                        new Pose(15, 84 - 48)
                 ));
-                toFarLine.setConstantHeadingInterpolation(180);
+                toFarLine.setTangentHeadingInterpolation();
                 follower.followPath(toFarLine, false);
 
                 intake.intakeIn();
@@ -556,7 +563,10 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 17: {
-                if (follower.getCurrentTValue() > 0.4) follower.setMaxPower(0.5);
+                if (follower.getCurrentTValue() > 0.15) {
+                    follower.setMaxPower(0.5);
+                    toFarLine.setConstantHeadingInterpolation(Math.toRadians(180));
+                }
 
                 if (!follower.isBusy()) {
                     follower.setMaxPower(1);
@@ -581,6 +591,8 @@ public class BlueAutoQuals extends OpMode {
             case 18: {
                 if (pathTimer.getElapsedTimeSeconds() >= POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S) {
                     stopIntakeAndLockForSort();
+                    follower.setMaxPower(0.8);
+                    toShoot4.setBrakingStrength(0.6);
                     setPathState(19);
                 }
                 break;
@@ -588,6 +600,13 @@ public class BlueAutoQuals extends OpMode {
 
             case 19: {
                 if (!follower.isBusy()) {
+                    setPathState(191);
+                }
+                break;
+            }
+
+            case 191: {
+                if (pathTimer.getElapsedTimeSeconds() > 0.5) {
                     sortAllowFire = true;
                     setPathState(20);
                 }
@@ -958,7 +977,7 @@ public class BlueAutoQuals extends OpMode {
                     basePlate.startShootFromPrep();
                     sortStep++;
                 } else if (sortStep == 2) {
-                    if (!basePlate.isShootBusy()) return true;
+                    if (basePlate.isDoneFiringEarly(0.25)) return true;
                 }
                 break;
             }
@@ -1003,7 +1022,7 @@ public class BlueAutoQuals extends OpMode {
                         sortStep++;
                     }
                 } else if (sortStep == 5) {
-                    if (!basePlate.isShootBusy()) return true;
+                    if (basePlate.isDoneFiringEarly(0.25)) return true;
                 }
                 break;
             }
@@ -1047,7 +1066,7 @@ public class BlueAutoQuals extends OpMode {
                         sortStep++;
                     }
                 } else if (sortStep == 5) {
-                    if (!basePlate.isShootBusy()) return true;
+                    if (basePlate.isDoneFiringEarly(0.25)) return true;
                 }
                 break;
             }
@@ -1098,7 +1117,7 @@ public class BlueAutoQuals extends OpMode {
                         sortStep++;
                     }
                 } else if (sortStep == 7) {
-                    if (!basePlate.isShootBusy()) return true;
+                    if (basePlate.isDoneFiringEarly(0.25)) return true;
                 }
                 break;
             }
