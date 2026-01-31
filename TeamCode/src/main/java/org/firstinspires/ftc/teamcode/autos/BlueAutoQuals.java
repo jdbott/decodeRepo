@@ -323,7 +323,7 @@ public class BlueAutoQuals extends OpMode {
                 ));
                 toShoot1.setLinearHeadingInterpolation(follower.getHeading(), Math.toRadians(180), 0.6);
                 follower.followPath(toShoot1, true);
-
+                toShoot1.setBrakingStrength(0.6);
                 // preload already prepped; don't mess with ramp logic
                 turretAutoTrackingEnabled = false;
                 setPathState(1);
@@ -331,7 +331,7 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 1: {
-                if (follower.getCurrentTValue() > 0.6) turretAutoTrackingEnabled = true;
+                if (follower.getCurrentTValue() > 0.5) turretAutoTrackingEnabled = true;
                 if (!follower.isBusy()) setPathState(111);
                 break;
             }
@@ -430,17 +430,18 @@ public class BlueAutoQuals extends OpMode {
             case 8: {
                 toShoot2 = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(40, 60),
+                        new Pose(40, 73),
                         new Pose(57, 85)
                 ));
                 toShoot2.reverseHeadingInterpolation();
                 follower.followPath(toShoot2, true);
-
+                toShoot2.setBrakingStrength(0.6);
                 setPathState(9);
                 break;
             }
 
             case 9: {
+                if (follower.getCurrentTValue() > 0.7) toShoot2.setConstantHeadingInterpolation(Math.toRadians(270));
                 if (!follower.isBusy()) {
                     setPathState(91);
                 }
@@ -468,7 +469,7 @@ public class BlueAutoQuals extends OpMode {
             case 11: {
                 startLineIntake();
                 setGantryPos("middle");
-                follower.setMaxPower(0.5);
+                follower.setMaxPower(0.6);
                 basePlate.rampBack();
                 toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -504,7 +505,7 @@ public class BlueAutoQuals extends OpMode {
                     ));
                     toShoot3.setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(270), 0.8);
                     follower.followPath(toShoot3, true);
-
+                    toShoot3.setBrakingStrength(0.6);
                     startLeavingLineStillIntaking();
                     setPathState(145);
                 }
@@ -513,7 +514,7 @@ public class BlueAutoQuals extends OpMode {
 
             case 145: {
                 // After delay: stop intake, gate DOWN (lock), then begin strategy-aware sorting PREP (no unconditional prepShootOnly)
-                if (pathTimer.getElapsedTimeSeconds() >= 1.5) {
+                if (pathTimer.getElapsedTimeSeconds() >= 1.25) {
                     stopIntakeAndLockForSort();
                     setPathState(14);
                 }
@@ -551,8 +552,8 @@ public class BlueAutoQuals extends OpMode {
                 toFarLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84 - 48),
-                        new Pose(40, 84 - 49),
-                        new Pose(15, 84 - 48)
+                        new Pose(40, 84 - 48),
+                        new Pose(15, 84 - 47)
                 ));
                 toFarLine.setTangentHeadingInterpolation();
                 follower.followPath(toFarLine, false);
@@ -564,7 +565,7 @@ public class BlueAutoQuals extends OpMode {
 
             case 17: {
                 if (follower.getCurrentTValue() > 0.15) {
-                    follower.setMaxPower(0.5);
+                    follower.setMaxPower(0.6);
                     toFarLine.setConstantHeadingInterpolation(Math.toRadians(180));
                 }
 
@@ -581,7 +582,7 @@ public class BlueAutoQuals extends OpMode {
                     toShoot4.setTangentHeadingInterpolation();
                     toShoot4.reverseHeadingInterpolation();
                     follower.followPath(toShoot4, true);
-
+                    toShoot4.setBrakingStrength(0.6);
                     startLeavingLineStillIntaking();
                     setPathState(18);
                 }
@@ -591,14 +592,15 @@ public class BlueAutoQuals extends OpMode {
             case 18: {
                 if (pathTimer.getElapsedTimeSeconds() >= POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S) {
                     stopIntakeAndLockForSort();
-                    follower.setMaxPower(0.8);
-                    toShoot4.setBrakingStrength(0.6);
                     setPathState(19);
                 }
                 break;
             }
 
             case 19: {
+                if (follower.getCurrentTValue() > 0.7) {
+                    toShoot4.setConstantHeadingInterpolation(Math.toRadians(270));
+                }
                 if (!follower.isBusy()) {
                     setPathState(191);
                 }
@@ -632,7 +634,7 @@ public class BlueAutoQuals extends OpMode {
 
                 toPark = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(25, 85)
+                        new Pose(25, 90)
                 ));
                 toPark.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(toPark, true);
