@@ -56,7 +56,7 @@ public class BlueAutoQuals extends OpMode {
     // ============================================================
     // Tunables
     // ============================================================
-    private static final double SHOOTER_RAD = 315;
+    private static final double SHOOTER_RAD = 325;
 
     // After leaving a line: keep intaking for this long, then STOP intake + gate down (lock).
     private static final double POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S = 0.75;
@@ -474,7 +474,7 @@ public class BlueAutoQuals extends OpMode {
                 toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 86.5),
-                        new Pose(22, 86.5)
+                        new Pose(21, 86.5)
                 ));
                 toCloseLine.setTangentHeadingInterpolation();
                 follower.followPath(toCloseLine, false);
@@ -553,7 +553,7 @@ public class BlueAutoQuals extends OpMode {
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84 - 48),
                         new Pose(40, 84 - 48),
-                        new Pose(15, 84 - 47)
+                        new Pose(13, 84 - 47)
                 ));
                 toFarLine.setTangentHeadingInterpolation();
                 follower.followPath(toFarLine, false);

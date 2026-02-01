@@ -2,26 +2,26 @@ package org.firstinspires.ftc.teamcode.teles;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.Pose;
+import com.qualcomm.hardware.limelightvision.LLResult;
+import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.IMU;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlateFast;
+import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlate;
+import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Gantry;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
-import org.firstinspires.ftc.teamcode.hardwareClasses.ShooterV2;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
 import java.util.ArrayList;
 import java.util.Locale;
-/* =========================
-   >>> ADDED IMPORTS END <<<
-   ========================= */
 
 @TeleOp(name = "V2 TELEOP BLUE")
 public class V2TeleBlue extends LinearOpMode {
@@ -30,8 +30,10 @@ public class V2TeleBlue extends LinearOpMode {
     private Follower follower;
     private Intake intake;
     private Gantry gantry;
-    private BasePlateFast basePlate;
-    private ShooterV2 shooter;
+    private BasePlate basePlate;
+
+    // Flywheel (NEW: FlywheelASG like auto)
+    private FlywheelASG flywheelASG;
 
     // Drivetrain
     private DcMotorEx frontLeft, frontRight, backLeft, backRight;
@@ -42,6 +44,14 @@ public class V2TeleBlue extends LinearOpMode {
 
     // Edge memory for basePlate LB trigger
     private boolean lbPrev = false;
+
+    // =========================
+    // Limelight
+    // =========================
+    private Limelight3A limelight3A;
+    private int llLastSeenId = -1;
+    private double llLastTxDeg = Double.NaN;
+    private boolean llUsingTxAim = false;
 
     // =========================
     // Intake FSM
@@ -74,58 +84,47 @@ public class V2TeleBlue extends LinearOpMode {
     private boolean turretManualOverride = false;
     private long turretLastManualInputMs = 0;
 
-    // ---- Turret FF (heading-rate) ----
-    private double lastHeadingDeg = 0.0;
-    private long lastHeadingMs = 0;
-
     private boolean sharePrev = false;
 
-    /* ============================================
-       >>> ADDED: DISTANCE + FLYWHEEL TUNING START <<<
-       ============================================ */
-
-    // --- Target location (same as turret logic) ---
+    // =========================
+    // Target (for odom aim + distance)
+    // =========================
     private static final double TARGET_X = 0.0;
     private static final double TARGET_Y = 148.0;
 
-    // Latest distance (inches) so we can display/log from anywhere.
     private double lastDistanceToTargetIn = 0.0;
 
-    // Manual tuning RPM (driver-controlled). Start at something reasonable.
-    private double flywheelTuneRPM = 2950;
+    // =========================
+    // Flywheel tuning (RPM on gamepad1)
+    // =========================
+    private double flywheelTuneRPM = 3400;
 
-    // Driver edge-detect for tuning controls
     private boolean gp1DpadUpPrev = false;
     private boolean gp1DpadDownPrev = false;
     private boolean gp1SquarePrev = false;
     private boolean gp1TrianglePrev = false;
 
-    // Logged data points: x = distance (in), y = RPM
     private final ArrayList<Double> logDist = new ArrayList<>();
     private final ArrayList<Double> logRPM = new ArrayList<>();
 
-    // Last logged point (for quick feedback)
     private double lastLoggedDist = Double.NaN;
     private double lastLoggedRPM = Double.NaN;
 
-    // Polynomial fit storage
     private int fittedDegree = -1;
-    private double[] fittedCoeffs = null; // a0 + a1*x + a2*x^2 + ...
+    private double[] fittedCoeffs = null; // a0 + a1*x + ...
 
-    // Limits / controls
     private static final double FLYWHEEL_RPM_STEP = 20.0;
     private static final double FLYWHEEL_RPM_MIN = 0.0;
     private static final double FLYWHEEL_RPM_MAX = 6000.0;
 
-    // Degrees to consider when fitting (kept conservative for on-robot compute)
     private static final int POLY_MAX_DEGREE = 4;
 
     private double minLoggedDist = Double.NaN;
     private double maxLoggedDist = Double.NaN;
 
-    /* ==========================================
-       >>> ADDED: DISTANCE + FLYWHEEL TUNING END <<<
-       ========================================== */
+    // For telemetry: what we commanded this frame
+    private double lastCmdRPM = 0.0;
+    private double lastCmdRadPerSec = 0.0;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -140,35 +139,34 @@ public class V2TeleBlue extends LinearOpMode {
         follower.startTeleOpDrive();
 
         // -----------------------------
-        // Hardware map
+        // Hardware map (drivetrain)
         // -----------------------------
         frontLeft = hardwareMap.get(DcMotorEx.class, "leftFront");
         frontRight = hardwareMap.get(DcMotorEx.class, "rightFront");
         backLeft = hardwareMap.get(DcMotorEx.class, "leftBack");
         backRight = hardwareMap.get(DcMotorEx.class, "rightBack");
 
-        // Drivetrain directions
         frontLeft.setDirection(DcMotorSimple.Direction.REVERSE);
         backLeft.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        // Brake behavior
         frontLeft.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
         frontRight.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
         backLeft.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
         backRight.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
 
+        // -----------------------------
         // Subsystems
+        // -----------------------------
         intake = new Intake(hardwareMap);
         gantry = new Gantry(hardwareMap);
-        basePlate = new BasePlateFast(hardwareMap);
+        basePlate = new BasePlate(hardwareMap);
 
-        shooter = new ShooterV2();
-        shooter.init(hardwareMap,
-                "shooter2",
-                "shooter1",
-                DcMotorSimple.Direction.FORWARD,
-                DcMotorSimple.Direction.REVERSE
-        );
+        // -----------------------------
+        // FlywheelASG init (LIKE AUTO)
+        // -----------------------------
+        VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
+        flywheelASG = new FlywheelASG(hardwareMap, battery);
+        flywheelASG.setTargetVelocity(0.0);
 
         // Safe defaults
         intake.intakeStop();
@@ -177,6 +175,14 @@ public class V2TeleBlue extends LinearOpMode {
         basePlate.frontPopperDown();
         basePlate.middlePopperDown();
         basePlate.cancelShootAndReset();
+
+        // -----------------------------
+        // Limelight init
+        // -----------------------------
+        limelight3A = hardwareMap.get(Limelight3A.class, "limelight");
+        limelight3A.pipelineSwitch(9);
+        limelight3A.setPollRateHz(100);
+        limelight3A.start();
 
         // -----------------------------
         // IMU init
@@ -202,23 +208,20 @@ public class V2TeleBlue extends LinearOpMode {
         while (opModeInInit()) {
             turret.update();
             basePlate.update();
+            flywheelASG.update();
         }
 
         waitForStart();
         resetRuntime();
 
-        // Seed heading-rate estimator
-        Pose startPose = follower.getPose();
-        lastHeadingDeg = Math.toDegrees(startPose.getHeading());
-        lastHeadingMs = System.currentTimeMillis();
-
         while (opModeIsActive()) {
+
+            // optional override you had
             if (gamepad2.dpad_down) {
                 basePlate.gateBackFullShoot();
             }
 
             follower.update();
-            shooter.update();
 
             Pose pose = follower.getPose();
 
@@ -228,14 +231,11 @@ public class V2TeleBlue extends LinearOpMode {
             double robotHeadingDeg = Math.toDegrees(pose.getHeading());
             drive(robotHeadingDeg);
 
-            /* ============================================
-               >>> ADDED: UPDATE DISTANCE + HANDLE TUNING <<<
-               ============================================ */
+            // -----------------------------
+            // Distance + tuning
+            // -----------------------------
             lastDistanceToTargetIn = computeDistanceToTargetInches(pose);
-            handleDriverFlywheelTuningAndPolyFit(); // uses gamepad1
-            /* ==========================================
-               >>> ADDED: UPDATE DISTANCE + HANDLE TUNING END
-               ========================================== */
+            handleDriverFlywheelTuningAndPolyFit();
 
             // -----------------------------
             // Intake toggle + FSM
@@ -247,13 +247,12 @@ public class V2TeleBlue extends LinearOpMode {
 
             // -----------------------------
             // Gate toggle on RB
-            // (Intake FSM overrides this while intake is ON or shutting down)
             // -----------------------------
             handleGateToggle();
 
             // -----------------------------
-            // Turret logic (fixed targeting using actual turret angle)
-            // - Cross toggles tracking AND flywheels
+            // Turret logic + Limelight goal tracking
+            // (also sets flywheel target)
             // -----------------------------
             handleTurretTrackingAndControl(pose);
 
@@ -266,18 +265,29 @@ public class V2TeleBlue extends LinearOpMode {
             }
             lbPrev = lbNow;
 
+            // Update subsystems
             basePlate.update();
+            turret.update();
+            flywheelASG.update();
 
+            // -----------------------------
+            // Telemetry
+            // -----------------------------
             telemetry.addData("Pose", follower.getPose().toString());
             telemetry.addData("IntakeState", intakeState);
             telemetry.addData("GateMode", gateToggleAllTheWayUp ? "ALL_UP" : "ONE_POS");
             telemetry.addData("ShootMode", turretShootingActive);
 
-            /* ============================================
-               >>> ADDED: TELEMETRY FOR TUNING + FIT <<<
-               ============================================ */
+            telemetry.addData("LL_UsingTxAim", llUsingTxAim);
+            telemetry.addData("LL_LastId", llLastSeenId);
+            telemetry.addData("LL_TxDeg", Double.isNaN(llLastTxDeg) ? "NaN" : String.format(Locale.US, "%.2f", llLastTxDeg));
+
             telemetry.addData("DistToTarget(in)", String.format(Locale.US, "%.2f", lastDistanceToTargetIn));
             telemetry.addData("TuneRPM(gamepad1)", String.format(Locale.US, "%.0f", flywheelTuneRPM));
+
+            telemetry.addData("FlywheelCmdRPM", String.format(Locale.US, "%.0f", lastCmdRPM));
+            telemetry.addData("FlywheelCmdRadS", String.format(Locale.US, "%.2f", lastCmdRadPerSec));
+
             telemetry.addData("LoggedPoints", logDist.size());
             if (!Double.isNaN(lastLoggedDist)) {
                 telemetry.addData("LastLog", String.format(Locale.US, "d=%.2f, rpm=%.0f", lastLoggedDist, lastLoggedRPM));
@@ -288,9 +298,6 @@ public class V2TeleBlue extends LinearOpMode {
             } else {
                 telemetry.addData("PolyFit", "none");
             }
-            /* ==========================================
-               >>> ADDED: TELEMETRY FOR TUNING + FIT END
-               ========================================== */
 
             telemetry.update();
         }
@@ -298,29 +305,22 @@ public class V2TeleBlue extends LinearOpMode {
 
     // =========================================================
     // Intake toggle + FSM
-    // - When toggled ON: intake motor ON + gate ALL THE WAY UP
-    // - When toggled OFF: gate DOWN immediately, then 0.4s later intake OFF
     // =========================================================
     private void handleIntakeToggleAndFSM() {
-        // Toggle intent (gamepad2 square)
         boolean squareButton = gamepad2.square;
         if (squareButton && !lastSquareButton) {
             intakeToggleActive = !intakeToggleActive;
 
             if (intakeToggleActive) {
-                // Immediately go ON
                 intakeState = IntakeState.ON;
-                basePlate.cancelShootAndReset(); // one-time on entry to intake mode
+                basePlate.cancelShootAndReset();
             } else {
-                // Begin shutdown sequence:
-                // gate goes down now; intake stops after delay
                 intakeState = IntakeState.SHUTDOWN_WAIT;
                 intakeShutdownStartMs = System.currentTimeMillis();
             }
         }
         lastSquareButton = squareButton;
 
-        // FSM execution
         switch (intakeState) {
             case OFF:
                 intake.intakeStop();
@@ -332,14 +332,14 @@ public class V2TeleBlue extends LinearOpMode {
                 break;
 
             case SHUTDOWN_WAIT:
+                intake.intakeStop();
                 gateDown();
 
                 if (System.currentTimeMillis() - intakeShutdownStartMs >= INTAKE_SHUTDOWN_DELAY_MS) {
-                    intake.intakeStop();
+                    gateDown();
                     intakeState = IntakeState.OFF;
                     basePlate.prepShootOnly();
                 } else {
-                    // Keep intake motor running during the wait
                     intake.intakeIn();
                 }
                 break;
@@ -348,8 +348,6 @@ public class V2TeleBlue extends LinearOpMode {
 
     // =========================================================
     // Gate toggle (RB)
-    // - Toggles between ALL-THE-WAY-UP and ONE-POSITION
-    // - Intake FSM overrides gate while ON or shutting down
     // =========================================================
     private void handleGateToggle() {
         if (intakeState == IntakeState.ON || intakeState == IntakeState.SHUTDOWN_WAIT) return;
@@ -358,59 +356,39 @@ public class V2TeleBlue extends LinearOpMode {
         if (rbNow && !rbPrev) {
             gateToggleAllTheWayUp = !gateToggleAllTheWayUp;
 
-            if (gateToggleAllTheWayUp) {
-                gateAllTheWayUp();
-            } else {
-                gateOnePosition();
-            }
+            if (gateToggleAllTheWayUp) gateAllTheWayUp();
+            else gateOnePosition();
         }
         rbPrev = rbNow;
     }
 
-    private double getShooterRPMForDistance(double distanceInches) {
-        return 3500;
-    }
-
     // =========================================================
-    // Turret control and tracking (fixed targeting)
-    //
-    // Your key detail: "backwards is 0".
-    // That means: turretAngle = 0 points backward relative to robot.
-    // To convert "angle-to-target in robot frame" to your turret coords, we add +180.
+    // Turret control and tracking
+    // - Limelight TX aim when tag==20, else odom aim
+    // - FlywheelASG target set here (like auto)
     // =========================================================
     private void handleTurretTrackingAndControl(Pose pose) {
-        // =========================
-        // Config
-        // =========================
-        final double TARGET_X = 0;
-        final double TARGET_Y = 148;
 
-        // Backwards is 0 => forward is 180
-        final double TURRET_OFFSET_DEG = 180.0;
-
+        final double TURRET_OFFSET_DEG = 180.0; // backwards is 0
         final double TURRET_MIN_DEG = -160.0;
         final double TURRET_MAX_DEG = 200.0;
-
         final long MANUAL_HOLD_MS = 4000;
 
         long now = System.currentTimeMillis();
 
-        // =========================
-        // Toggle tracking + flywheels (gamepad2 cross)
-        // =========================
+        // Toggle shooting (gamepad2 cross)
         boolean shootToggleBtn = gamepad2.cross;
         if (shootToggleBtn && !turretLastShootToggleBtn) {
             turretShootingActive = !turretShootingActive;
 
             if (!turretShootingActive) {
-                shooter.stop();
+                // stop flywheel immediately
+                flywheelASG.setTargetVelocity(0.0);
             }
         }
         turretLastShootToggleBtn = shootToggleBtn;
 
-        // =========================
-        // Pose / geometry
-        // =========================
+        // Odom geometry
         double botX = pose.getX();
         double botY = pose.getY();
         double robotHeadingDeg = Math.toDegrees(pose.getHeading());
@@ -420,18 +398,11 @@ public class V2TeleBlue extends LinearOpMode {
 
         double distanceToTarget = Math.hypot(dx, dy);
 
-        // Field-frame angle from robot -> target
         double angleToTargetFieldDeg = Math.toDegrees(Math.atan2(dy, dx));
-
-        // Convert to robot frame (relative bearing)
         double angleToTargetRobotDeg = normalize180(angleToTargetFieldDeg - robotHeadingDeg);
-
-        // Convert robot-frame bearing to your turret coordinates (0 = backwards)
         double desiredTurretDeg = normalize180(angleToTargetRobotDeg + TURRET_OFFSET_DEG);
 
-        // Use actual turret angle to pick the best wrapped equivalent in limits
         double turretCurrentDeg = turret.getCurrentAngle();
-
         double safeCmdDeg = wrapIntoTurretWindow(
                 desiredTurretDeg,
                 turretCurrentDeg,
@@ -439,9 +410,7 @@ public class V2TeleBlue extends LinearOpMode {
                 TURRET_MAX_DEG
         );
 
-        // =========================
         // Manual turret adjust (pauses auto)
-        // =========================
         boolean manualInput = false;
 
         if (gamepad2.dpad_left && (gamepad2.left_trigger > 0.5)) {
@@ -471,9 +440,9 @@ public class V2TeleBlue extends LinearOpMode {
 
         boolean shareNow = gamepad2.share;
         if (shareNow && !sharePrev) {
-            turret.stop();       // optional but recommended
+            turret.stop();
             turret.zeroTurret();
-            turretManualOverride = true;          // keep auto-park from instantly fighting you
+            turretManualOverride = true;
             turretLastManualInputMs = System.currentTimeMillis();
             gamepad2.rumble(500);
         }
@@ -484,70 +453,109 @@ public class V2TeleBlue extends LinearOpMode {
         }
 
         // =========================
-        // Auto aim + shooter RPM
+        // Aim + Flywheel command
         // =========================
         if (turretShootingActive) {
 
-            /* =========================================================
-               >>> ADDED: RPM COMMAND SOURCE (TUNING vs POLY AUTO) <<<
-               ========================================================= */
-
-            // During tuning, we drive the RPM from gamepad1 increments:
+            // default: manual tuning RPM
             double rpmCmd = flywheelTuneRPM;
 
-            // When you're ready to enable automatic RPM from your polynomial fit,
-            // uncomment the block below. It uses the fitted polynomial coefficients
-            // (distance in inches -> RPM), and clips to your allowed range.
-
+            // Optional: auto RPM from fitted polynomial
             /*
             if (fittedCoeffs != null && !Double.isNaN(minLoggedDist) && !Double.isNaN(maxLoggedDist)) {
-
-                // Clamp distance to the region you actually sampled
                 double dClamped = Range.clip(distanceToTarget, minLoggedDist, maxLoggedDist);
-
                 rpmCmd = evalPolynomial(fittedCoeffs, dClamped);
                 rpmCmd = Range.clip(rpmCmd, FLYWHEEL_RPM_MIN, FLYWHEEL_RPM_MAX);
             }
             */
 
-            shooter.setEnabled(true);
-            shooter.setTargetRPM(rpmCmd);
+            // FlywheelASG uses rad/s (like auto)
+            double radPerSec = rpmToRadPerSec(rpmCmd);
+            flywheelASG.setTargetVelocity(radPerSec);
 
-            /* =======================================================
-               >>> ADDED: RPM COMMAND SOURCE (TUNING vs POLY AUTO) END
-               ======================================================= */
+            lastCmdRPM = rpmCmd;
+            lastCmdRadPerSec = radPerSec;
 
-            if ((gamepad2.right_trigger > 0.5)) {
+            // Manual “force turret to 0”
+            if (gamepad2.right_trigger > 0.5) {
                 turret.setAngle(0);
-            }
-            if (!turretManualOverride && !(gamepad2.right_trigger > 0.5)) {
-                turret.setAngle(safeCmdDeg);
+            } else if (!turretManualOverride) {
+                boolean didTxAim = tryLimelightTxAim(pose, TURRET_MIN_DEG, TURRET_MAX_DEG);
+                if (!didTxAim) turret.setAngle(safeCmdDeg);
             }
 
         } else {
-            // Not tracking: stop shooter; park turret (unless manual override)
+            // Not shooting: stop flywheel; park turret unless manual override
+            flywheelASG.setTargetVelocity(0.0);
+            lastCmdRPM = 0.0;
+            lastCmdRadPerSec = 0.0;
+
             if (!turretManualOverride) {
                 double park = wrapIntoTurretWindow(135, turretCurrentDeg, TURRET_MIN_DEG, TURRET_MAX_DEG);
                 turret.setAngle(park);
             }
         }
 
-        turret.update();
-
-        // =========================
-        // Telemetry (existing)
-        // =========================
-        telemetry.addData("DistToTarget", distanceToTarget);
-        telemetry.addData("AngleToTargetField", angleToTargetFieldDeg);
-        telemetry.addData("AngleToTargetRobot", angleToTargetRobotDeg);
-        telemetry.addData("DesiredTurretDeg", desiredTurretDeg);
-        telemetry.addData("SafeCmdDeg", safeCmdDeg);
-        telemetry.addData("TurretCurDeg", turretCurrentDeg);
-        telemetry.addData("TurretTgtDeg", turret.getTargetAngle());
+        // Extra telemetry for debugging
+        telemetry.addData("DistToTarget(hypot)", String.format(Locale.US, "%.2f", distanceToTarget));
+        telemetry.addData("SafeCmdDeg(odom)", String.format(Locale.US, "%.2f", safeCmdDeg));
+        telemetry.addData("TurretCurDeg", String.format(Locale.US, "%.2f", turretCurrentDeg));
+        telemetry.addData("TurretTgtDeg", String.format(Locale.US, "%.2f", turret.getTargetAngle()));
         telemetry.addData("ManualOverride", turretManualOverride);
-        telemetry.addData("Flywheels", turretShootingActive ? "ON" : "OFF");
-        telemetry.addData("ShooterRPM", shooter.getVelocityRPM());
-        telemetry.addData("TargetRPM", shooter.getTargetRPM());
+    }
+
+    /**
+     * Limelight TX aim: only engages if fiducial ID == 20.
+     * Returns true if it issued a turret command this frame using TX.
+     */
+    private boolean tryLimelightTxAim(Pose pose, double turretMinDeg, double turretMaxDeg) {
+        final int TAG_ID_FOR_TX_AIM = 20;
+
+        final double TX_SIGN = +1.0;      // flip if reversed
+        final double TX_KP = 0.7;         // deg command per deg tx
+        final double MAX_STEP_DEG = 10.0; // clamp per loop
+
+        llUsingTxAim = false;
+        llLastSeenId = -1;
+        llLastTxDeg = Double.NaN;
+
+        if (limelight3A == null) return false;
+
+        LLResult result = limelight3A.getLatestResult();
+        if (result == null || !result.isValid()
+                || result.getFiducialResults() == null
+                || result.getFiducialResults().isEmpty()) {
+            return false;
+        }
+
+        int id = result.getFiducialResults().get(0).getFiducialId();
+        llLastSeenId = id;
+        if (id != TAG_ID_FOR_TX_AIM) return false;
+
+        limelight3A.updateRobotOrientation(Math.toDegrees(pose.getHeading()));
+
+        LLResult aimRes = limelight3A.getLatestResult();
+        if (aimRes == null || !aimRes.isValid()) return false;
+
+        double txDeg = aimRes.getTx();
+        llLastTxDeg = txDeg;
+
+        double turretCurrentDeg = turret.getCurrentAngle();
+        double delta = -TX_SIGN * TX_KP * txDeg;
+        delta = Range.clip(delta, -MAX_STEP_DEG, +MAX_STEP_DEG);
+
+        double desired = turretCurrentDeg + delta;
+
+        double safe = wrapIntoTurretWindow(
+                desired,
+                turret.getTargetAngle(),
+                turretMinDeg,
+                turretMaxDeg
+        );
+
+        turret.setAngle(safe);
+        llUsingTxAim = true;
+        return true;
     }
 
     /**
@@ -566,15 +574,12 @@ public class V2TeleBlue extends LinearOpMode {
             }
         }
 
-        if (Double.isNaN(best)) {
-            best = Range.clip(desiredDeg, minDeg, maxDeg);
-        }
-
+        if (Double.isNaN(best)) best = Range.clip(desiredDeg, minDeg, maxDeg);
         return best;
     }
 
     // -----------------------------
-    // Extracted drive logic
+    // Drive logic
     // -----------------------------
     private void drive(double robotHeadingDeg) {
         double trigger = Range.clip(1 - gamepad1.right_trigger, 0.2, 1);
@@ -602,13 +607,11 @@ public class V2TeleBlue extends LinearOpMode {
     }
 
     private double normalize180(double a) {
-        a = ((a + 180) % 360 + 360) % 360 - 180;
-        return a;
+        return ((a + 180) % 360 + 360) % 360 - 180;
     }
 
     // =========================================================
     // Gate helpers
-    // IMPORTANT: adjust these 3 methods to match your BasePlate API.
     // =========================================================
     private void gateAllTheWayUp() {
         basePlate.gateUp();
@@ -622,24 +625,26 @@ public class V2TeleBlue extends LinearOpMode {
         basePlate.gateHoldBall1();
     }
 
-    /* ============================================================
-       >>> ADDED: DISTANCE + TUNING + POLY FIT IMPLEMENTATION START <<<
-       ============================================================ */
-
+    // =========================================================
+    // Distance helper
+    // =========================================================
     private double computeDistanceToTargetInches(Pose pose) {
         double dx = TARGET_X - pose.getX();
         double dy = TARGET_Y - pose.getY();
         return Math.hypot(dx, dy);
     }
 
-    /**
-     * gamepad1 controls:
-     * - dpad_up/down: adjust flywheelTuneRPM by 20
-     * - square: log point (distance, RPM)
-     * - triangle: fit polynomial, choose best degree, print equation
-     */
+    // =========================================================
+    // Flywheel unit conversion (RPM -> rad/s)
+    // =========================================================
+    private double rpmToRadPerSec(double rpm) {
+        return rpm * (2.0 * Math.PI / 60.0);
+    }
+
+    // =========================================================
+    // Tuning + poly fit (unchanged)
+    // =========================================================
     private void handleDriverFlywheelTuningAndPolyFit() {
-        // --- Adjust RPM by 20 using dpad up/down (edge-triggered) ---
         boolean upNow = gamepad1.dpad_up;
         if (upNow && !gp1DpadUpPrev) {
             flywheelTuneRPM = Range.clip(flywheelTuneRPM + FLYWHEEL_RPM_STEP, FLYWHEEL_RPM_MIN, FLYWHEEL_RPM_MAX);
@@ -654,22 +659,20 @@ public class V2TeleBlue extends LinearOpMode {
         }
         gp1DpadDownPrev = downNow;
 
-        // --- Log a data point (distance, RPM) ---
         boolean squareNow = gamepad1.square;
         if (squareNow && !gp1SquarePrev) {
             logDist.add(lastDistanceToTargetIn);
             logRPM.add(flywheelTuneRPM);
             lastLoggedDist = lastDistanceToTargetIn;
             lastLoggedRPM = flywheelTuneRPM;
-            if (Double.isNaN(minLoggedDist) || lastDistanceToTargetIn < minLoggedDist)
-                minLoggedDist = lastDistanceToTargetIn;
-            if (Double.isNaN(maxLoggedDist) || lastDistanceToTargetIn > maxLoggedDist)
-                maxLoggedDist = lastDistanceToTargetIn;
+
+            if (Double.isNaN(minLoggedDist) || lastDistanceToTargetIn < minLoggedDist) minLoggedDist = lastDistanceToTargetIn;
+            if (Double.isNaN(maxLoggedDist) || lastDistanceToTargetIn > maxLoggedDist) maxLoggedDist = lastDistanceToTargetIn;
+
             gamepad1.rumble(200);
         }
         gp1SquarePrev = squareNow;
 
-        // --- Fit polynomial and output equation ---
         boolean triNow = gamepad1.triangle;
         if (triNow && !gp1TrianglePrev) {
             if (logDist.size() >= 2) {
@@ -678,7 +681,6 @@ public class V2TeleBlue extends LinearOpMode {
                 fittedCoeffs = fit.coeffs;
                 gamepad1.rumble(400);
             } else {
-                // Not enough points to fit anything meaningful
                 fittedDegree = -1;
                 fittedCoeffs = null;
                 gamepad1.rumble(120);
@@ -686,8 +688,6 @@ public class V2TeleBlue extends LinearOpMode {
         }
         gp1TrianglePrev = triNow;
     }
-
-    // ---------- Polynomial fit utilities ----------
 
     private static class FitResult {
         int degree;
@@ -703,11 +703,6 @@ public class V2TeleBlue extends LinearOpMode {
         }
     }
 
-    /**
-     * Chooses best polynomial degree via AIC over degrees 1..min(maxDeg, n-1).
-     * - Fits y = a0 + a1 x + ... + ad x^d by least squares (normal equations).
-     * - Uses AIC = n*ln(SSE/n) + 2k, k = (d+1) parameters.
-     */
     private FitResult fitBestPolynomialAIC(ArrayList<Double> x, ArrayList<Double> y, int maxDeg) {
         int n = x.size();
         int upper = Math.min(maxDeg, n - 1);
@@ -724,7 +719,6 @@ public class V2TeleBlue extends LinearOpMode {
                 sse += err * err;
             }
 
-            // Avoid log(0) if perfect fit (rare); clamp to tiny.
             double ssePer = Math.max(sse / n, 1e-9);
             int k = deg + 1;
             double aic = n * Math.log(ssePer) + 2.0 * k;
@@ -736,11 +730,6 @@ public class V2TeleBlue extends LinearOpMode {
         return best;
     }
 
-    /**
-     * Least squares polynomial fit using normal equations:
-     * (A^T A) c = (A^T y), where A[i,j] = x_i^j.
-     * Solves with Gaussian elimination with partial pivoting.
-     */
     private double[] leastSquaresPolyFit(ArrayList<Double> x, ArrayList<Double> y, int degree) {
         int n = x.size();
         int m = degree + 1;
@@ -748,12 +737,10 @@ public class V2TeleBlue extends LinearOpMode {
         double[][] ata = new double[m][m];
         double[] aty = new double[m];
 
-        // Build normal equations
         for (int i = 0; i < n; i++) {
             double xi = x.get(i);
             double yi = y.get(i);
 
-            // Powers of xi up to 2*degree for ata accumulation
             double[] pow = new double[2 * degree + 1];
             pow[0] = 1.0;
             for (int p = 1; p < pow.length; p++) pow[p] = pow[p - 1] * xi;
@@ -769,14 +756,9 @@ public class V2TeleBlue extends LinearOpMode {
         return solveLinearSystem(ata, aty);
     }
 
-    /**
-     * Solves Mx = b using Gaussian elimination w/ partial pivoting.
-     * Returns null if singular/ill-conditioned.
-     */
     private double[] solveLinearSystem(double[][] M, double[] b) {
         int n = b.length;
 
-        // Augment matrix
         double[][] A = new double[n][n + 1];
         for (int r = 0; r < n; r++) {
             System.arraycopy(M[r], 0, A[r], 0, n);
@@ -784,7 +766,6 @@ public class V2TeleBlue extends LinearOpMode {
         }
 
         for (int p = 0; p < n; p++) {
-            // Pivot
             int maxRow = p;
             double maxVal = Math.abs(A[p][p]);
             for (int r = p + 1; r < n; r++) {
@@ -795,21 +776,17 @@ public class V2TeleBlue extends LinearOpMode {
                 }
             }
 
-            // Singular?
             if (maxVal < 1e-10) return null;
 
-            // Swap
             if (maxRow != p) {
                 double[] tmp = A[p];
                 A[p] = A[maxRow];
                 A[maxRow] = tmp;
             }
 
-            // Normalize pivot row
             double pivot = A[p][p];
             for (int c = p; c < n + 1; c++) A[p][c] /= pivot;
 
-            // Eliminate
             for (int r = 0; r < n; r++) {
                 if (r == p) continue;
                 double factor = A[r][p];
@@ -825,7 +802,6 @@ public class V2TeleBlue extends LinearOpMode {
     }
 
     private double evalPolynomial(double[] coeffs, double x) {
-        // Horner's method
         double y = 0.0;
         for (int i = coeffs.length - 1; i >= 0; i--) {
             y = y * x + coeffs[i];
@@ -834,7 +810,6 @@ public class V2TeleBlue extends LinearOpMode {
     }
 
     private String polynomialToString(double[] coeffs) {
-        // y = a0 + a1 x + a2 x^2 + ...
         StringBuilder sb = new StringBuilder("rpm = ");
         for (int i = 0; i < coeffs.length; i++) {
             double a = coeffs[i];
@@ -849,8 +824,4 @@ public class V2TeleBlue extends LinearOpMode {
         }
         return sb.toString();
     }
-
-    /* ==========================================================
-       >>> ADDED: DISTANCE + TUNING + POLY FIT IMPLEMENTATION END <<<
-       ========================================================== */
 }
