@@ -42,6 +42,7 @@ public class BlueAutoQuals extends OpMode {
     // ============================================================
     private Limelight3A limelight3A;
     private int lastSeenTag = 21;                 // fallback
+    int tag = 21;
     private Pattern desiredPattern = Pattern.GPP; // requested shot order
 
     // ============================================================
@@ -56,7 +57,7 @@ public class BlueAutoQuals extends OpMode {
     // ============================================================
     // Tunables
     // ============================================================
-    private static final double SHOOTER_RAD = 325;
+    private static final double SHOOTER_RAD = 315;
 
     // After leaving a line: keep intaking for this long, then STOP intake + gate down (lock).
     private static final double POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S = 0.75;
@@ -67,8 +68,8 @@ public class BlueAutoQuals extends OpMode {
     // ============================================================
     // Turret auto-tracking
     // ============================================================
-    private static final double TURRET_TARGET_X = 0;
-    private static final double TURRET_TARGET_Y = 144;
+    private static final double TURRET_TARGET_X = 8;
+    private static final double TURRET_TARGET_Y = 150;
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
@@ -81,7 +82,7 @@ public class BlueAutoQuals extends OpMode {
     // ============================================================
     // Sorting harness
     // ============================================================
-    private static final double COLOR_CHANGE_DELAY_S = 0.5;
+    private static final double COLOR_CHANGE_DELAY_S = 0.75;
 
     private static final double GANTRY_BACK_TO_FRONT_S = 0.90;
     private static final double GANTRY_BACK_TO_MIDDLE_S = 0.45;
@@ -289,13 +290,10 @@ public class BlueAutoQuals extends OpMode {
     private void updateAprilTagDesiredPattern() {
         LLResult result = limelight3A.getLatestResult();
 
-        int tag;
         if (result != null && result.isValid()
                 && result.getFiducialResults() != null
                 && !result.getFiducialResults().isEmpty()) {
             tag = result.getFiducialResults().get(0).getFiducialId();
-        } else {
-            tag = 21;
         }
 
         lastSeenTag = tag;
@@ -474,7 +472,7 @@ public class BlueAutoQuals extends OpMode {
                 toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 86.5),
-                        new Pose(21, 86.5)
+                        new Pose(16.5, 86.5)
                 ));
                 toCloseLine.setTangentHeadingInterpolation();
                 follower.followPath(toCloseLine, false);

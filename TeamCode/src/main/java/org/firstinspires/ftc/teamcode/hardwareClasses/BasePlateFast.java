@@ -130,8 +130,8 @@ public class BasePlateFast {
 
     private static final double DELAY_RAMP_FORWARD_S = 0.5;
     private static final double DELAY_DOWN_LITTLE_S = 0.2;
-    private static final double DELAY_PUSH1_S = 0.1;
-    private static final double DELAY_PUSH1_MID_S = 0.0;
+    private static final double DELAY_PUSH1_S = 0.2;
+    private static final double DELAY_PUSH1_MID_S = 0.2;
     private static final double DELAY_PUSH1_END_S = 0.5;
     private static final double DELAY_PUSH2_AND_GATE_S = 0.5;
     private static final double DELAY_RESET_GATEUP_S = 0.2;
@@ -365,17 +365,6 @@ public class BasePlateFast {
 
             case PUSH_1_WAIT_MID:
                 if (shootTimer.seconds() >= DELAY_PUSH1_MID_S) {
-
-                    // BEFORE shot #2 moment: enforce extra spacing from shot #1.
-                    if (!spacingSatisfied()) {
-                        // Hold here until satisfied; don't reset timers.
-                        break;
-                    }
-
-                    if (HOLD_SETTLE_S > 0.0 && interShotTimer.seconds() < getRequiredExtraDelayForNextBoundary() + HOLD_SETTLE_S) {
-                        // optional extra settle; uses same timer without changing state
-                        break;
-                    }
 
                     // Shot #2 moment
                     gateBackFullShoot();
