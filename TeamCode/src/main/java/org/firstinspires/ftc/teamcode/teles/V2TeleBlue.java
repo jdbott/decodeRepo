@@ -14,6 +14,7 @@ import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlate;
+import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlateFast;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Gantry;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
@@ -29,7 +30,7 @@ public class V2TeleBlue extends LinearOpMode {
     private Follower follower;
     private Intake intake;
     private Gantry gantry;
-    private BasePlate basePlate;
+    private BasePlateFast basePlate;
 
     // Flywheel (FlywheelASG like auto)
     private FlywheelASG flywheelASG;
@@ -58,7 +59,8 @@ public class V2TeleBlue extends LinearOpMode {
     private enum IntakeState {
         OFF,
         ON,
-        SHUTDOWN_WAIT // gate down now; wait 0.4s then stop intake motor
+        SHUTDOWN_WAIT, // gate down now; wait 0.4s then stop intake motor
+        REVERSE
     }
 
     private IntakeState intakeState = IntakeState.OFF;
@@ -67,6 +69,9 @@ public class V2TeleBlue extends LinearOpMode {
     private long intakeShutdownStartMs = 0;
 
     private static final long INTAKE_SHUTDOWN_DELAY_MS = 400;
+
+    private long intakeReverseStartMs = 0;
+    private static final long INTAKE_REVERSE_MS = 500; // example
 
     // =========================
     // Gate toggle (RB)
@@ -105,6 +110,12 @@ public class V2TeleBlue extends LinearOpMode {
     // =========================
     private double flywheelTuneRPM = 3000;
 
+    // =========================
+// Touchpad flywheel preset select (GAMEPAD 2)
+// =========================
+    private enum FlywheelZone { LOW, MID, HIGH }
+    private FlywheelZone lastFlywheelZone = null;
+
     private boolean gp1DpadUpPrev = false;
     private boolean gp1DpadDownPrev = false;
 
@@ -121,6 +132,8 @@ public class V2TeleBlue extends LinearOpMode {
     // =========================
     private boolean turretIdleHoldEnabled = true; // start in "don't move / hold current" mode
     private double turretIdleHoldAngleDeg = Double.NaN;
+
+    private double turretOffset = 3;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -155,7 +168,7 @@ public class V2TeleBlue extends LinearOpMode {
         // -----------------------------
         intake = new Intake(hardwareMap);
         gantry = new Gantry(hardwareMap);
-        basePlate = new BasePlate(hardwareMap);
+        basePlate = new BasePlateFast(hardwareMap);
 
         // -----------------------------
         // FlywheelASG init (LIKE AUTO)
@@ -256,13 +269,7 @@ public class V2TeleBlue extends LinearOpMode {
             }
             lbPrev = lbNow;
 
-            if (gamepad2.dpad_up) {
-                flywheelTuneRPM = 3700;
-                TARGET_X = 22;
-            } else if (gamepad2.dpad_down) {
-                flywheelTuneRPM = 3000;
-                TARGET_X = 13;
-            }
+            handleTouchpadFlywheelPresets();
 
             // Update subsystems
             basePlate.update();
@@ -320,6 +327,7 @@ public class V2TeleBlue extends LinearOpMode {
                 break;
 
             case ON:
+                gantry.moveGantryToPos("middle");
                 intake.intakeIn();
                 gateAllTheWayUp();
                 break;
@@ -327,14 +335,74 @@ public class V2TeleBlue extends LinearOpMode {
             case SHUTDOWN_WAIT:
                 intake.intakeStop();
                 gateDown();
+                gantry.moveGantryToPos("back");
 
                 if (System.currentTimeMillis() - intakeShutdownStartMs >= INTAKE_SHUTDOWN_DELAY_MS) {
                     gateDown();
-                    intakeState = IntakeState.OFF;
+                    intakeState = IntakeState.REVERSE;
+                    intake.intakeOut();
                     basePlate.prepShootOnly();
-                } else {
-                    intake.intakeIn();
                 }
+                break;
+
+            case REVERSE:
+                intake.intakeOut();
+                if (System.currentTimeMillis() - intakeReverseStartMs >= INTAKE_REVERSE_MS) {
+                    intakeState = IntakeState.OFF;
+                    intake.intakeStop();
+                }
+                break;
+        }
+    }
+
+    /**
+     * GAMEPAD 2 Touchpad controls flywheel presets based on finger X position.
+     * Left third  -> LOW
+     * Middle third-> MID (currently same as LOW; add your own mid preset)
+     * Right third -> HIGH
+     *
+     * Rumble:
+     *  - LOW  = 1 blip
+     *  - MID  = 2 blips
+     *  - HIGH = 3 blips
+     */
+    private void handleTouchpadFlywheelPresets() {
+
+        FlywheelZone zone = null;
+
+        if (gamepad2.dpad_up) {
+            zone = FlywheelZone.HIGH;
+        } else if (gamepad2.dpad_down) {
+            zone = FlywheelZone.LOW;
+        } else if (gamepad2.touchpad_finger_1) {
+            zone = FlywheelZone.MID;
+        } else {
+            return;
+        }
+
+        if (zone == lastFlywheelZone) return;
+        lastFlywheelZone = zone;
+
+        switch (zone) {
+            case LOW:
+                flywheelTuneRPM = 3000;
+                TARGET_X = 13;
+                turretOffset = 0;
+                gamepad2.rumbleBlips(1);
+                break;
+
+            case MID:
+                flywheelTuneRPM = 3150;
+                TARGET_X = 13;
+                turretOffset = 0;
+                gamepad2.rumbleBlips(2);
+                break;
+
+            case HIGH:
+                flywheelTuneRPM = 3700;
+                TARGET_X = 22;
+                turretOffset = 3;
+                gamepad2.rumbleBlips(3);
                 break;
         }
     }
@@ -482,7 +550,7 @@ public class V2TeleBlue extends LinearOpMode {
                 turret.setAngle(0);
             } else if (!turretManualOverride) {
                 boolean didTxAim = tryLimelightTxAim(pose, TURRET_MIN_DEG, TURRET_MAX_DEG);
-                if (!didTxAim) turret.setAngle(safeCmdDeg);
+                if (!didTxAim) turret.setAngle(safeCmdDeg + turretOffset);
             }
 
         } else {
@@ -504,6 +572,13 @@ public class V2TeleBlue extends LinearOpMode {
                     ));
                 }
             }
+        }
+
+        boolean outOfRange = (desiredTurretDeg < -160.0) || (desiredTurretDeg > 160.0);
+
+        if (turretShootingActive && !turretManualOverride && outOfRange) {
+            gamepad1.rumble(120);
+            gamepad2.rumble(120);
         }
 
         // Extra telemetry for debugging

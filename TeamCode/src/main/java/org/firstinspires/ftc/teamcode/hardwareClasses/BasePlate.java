@@ -37,7 +37,7 @@ public class BasePlate {
     // -----------------------
     // Pusher conversion
     // -----------------------
-    private static final double HOME_CMD = 0.44;
+    private static final double HOME_CMD = 0.46;
 
     private static final double SERVO_RANGE_DEG = 355.0;
     private static final double GT2_PITCH_MM = 2.0;

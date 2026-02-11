@@ -57,7 +57,7 @@ public class BlueAutoQuals extends OpMode {
     // ============================================================
     // Tunables
     // ============================================================
-    private static final double SHOOTER_RAD = 315;
+    private static final double SHOOTER_RAD = 309;
 
     // After leaving a line: keep intaking for this long, then STOP intake + gate down (lock).
     private static final double POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S = 0.75;
@@ -366,7 +366,7 @@ public class BlueAutoQuals extends OpMode {
                 ));
                 toMiddleLine.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(toMiddleLine, false);
-
+                flywheelASG.setTargetVelocity(300);
                 intake.intakeIn();
                 setPathState(4);
                 break;
@@ -376,6 +376,8 @@ public class BlueAutoQuals extends OpMode {
                 if (follower.getCurrentTValue() > 0.4) follower.setMaxPower(0.5);
 
                 if (!follower.isBusy()) {
+                    turretAutoTrackingEnabled = false;
+                    turret.setAngle(0);
                     follower.setMaxPower(1);
 
                     // Begin leaving immediately, keep intake running for a bit
@@ -439,7 +441,10 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 9: {
-                if (follower.getCurrentTValue() > 0.7) toShoot2.setConstantHeadingInterpolation(Math.toRadians(270));
+                if (follower.getCurrentTValue() > 0.7) {
+                    toShoot2.setConstantHeadingInterpolation(Math.toRadians(270));
+                    turretAutoTrackingEnabled = true;
+                }
                 if (!follower.isBusy()) {
                     setPathState(91);
                 }
