@@ -54,7 +54,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
     private int gateTrips = 0;
 
     // Tunables
-    private static final double SHOOT_WAIT_S = 0.75;
+    private static final double SHOOT_WAIT_S = 0.55;
     private static final double INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.5;
 
     // Intake carry flag: set TRUE when an intake path ends; cleared after we stop intake 0.5s into the shoot path.
@@ -64,7 +64,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 // Turret tracking (AUTO) fields
 // -----------------------------
     private static final double TURRET_TARGET_X = 6;
-    private static final double TURRET_TARGET_Y = 140;
+    private static final double TURRET_TARGET_Y = 144;
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
@@ -250,7 +250,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             // Use TX exactly like teleop
             LLResult aimRes = limelight3A.getLatestResult();
             if (aimRes != null && aimRes.isValid()) {
-                double txDeg = aimRes.getTx(); // degrees
+                double txDeg = aimRes.getTx()+3; // degrees
 
                 double turretCurrentDeg = turret.getCurrentAngle();
                 double delta = -TX_SIGN * TX_KP * txDeg;
@@ -343,7 +343,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 );
                 toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
                 gantry.moveGantryToPos("middle");
-                flywheelASG.setTargetVelocity(309);
+                flywheelASG.setTargetVelocity(304);
                 follower.followPath(toLine2, false);
                 intake.intakeIn();
                 setPathState(4);
@@ -413,17 +413,17 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             // GATE INTAKE LOOP (2 trips)
             // ------------------------------------------------------------------
             case 8: {
-//                toGateIntake = new Path(new BezierCurve(
-//                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
-//                        new Pose(53.779, 53.946),
-//                        new Pose(14.5, 59.5))
-//                );
                 toGateIntake = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(53.779, 53.946),
-                        new Pose(9, 73),
-                        new Pose(8.5, 62))
+                        new Pose(16.2, 60))
                 );
+//                toGateIntake = new Path(new BezierCurve(
+//                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
+//                        new Pose(53.779, 53.946),
+//                        new Pose(9, 73),
+//                        new Pose(8.5, 62))
+//                );
                 toGateIntake.setTangentHeadingInterpolation();
                 gantry.moveGantryToPos("middle");
                 follower.followPath(toGateIntake, true);
@@ -434,11 +434,11 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 
             case 9: {
                 if (follower.getCurrentTValue() > 0.5) {
-                    toGateIntake.setConstantHeadingInterpolation(Math.toRadians(140));
+                    toGateIntake.setConstantHeadingInterpolation(Math.toRadians(160));
                 }
                 if (!follower.isBusy()) {
                     follower.startTeleOpDrive();
-                    //follower.setTeleOpDrive(0.15, 0, 0);
+                    follower.setTeleOpDrive(0.15, 0, 0);
                     intake.intakeIn();
                     gateTrips++;
                     setPathState(91);
@@ -450,7 +450,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 if (pathTimer.getElapsedTimeSeconds() > 1.5) {
                     follower.setMaxPower(1);
                     markIntakePathFinishedGateDownAndCarry();
-                    if (gateTrips < 2) {
+                    if (gateTrips < 3) {
                         setPathState(51);   // back to SHOOT 2
                     } else {
                         setPathState(10);  // shoot after last gate

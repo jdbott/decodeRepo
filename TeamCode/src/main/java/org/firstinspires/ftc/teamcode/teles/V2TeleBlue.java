@@ -138,15 +138,18 @@ public class V2TeleBlue extends LinearOpMode {
     // --- Flywheel fixed speeds ---
     private static final double FAR_FIXED_RPM = 3700.0;
 
-    // --- Close-zone polynomial bounds + clamps (YOU WILL TUNE THESE) ---
-    private static final double CLOSE_MIN_DIST_IN = 20.0; // inches
-    private static final double CLOSE_MAX_DIST_IN = 90.0; // inches
-    private static final double CLOSE_MIN_RPM = 2800.0;   // clamp low
-    private static final double CLOSE_MAX_RPM = 3600.0;   // clamp high
+    // --- CLOSE zone (ODOM DISTANCE ONLY) ---
+    private static final double CLOSE_MIN_DIST_IN = 49.0;     // lower bound of your dataset
+    private static final double CLOSE_FLAT_END_IN = 72.4;     // <= this: 2900 RPM
+    private static final double CLOSE_CUBIC_START_IN = 72.5;  // >= this: cubic regression
+    private static final double CLOSE_MAX_DIST_IN = 95.0;     // upper bound of your dataset
+
+    private static final double CLOSE_FLAT_RPM = 2900.0;      // flat region RPM
+    private static final double CLOSE_MAX_RPM = 3120.0;       // max region clamp RPM
 
     // Flywheel mode state
     private enum FlywheelMode { CLOSE, FAR }
-    private FlywheelMode flywheelMode = FlywheelMode.FAR; // default start: FAR
+    private FlywheelMode flywheelMode = FlywheelMode.CLOSE; // default start: FAR
     private boolean flywheelAutoEnabled = true;            // default ON
 
     private boolean gp2DpadUpPrev = false;
@@ -275,8 +278,6 @@ public class V2TeleBlue extends LinearOpMode {
             // Distances (all in inches)
             // -----------------------------
             distOdomIn = computeDistanceToTargetInches(pose);
-            distCamZIn = getDistanceCamPoseZInches();
-            distAngleIn = getDistanceAngleMethodInches();
 
             // Preserve your old telemetry variable
             lastDistanceToTargetIn = distOdomIn;
@@ -328,8 +329,6 @@ public class V2TeleBlue extends LinearOpMode {
             telemetry.addData("LL_LastId", llLastSeenId);
             telemetry.addData("LL_TxDeg", Double.isNaN(llLastTxDeg) ? "NaN" : String.format(Locale.US, "%.2f", llLastTxDeg));
 
-            telemetry.addData("DistCamZ(in)", Double.isFinite(distCamZIn) ? String.format(Locale.US, "%.2f", distCamZIn) : "NaN");
-            telemetry.addData("DistAngle(in)", Double.isFinite(distAngleIn) ? String.format(Locale.US, "%.2f", distAngleIn) : "NaN");
             telemetry.addData("DistOdom(in)", Double.isFinite(distOdomIn) ? String.format(Locale.US, "%.2f", distOdomIn) : "NaN");
             telemetry.addData("DistAutoUsed(in)", Double.isFinite(distAutoUsedIn) ? String.format(Locale.US, "%.2f", distAutoUsedIn) : "NaN");
 
@@ -643,7 +642,10 @@ public class V2TeleBlue extends LinearOpMode {
         // Normal TX aim command
         double turretCurrentDeg = turret.getCurrentAngle();
 
-        double delta = -TX_SIGN * TX_KP * txDeg;
+        final double desiredTxDeg = turretOffset; // or a separate constant if you prefer
+        double txErrDeg = txDeg + desiredTxDeg;
+
+        double delta = -TX_SIGN * TX_KP * txErrDeg;
         if (!Double.isFinite(delta)) return false;
 
         delta = Range.clip(delta, -MAX_STEP_DEG, +MAX_STEP_DEG);
@@ -681,6 +683,7 @@ public class V2TeleBlue extends LinearOpMode {
         if (downNow && !gp2DpadDownPrev) {
             flywheelMode = FlywheelMode.CLOSE;
             gamepad2.rumble(80);
+            turretOffset = 3;
         }
         gp2DpadDownPrev = downNow;
 
@@ -688,6 +691,7 @@ public class V2TeleBlue extends LinearOpMode {
         if (upNow && !gp2DpadUpPrev) {
             flywheelMode = FlywheelMode.FAR;
             gamepad2.rumble(80);
+            turretOffset = 1.5;
         }
         gp2DpadUpPrev = upNow;
     }
@@ -734,12 +738,36 @@ public class V2TeleBlue extends LinearOpMode {
     // Close-zone polynomial placeholder (YOU FILL THIS IN)
     // distIn is inches; return RPM
     // =========================================================
-    private double closeZonePolyRpm(double distIn) {
-        // TODO: Replace with your regression polynomial.
-        // Example:
-        // return a0 + a1*distIn + a2*Math.pow(distIn,2) + ...;
+    // =========================================================
+// Close-zone RPM from ODOM distance (inches)
+// Piecewise:
+//  - <= 70 in: flat 2900
+//  - >= 72.5 in: cubic regression
+//  - >= 95 in: clamp 3120
+// =========================================================
+    private double closeZoneRpmFromOdom(double distIn) {
 
-        return 3200.0; // placeholder so code runs
+        // Below dataset: hold lowest (flat) RPM
+        if (distIn <= CLOSE_FLAT_END_IN) return CLOSE_FLAT_RPM;
+
+        // Above dataset max: clamp to max RPM
+        if (distIn >= CLOSE_MAX_DIST_IN) return CLOSE_MAX_RPM;
+
+        // Small gap 70..72.5: keep flat (simplest + safest)
+        if (distIn < CLOSE_CUBIC_START_IN) return CLOSE_FLAT_RPM;
+
+        // Cubic regression (from your screenshot)
+        double x = distIn;
+        double rpm =
+                0.0162338 * x * x * x
+                        - 3.9026 * x * x
+                        + 319.58117 * x
+                        - 5937.69481;
+
+        if (!Double.isFinite(rpm)) return CLOSE_FLAT_RPM;
+
+        // Final safety clamp: do not exceed your tuned bounds
+        return Range.clip(rpm, CLOSE_FLAT_RPM, CLOSE_MAX_RPM);
     }
 
     // =========================================================
@@ -766,28 +794,24 @@ public class V2TeleBlue extends LinearOpMode {
             return FAR_FIXED_RPM;
         }
 
-        // CLOSE mode:
+        // CLOSE mode (manual override when auto disabled)
         if (!flywheelAutoEnabled) {
             distAutoUsedIn = Double.NaN;
             return flywheelTuneRPM;
         }
 
-        // Auto CLOSE using chosen distance
-        double dIn = chooseAutoDistanceInches(pose);
+        // CLOSE mode (AUTO): ODOM DISTANCE ONLY
+        double dIn = computeDistanceToTargetInches(pose);
         distAutoUsedIn = dIn;
 
         if (!Double.isFinite(dIn)) {
             return flywheelTuneRPM;
         }
 
-        // Clamp distance to tuned range behavior
-        if (dIn <= CLOSE_MIN_DIST_IN) return CLOSE_MIN_RPM;
-        if (dIn >= CLOSE_MAX_DIST_IN) return CLOSE_MAX_RPM;
+        // Optional: below dataset start, hold lowest
+        if (dIn <= CLOSE_MIN_DIST_IN) return CLOSE_FLAT_RPM;
 
-        double rpm = closeZonePolyRpm(dIn);
-        if (!Double.isFinite(rpm)) return flywheelTuneRPM;
-
-        return Range.clip(rpm, CLOSE_MIN_RPM, CLOSE_MAX_RPM);
+        return closeZoneRpmFromOdom(dIn);
     }
 
     /**
