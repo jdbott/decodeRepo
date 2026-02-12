@@ -13,7 +13,6 @@ import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlate;
 import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlateFast;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Gantry;
@@ -26,36 +25,40 @@ import java.util.Locale;
 @TeleOp(name = "V2 TELEOP BLUE")
 public class V2TeleBlue extends LinearOpMode {
 
-    // --- Subsystems / hardware ---
+    // =========================================================
+    // Subsystems / hardware
+    // =========================================================
     private Follower follower;
     private Intake intake;
     private Gantry gantry;
     private BasePlateFast basePlate;
 
-    // Flywheel (FlywheelASG like auto)
     private FlywheelASG flywheelASG;
 
-    // Drivetrain
     private DcMotorEx frontLeft, frontRight, backLeft, backRight;
     private IMU imu;
 
-    // Turret object (kept as a field so we can init once)
     private final Turret turret = new Turret();
 
     // Edge memory for basePlate LB trigger
     private boolean lbPrev = false;
 
-    // =========================
+    // =========================================================
     // Limelight
-    // =========================
+    // =========================================================
     private Limelight3A limelight3A;
     private int llLastSeenId = -1;
     private double llLastTxDeg = Double.NaN;
     private boolean llUsingTxAim = false;
 
-    // =========================
+    // TX hold (anti-NaN jitter)
+    private double llLastGoodTxDeg = Double.NaN;
+    private long llLastGoodTxTimeMs = 0;
+    private static final long LL_TX_HOLD_MS = 250;
+
+    // =========================================================
     // Intake FSM
-    // =========================
+    // =========================================================
     private enum IntakeState {
         OFF,
         ON,
@@ -73,15 +76,15 @@ public class V2TeleBlue extends LinearOpMode {
     private long intakeReverseStartMs = 0;
     private static final long INTAKE_REVERSE_MS = 500; // example
 
-    // =========================
+    // =========================================================
     // Gate toggle (RB)
-    // =========================
+    // =========================================================
     private boolean rbPrev = false;
     private boolean gateToggleAllTheWayUp = true; // true = all-the-way-up, false = "one position"
 
-    // =========================
+    // =========================================================
     // Turret state fields
-    // =========================
+    // =========================================================
     private boolean turretShootingActive = false;
     private boolean turretLastShootToggleBtn = false;
 
@@ -90,31 +93,16 @@ public class V2TeleBlue extends LinearOpMode {
 
     private boolean sharePrev = false;
 
-    // =========================
-    // Target (for odom aim + distance)
-    // =========================
+    // =========================================================
+    // Target (for odom aim + odom distance)
+    // =========================================================
     private static double TARGET_X = 7;
     private static double TARGET_Y = 138;
 
-    private double lastDistanceToTargetIn = 0.0;
-
-    // =========================
-    // Limelight TX hold (anti-NaN jitter)
-    // =========================
-    private double llLastGoodTxDeg = Double.NaN;
-    private long llLastGoodTxTimeMs = 0;
-    private static final long LL_TX_HOLD_MS = 250;
-
-    // =========================
+    // =========================================================
     // Flywheel tuning (RPM on gamepad1)
-    // =========================
+    // =========================================================
     private double flywheelTuneRPM = 3000;
-
-    // =========================
-// Touchpad flywheel preset select (GAMEPAD 2)
-// =========================
-    private enum FlywheelZone { LOW, MID, HIGH }
-    private FlywheelZone lastFlywheelZone = null;
 
     private boolean gp1DpadUpPrev = false;
     private boolean gp1DpadDownPrev = false;
@@ -127,13 +115,52 @@ public class V2TeleBlue extends LinearOpMode {
     private double lastCmdRPM = 0.0;
     private double lastCmdRadPerSec = 0.0;
 
-    // =========================
+    // =========================================================
     // Turret idle hold (NO SNAP ON START)
-    // =========================
+    // =========================================================
     private boolean turretIdleHoldEnabled = true; // start in "don't move / hold current" mode
     private double turretIdleHoldAngleDeg = Double.NaN;
 
     private double turretOffset = 3;
+
+    // =========================================================
+    // Distance + Flywheel Auto Config (TUNE ALL HERE)
+    // =========================================================
+
+    // --- Units ---
+    private static final double METERS_TO_INCHES = 39.3701;
+
+    // --- Angle/trig distance constants (MEASURE THESE) ---
+    private static final double CAM_HEIGHT_M = 0.32;   // camera lens height from floor (meters)
+    private static final double CAM_PITCH_DEG = 25.0;  // camera mounting pitch angle up from horizontal (deg)
+    private static final double TARGET_HEIGHT_M = 1.04; // height of the feature you're aiming at (meters)
+
+    // --- Flywheel fixed speeds ---
+    private static final double FAR_FIXED_RPM = 3700.0;
+
+    // --- Close-zone polynomial bounds + clamps (YOU WILL TUNE THESE) ---
+    private static final double CLOSE_MIN_DIST_IN = 20.0; // inches
+    private static final double CLOSE_MAX_DIST_IN = 90.0; // inches
+    private static final double CLOSE_MIN_RPM = 2800.0;   // clamp low
+    private static final double CLOSE_MAX_RPM = 3600.0;   // clamp high
+
+    // Flywheel mode state
+    private enum FlywheelMode { CLOSE, FAR }
+    private FlywheelMode flywheelMode = FlywheelMode.FAR; // default start: FAR
+    private boolean flywheelAutoEnabled = true;            // default ON
+
+    private boolean gp2DpadUpPrev = false;
+    private boolean gp2DpadDownPrev = false;
+    private boolean gp2OptionsPrev = false;
+
+    // Distance telemetry values (all inches)
+    private double distCamZIn = Double.NaN;
+    private double distAngleIn = Double.NaN;
+    private double distOdomIn = Double.NaN;
+    private double distAutoUsedIn = Double.NaN;
+
+    // Legacy telemetry field you were already showing
+    private double lastDistanceToTargetIn = 0.0;
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -239,10 +266,20 @@ public class V2TeleBlue extends LinearOpMode {
             drive(robotHeadingDeg);
 
             // -----------------------------
-            // Distance + RPM tuning
+            // Flywheel mode select + manual tuning
             // -----------------------------
-            lastDistanceToTargetIn = computeDistanceToTargetInches(pose);
+            handleFlywheelModeSelect();
             handleDriverFlywheelTuning();
+
+            // -----------------------------
+            // Distances (all in inches)
+            // -----------------------------
+            distOdomIn = computeDistanceToTargetInches(pose);
+            distCamZIn = getDistanceCamPoseZInches();
+            distAngleIn = getDistanceAngleMethodInches();
+
+            // Preserve your old telemetry variable
+            lastDistanceToTargetIn = distOdomIn;
 
             // -----------------------------
             // Intake toggle + FSM
@@ -269,8 +306,6 @@ public class V2TeleBlue extends LinearOpMode {
             }
             lbPrev = lbNow;
 
-            handleTouchpadFlywheelPresets();
-
             // Update subsystems
             basePlate.update();
             turret.update();
@@ -293,9 +328,15 @@ public class V2TeleBlue extends LinearOpMode {
             telemetry.addData("LL_LastId", llLastSeenId);
             telemetry.addData("LL_TxDeg", Double.isNaN(llLastTxDeg) ? "NaN" : String.format(Locale.US, "%.2f", llLastTxDeg));
 
-            telemetry.addData("DistToTarget(in)", String.format(Locale.US, "%.2f", lastDistanceToTargetIn));
-            telemetry.addData("TuneRPM(gamepad1)", String.format(Locale.US, "%.0f", flywheelTuneRPM));
+            telemetry.addData("DistCamZ(in)", Double.isFinite(distCamZIn) ? String.format(Locale.US, "%.2f", distCamZIn) : "NaN");
+            telemetry.addData("DistAngle(in)", Double.isFinite(distAngleIn) ? String.format(Locale.US, "%.2f", distAngleIn) : "NaN");
+            telemetry.addData("DistOdom(in)", Double.isFinite(distOdomIn) ? String.format(Locale.US, "%.2f", distOdomIn) : "NaN");
+            telemetry.addData("DistAutoUsed(in)", Double.isFinite(distAutoUsedIn) ? String.format(Locale.US, "%.2f", distAutoUsedIn) : "NaN");
 
+            telemetry.addData("FlywheelMode", flywheelMode);
+            telemetry.addData("AutoEnabled", flywheelAutoEnabled);
+
+            telemetry.addData("TuneRPM(gamepad1)", String.format(Locale.US, "%.0f", flywheelTuneRPM));
             telemetry.addData("FlywheelCmdRPM", String.format(Locale.US, "%.0f", lastCmdRPM));
             telemetry.addData("FlywheelCmdRadS", String.format(Locale.US, "%.2f", lastCmdRadPerSec));
 
@@ -355,58 +396,6 @@ public class V2TeleBlue extends LinearOpMode {
         }
     }
 
-    /**
-     * GAMEPAD 2 Touchpad controls flywheel presets based on finger X position.
-     * Left third  -> LOW
-     * Middle third-> MID (currently same as LOW; add your own mid preset)
-     * Right third -> HIGH
-     *
-     * Rumble:
-     *  - LOW  = 1 blip
-     *  - MID  = 2 blips
-     *  - HIGH = 3 blips
-     */
-    private void handleTouchpadFlywheelPresets() {
-
-        FlywheelZone zone = null;
-
-        if (gamepad2.dpad_up) {
-            zone = FlywheelZone.HIGH;
-        } else if (gamepad2.dpad_down) {
-            zone = FlywheelZone.LOW;
-        } else if (gamepad2.touchpad_finger_1) {
-            zone = FlywheelZone.MID;
-        } else {
-            return;
-        }
-
-        if (zone == lastFlywheelZone) return;
-        lastFlywheelZone = zone;
-
-        switch (zone) {
-            case LOW:
-                flywheelTuneRPM = 3000;
-                TARGET_X = 13;
-                turretOffset = 0;
-                gamepad2.rumbleBlips(1);
-                break;
-
-            case MID:
-                flywheelTuneRPM = 3150;
-                TARGET_X = 13;
-                turretOffset = 0;
-                gamepad2.rumbleBlips(2);
-                break;
-
-            case HIGH:
-                flywheelTuneRPM = 3700;
-                TARGET_X = 22;
-                turretOffset = 3;
-                gamepad2.rumbleBlips(3);
-                break;
-        }
-    }
-
     // =========================================================
     // Gate toggle (RB)
     // =========================================================
@@ -427,7 +416,7 @@ public class V2TeleBlue extends LinearOpMode {
     // Turret control and tracking
     // - Limelight TX aim when tag==20, else odom aim
     // - FlywheelASG target set here (like auto)
-    // - NEW: no snap on start; idle hold until shooting mode enabled
+    // - no snap on start; idle hold until shooting mode enabled
     // =========================================================
     private void handleTurretTrackingAndControl(Pose pose) {
 
@@ -444,10 +433,8 @@ public class V2TeleBlue extends LinearOpMode {
             turretShootingActive = !turretShootingActive;
 
             if (turretShootingActive) {
-                // entering shooting mode: allow auto aim / commands
                 turretIdleHoldEnabled = false;
             } else {
-                // exiting shooting mode: stop flywheel and freeze turret where it is
                 flywheelASG.setTargetVelocity(0.0);
                 turretIdleHoldEnabled = true;
                 turretIdleHoldAngleDeg = turret.getCurrentAngle();
@@ -505,7 +492,6 @@ public class V2TeleBlue extends LinearOpMode {
             turretManualOverride = true;
             turretLastManualInputMs = now;
 
-            // If you're manually moving, keep the idle-hold latch updated so it "freezes" where you left it
             if (turretIdleHoldEnabled) {
                 turretIdleHoldAngleDeg = turret.getTargetAngle();
             }
@@ -519,7 +505,6 @@ public class V2TeleBlue extends LinearOpMode {
             turretLastManualInputMs = System.currentTimeMillis();
             gamepad2.rumble(500);
 
-            // After zeroing, latch current as idle hold point
             turretIdleHoldEnabled = true;
             turretIdleHoldAngleDeg = turret.getCurrentAngle();
             turret.setAngle(turretIdleHoldAngleDeg);
@@ -535,10 +520,8 @@ public class V2TeleBlue extends LinearOpMode {
         // =========================
         if (turretShootingActive) {
 
-            // Default RPM comes from gamepad1 tuning
-            double rpmCmd = flywheelTuneRPM;
+            double rpmCmd = computeFlywheelRpmCmd(pose);
 
-            // FlywheelASG uses rad/s (like auto)
             double radPerSec = rpmToRadPerSec(rpmCmd);
             flywheelASG.setTargetVelocity(radPerSec);
 
@@ -554,7 +537,6 @@ public class V2TeleBlue extends LinearOpMode {
             }
 
         } else {
-            // Not shooting: stop flywheel; freeze turret at latched angle unless manual override
             flywheelASG.setTargetVelocity(0.0);
             lastCmdRPM = 0.0;
             lastCmdRadPerSec = 0.0;
@@ -619,9 +601,9 @@ public class V2TeleBlue extends LinearOpMode {
             if (Double.isFinite(llLastGoodTxDeg) && (now - llLastGoodTxTimeMs) <= LL_TX_HOLD_MS) {
                 llUsingTxAim = true;
                 llLastTxDeg = llLastGoodTxDeg; // telemetry shows last good value
-                return true; // IMPORTANT: prevents odom fallback + turret jerk
+                return true;
             }
-            return false; // too long without good data -> allow odom aim
+            return false;
         }
 
         int id = result.getFiducialResults().get(0).getFiducialId();
@@ -637,7 +619,7 @@ public class V2TeleBlue extends LinearOpMode {
             if (Double.isFinite(llLastGoodTxDeg) && (now - llLastGoodTxTimeMs) <= LL_TX_HOLD_MS) {
                 llUsingTxAim = true;
                 llLastTxDeg = llLastGoodTxDeg;
-                return true; // hold turret briefly
+                return true;
             }
             return false;
         }
@@ -653,9 +635,9 @@ public class V2TeleBlue extends LinearOpMode {
             if (Double.isFinite(llLastGoodTxDeg) && (now - llLastGoodTxTimeMs) <= LL_TX_HOLD_MS) {
                 llUsingTxAim = true;
                 llLastTxDeg = llLastGoodTxDeg;
-                return true; // IMPORTANT: freeze turret target; don't switch to odom
+                return true;
             }
-            return false; // too long NaN -> allow odom
+            return false;
         }
 
         // Normal TX aim command
@@ -683,6 +665,131 @@ public class V2TeleBlue extends LinearOpMode {
         return true;
     }
 
+    // =========================================================
+    // Flywheel mode select + auto enable toggle (gamepad2)
+    // =========================================================
+    private void handleFlywheelModeSelect() {
+
+        boolean optNow = gamepad2.options;
+        if (optNow && !gp2OptionsPrev) {
+            flywheelAutoEnabled = !flywheelAutoEnabled;
+            gamepad2.rumble(150);
+        }
+        gp2OptionsPrev = optNow;
+
+        boolean downNow = gamepad2.dpad_down;
+        if (downNow && !gp2DpadDownPrev) {
+            flywheelMode = FlywheelMode.CLOSE;
+            gamepad2.rumble(80);
+        }
+        gp2DpadDownPrev = downNow;
+
+        boolean upNow = gamepad2.dpad_up;
+        if (upNow && !gp2DpadUpPrev) {
+            flywheelMode = FlywheelMode.FAR;
+            gamepad2.rumble(80);
+        }
+        gp2DpadUpPrev = upNow;
+    }
+
+    // =========================================================
+    // Distance getters (Limelight)
+    // =========================================================
+    private double getDistanceCamPoseZInches() {
+        if (limelight3A == null) return Double.NaN;
+
+        LLResult res = limelight3A.getLatestResult();
+        if (res == null || !res.isValid() || res.getFiducialResults() == null || res.getFiducialResults().isEmpty()) {
+            return Double.NaN;
+        }
+
+        double zMeters = res.getFiducialResults().get(0).getTargetPoseCameraSpace().getPosition().z;
+        if (!Double.isFinite(zMeters)) return Double.NaN;
+
+        return zMeters * METERS_TO_INCHES;
+    }
+
+    private double getDistanceAngleMethodInches() {
+        if (limelight3A == null) return Double.NaN;
+
+        LLResult res = limelight3A.getLatestResult();
+        if (res == null || !res.isValid()) return Double.NaN;
+
+        double tyDeg = res.getTy();
+        if (!Double.isFinite(tyDeg)) return Double.NaN;
+
+        double totalDeg = CAM_PITCH_DEG + tyDeg;
+        double totalRad = Math.toRadians(totalDeg);
+
+        double denom = Math.tan(totalRad);
+        if (!Double.isFinite(denom) || Math.abs(denom) < 1e-6) return Double.NaN;
+
+        double meters = (TARGET_HEIGHT_M - CAM_HEIGHT_M) / denom;
+        if (!Double.isFinite(meters)) return Double.NaN;
+
+        return meters * METERS_TO_INCHES;
+    }
+
+    // =========================================================
+    // Close-zone polynomial placeholder (YOU FILL THIS IN)
+    // distIn is inches; return RPM
+    // =========================================================
+    private double closeZonePolyRpm(double distIn) {
+        // TODO: Replace with your regression polynomial.
+        // Example:
+        // return a0 + a1*distIn + a2*Math.pow(distIn,2) + ...;
+
+        return 3200.0; // placeholder so code runs
+    }
+
+    // =========================================================
+    // Choose distance for auto (cam Z priority, odom fallback)
+    // =========================================================
+    private double chooseAutoDistanceInches(Pose pose) {
+        double cam = getDistanceCamPoseZInches();
+        if (Double.isFinite(cam)) return cam;
+
+        double odom = computeDistanceToTargetInches(pose);
+        if (Double.isFinite(odom)) return odom;
+
+        return Double.NaN;
+    }
+
+    // =========================================================
+    // Compute RPM command given mode + auto enabled
+    // =========================================================
+    private double computeFlywheelRpmCmd(Pose pose) {
+
+        // FAR mode is always fixed RPM (even if auto enabled)
+        if (flywheelMode == FlywheelMode.FAR) {
+            distAutoUsedIn = Double.NaN;
+            return FAR_FIXED_RPM;
+        }
+
+        // CLOSE mode:
+        if (!flywheelAutoEnabled) {
+            distAutoUsedIn = Double.NaN;
+            return flywheelTuneRPM;
+        }
+
+        // Auto CLOSE using chosen distance
+        double dIn = chooseAutoDistanceInches(pose);
+        distAutoUsedIn = dIn;
+
+        if (!Double.isFinite(dIn)) {
+            return flywheelTuneRPM;
+        }
+
+        // Clamp distance to tuned range behavior
+        if (dIn <= CLOSE_MIN_DIST_IN) return CLOSE_MIN_RPM;
+        if (dIn >= CLOSE_MAX_DIST_IN) return CLOSE_MAX_RPM;
+
+        double rpm = closeZonePolyRpm(dIn);
+        if (!Double.isFinite(rpm)) return flywheelTuneRPM;
+
+        return Range.clip(rpm, CLOSE_MIN_RPM, CLOSE_MAX_RPM);
+    }
+
     /**
      * Maps desiredDeg to an equivalent angle within [minDeg, maxDeg] by trying desired +/- 360*k.
      * If multiple equivalents are valid, chooses the one closest to referenceDeg.
@@ -703,9 +810,9 @@ public class V2TeleBlue extends LinearOpMode {
         return best;
     }
 
-    // -----------------------------
+    // =========================================================
     // Drive logic
-    // -----------------------------
+    // =========================================================
     private void drive(double robotHeadingDeg) {
         double trigger = Range.clip(1 - gamepad1.right_trigger, 0.2, 1);
 
@@ -751,7 +858,7 @@ public class V2TeleBlue extends LinearOpMode {
     }
 
     // =========================================================
-    // Distance helper
+    // Distance helper (odometry)
     // =========================================================
     private double computeDistanceToTargetInches(Pose pose) {
         double dx = TARGET_X - pose.getX();
@@ -767,7 +874,7 @@ public class V2TeleBlue extends LinearOpMode {
     }
 
     // =========================================================
-    // Flywheel tuning (gamepad1 dpad up/down)
+    // Flywheel manual tuning (gamepad1 dpad up/down)
     // =========================================================
     private void handleDriverFlywheelTuning() {
         boolean upNow = gamepad1.dpad_up;
