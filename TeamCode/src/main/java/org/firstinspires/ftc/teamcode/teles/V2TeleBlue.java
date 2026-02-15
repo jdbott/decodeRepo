@@ -396,6 +396,7 @@ public class V2TeleBlue extends LinearOpMode {
 
                 if (System.currentTimeMillis() - intakeShutdownStartMs >= INTAKE_SHUTDOWN_DELAY_MS) {
                     gateDown();
+                    intakeReverseStartMs = System.currentTimeMillis();
                     intakeState = IntakeState.REVERSE;
                     intake.intakeOut();
                     basePlate.prepShootOnly();
@@ -549,7 +550,16 @@ public class V2TeleBlue extends LinearOpMode {
                 turret.setAngle(0);
             } else if (!turretManualOverride) {
                 boolean didTxAim = tryLimelightTxAim(pose, TURRET_MIN_DEG, TURRET_MAX_DEG);
-                if (!didTxAim) turret.setAngle(safeCmdDeg + turretOffset);
+                if (!didTxAim) {
+                    double desiredOdom = safeCmdDeg + turretOffset;
+                    double safeOdom = wrapIntoTurretWindow(
+                            desiredOdom,
+                            turret.getCurrentAngle(),
+                            TURRET_MIN_DEG,
+                            TURRET_MAX_DEG
+                    );
+                    turret.setAngle(safeOdom);
+                }
             }
 
         } else {
@@ -564,7 +574,7 @@ public class V2TeleBlue extends LinearOpMode {
                     }
                     turret.setAngle(wrapIntoTurretWindow(
                             turretIdleHoldAngleDeg,
-                            turret.getTargetAngle(),
+                            turret.getCurrentAngle(),
                             TURRET_MIN_DEG,
                             TURRET_MAX_DEG
                     ));
@@ -607,6 +617,8 @@ public class V2TeleBlue extends LinearOpMode {
 
         long now = System.currentTimeMillis();
 
+        // Update robot orientation for Limelight solve
+        limelight3A.updateRobotOrientation(Math.toDegrees(pose.getHeading()));
         LLResult result = limelight3A.getLatestResult();
 
         // If the LL output is temporarily invalid/missing, HOLD turret (no odom fallback) briefly
@@ -616,7 +628,16 @@ public class V2TeleBlue extends LinearOpMode {
 
             if (Double.isFinite(llLastGoodTxDeg) && (now - llLastGoodTxTimeMs) <= LL_TX_HOLD_MS) {
                 llUsingTxAim = true;
-                llLastTxDeg = llLastGoodTxDeg; // telemetry shows last good value
+                llLastTxDeg = llLastGoodTxDeg;
+
+                // actually command something: hold current target
+                double hold = wrapIntoTurretWindow(
+                        turret.getTargetAngle(),
+                        turret.getCurrentAngle(),
+                        turretMinDeg,
+                        turretMaxDeg
+                );
+                turret.setAngle(hold);
                 return true;
             }
             return false;
@@ -626,9 +647,6 @@ public class V2TeleBlue extends LinearOpMode {
         llLastSeenId = id;
 
         if (id != TAG_ID_FOR_TX_AIM) return false;
-
-        // Update robot orientation for Limelight solve
-        limelight3A.updateRobotOrientation(Math.toDegrees(pose.getHeading()));
 
         LLResult aimRes = limelight3A.getLatestResult();
         if (aimRes == null || !aimRes.isValid()) {
@@ -659,20 +677,21 @@ public class V2TeleBlue extends LinearOpMode {
         // Normal TX aim command
         double turretCurrentDeg = turret.getCurrentAngle();
 
-        final double desiredTxDeg = turretOffset; // or a separate constant if you prefer
-        double txErrDeg = txDeg + desiredTxDeg;
+        final double TX_SETPOINT_DEG = turretOffset; // Option 1: aim for tx == turretOffset
 
-        double delta = -TX_SIGN * TX_KP * txErrDeg;
-        if (!Double.isFinite(delta)) return false;
+        double txErr = txDeg - TX_SETPOINT_DEG;
 
+        double delta = -TX_SIGN * TX_KP * txErr;
         delta = Range.clip(delta, -MAX_STEP_DEG, +MAX_STEP_DEG);
 
-        double desired = turretCurrentDeg + delta;
+// Integrate off TARGET (not current) to avoid measurement noise feeding command directly
+        double desired = turret.getTargetAngle() + delta;
+
         if (!Double.isFinite(desired)) return false;
 
         double safe = wrapIntoTurretWindow(
                 desired,
-                turret.getTargetAngle(),
+                turret.getCurrentAngle(),
                 turretMinDeg,
                 turretMaxDeg
         );

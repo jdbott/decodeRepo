@@ -73,7 +73,7 @@ public class BlueAutoQuals extends OpMode {
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
-    private static final double TURRET_MAX_DEG = 200.0;
+    private static final double TURRET_MAX_DEG = 160;
 
     private boolean turretAutoTrackingEnabled = true;
     private boolean turretOverrideActive = false;

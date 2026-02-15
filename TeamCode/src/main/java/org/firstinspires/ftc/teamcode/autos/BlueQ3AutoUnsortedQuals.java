@@ -68,7 +68,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
-    private static final double TURRET_MAX_DEG =  200.0;
+    private static final double TURRET_MAX_DEG =  160;
 
     // Auto-tracking enable (for auto, usually always true)
     private boolean turretAutoTrackingEnabled = true;
@@ -228,7 +228,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
         // Keep command in a safe turret window and pick the equivalent closest to the current target
         double safeAutoCmdDeg = wrapIntoTurretWindow(
                 rawAutoCmdDeg,
-                turret.getTargetAngle(),
+                turret.getCurrentAngle(),
                 TURRET_MIN_DEG,
                 TURRET_MAX_DEG
         );

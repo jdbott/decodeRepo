@@ -47,6 +47,12 @@ public class Turret {
         turretMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
     }
 
+    // Add this back:
+    public void setLimits(double minDeg, double maxDeg) {
+        minAngle = minDeg;
+        maxAngle = maxDeg;
+    }
+
     // ===== Public Configuration =====
     public void setKP(double newKP) { kP = newKP; }
     public void setKF(double newKF) { kF = newKF; }
