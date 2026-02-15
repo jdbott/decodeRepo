@@ -64,7 +64,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 // Turret tracking (AUTO) fields
 // -----------------------------
     private static final double TURRET_TARGET_X = 6;
-    private static final double TURRET_TARGET_Y = 144;
+    private static final double TURRET_TARGET_Y = 140;
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
@@ -114,6 +114,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
         telemetryA = new MultipleTelemetry(this.telemetry, FtcDashboard.getInstance().getTelemetry());
         telemetryA.addData("Status", "Initialized");
         telemetryA.update();
+        turret.setAngle(0);
     }
 
     @Override
@@ -121,12 +122,11 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
         follower.update();
         basePlate.update();
         turret.update();
-        turret.setAngle(0);
     }
 
     @Override
     public void start() {
-        flywheelASG.setTargetVelocity(309 + 10);
+        flywheelASG.setTargetVelocity(309 + 13);
         setPathState(0);
     }
 
@@ -203,90 +203,29 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
     }
 
     private void updateTurretAutoTracking() {
+        // Optional: allow you to disable turret aiming in certain states (you already do this in state 23)
         if (!turretAutoTrackingEnabled) return;
 
-        // -----------------------------
-        // Local tunables (self-contained)
-        // -----------------------------
-        final int TAG_ID_FOR_TX_AIM = 20;
-
-        final double TX_SIGN = +1.0;           // flip if reversed
-        final double TX_KP = 0.7;             // deg command per deg tx
-        final double MAX_STEP_DEG = 10.0;      // clamp per loop
-
-        // -----------------------------
-        // Override wins
-        // -----------------------------
-        if (turretOverrideActive) {
-            turret.setAngle(wrapIntoTurretWindow(
-                    turretOverrideAngleDeg,
-                    turret.getTargetAngle(),
-                    TURRET_MIN_DEG,
-                    TURRET_MAX_DEG
-            ));
-            return;
-        }
-
-        // -----------------------------
-        // Decide: TX aim only if tag ID == 20 (TeleOp-style)
-        // -----------------------------
-        boolean useTxAim = false;
-        LLResult result = (limelight3A != null) ? limelight3A.getLatestResult() : null;
-
-        if (result != null && result.isValid()
-                && result.getFiducialResults() != null
-                && !result.getFiducialResults().isEmpty()) {
-
-            int id = result.getFiducialResults().get(0).getFiducialId(); // SAME AS YOUR AUTO TAG CODE
-            useTxAim = (id == TAG_ID_FOR_TX_AIM);
-        }
-
-        if (useTxAim) {
-
-            // Update LL orientation from follower heading (same convention you used before)
-            Pose pose = follower.getPose();
-            limelight3A.updateRobotOrientation(Math.toDegrees(pose.getHeading()));
-
-            // Use TX exactly like teleop
-            LLResult aimRes = limelight3A.getLatestResult();
-            if (aimRes != null && aimRes.isValid()) {
-                double txDeg = aimRes.getTx()+3; // degrees
-
-                double turretCurrentDeg = turret.getCurrentAngle();
-                double delta = -TX_SIGN * TX_KP * txDeg;
-                delta = Range.clip(delta, -MAX_STEP_DEG, +MAX_STEP_DEG);
-
-                double desired = turretCurrentDeg + delta;
-
-                double safe = wrapIntoTurretWindow(
-                        desired,
-                        turret.getTargetAngle(),
-                        TURRET_MIN_DEG,
-                        TURRET_MAX_DEG
-                );
-
-                turret.setAngle(safe);
-                telemetryA.addData("ll", "ll");
-                return; // TX aim wins
-            }
-            // If LL glitches this frame, fall through to odom aim.
-        }
-
-        // -----------------------------
-        // Fallback: odometry aim (your existing math)
-        // -----------------------------
+        // Get robot pose from the follower (odometry)
         Pose pose = follower.getPose();
         double botX = pose.getX();
         double botY = pose.getY();
         double robotHeadingDeg = Math.toDegrees(pose.getHeading());
 
+        // Vector from robot to target point (field coordinates)
         double dx = TURRET_TARGET_X - botX;
         double dy = TURRET_TARGET_Y - botY;
 
+        // Absolute field angle from robot -> target
         double angleToTargetDeg = Math.toDegrees(Math.atan2(dy, dx));
+
+        // Convert to robot-relative turret command (subtract robot heading)
         double turretAngleNeededDeg = normalize180(angleToTargetDeg - robotHeadingDeg);
+
+        // Apply your turret mounting offset
         double rawAutoCmdDeg = normalize180(turretAngleNeededDeg + TURRET_OFFSET_DEG);
 
+        // Keep command in a safe turret window and pick the equivalent closest to the current target
         double safeAutoCmdDeg = wrapIntoTurretWindow(
                 rawAutoCmdDeg,
                 turret.getTargetAngle(),
@@ -343,7 +282,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 );
                 toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
                 gantry.moveGantryToPos("middle");
-                flywheelASG.setTargetVelocity(304);
+                flywheelASG.setTargetVelocity(309);
                 follower.followPath(toLine2, false);
                 intake.intakeIn();
                 setPathState(4);
@@ -499,8 +438,8 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 follower.setMaxPower(0.75);
                 Path toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(48, 84),
-                        new Pose(20.5, 84))
+                        new Pose(48, 86),
+                        new Pose(20.5, 86))
                 );
                 toCloseLine.setTangentHeadingInterpolation();
                 gantry.moveGantryToPos("middle");

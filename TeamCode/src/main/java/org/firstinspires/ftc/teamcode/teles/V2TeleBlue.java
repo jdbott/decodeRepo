@@ -13,6 +13,7 @@ import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlateFast;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Gantry;
@@ -338,6 +339,22 @@ public class V2TeleBlue extends LinearOpMode {
             telemetry.addData("TuneRPM(gamepad1)", String.format(Locale.US, "%.0f", flywheelTuneRPM));
             telemetry.addData("FlywheelCmdRPM", String.format(Locale.US, "%.0f", lastCmdRPM));
             telemetry.addData("FlywheelCmdRadS", String.format(Locale.US, "%.2f", lastCmdRadPerSec));
+            telemetry.addData("turret", turret.getCurrentAngle());
+
+            // =====================
+// HEADING DEBUG
+// =====================
+            double followerHeadingDeg = Math.toDegrees(follower.getPose().getHeading());
+            double imuYawDeg = imu.getRobotYawPitchRollAngles()
+                    .getYaw(AngleUnit.DEGREES);
+
+            telemetry.addLine("=== HEADING DEBUG ===");
+            telemetry.addData("Follower Heading (deg)",
+                    String.format(Locale.US, "%.2f", followerHeadingDeg));
+            telemetry.addData("IMU Yaw (deg)",
+                    String.format(Locale.US, "%.2f", imuYawDeg));
+            telemetry.addData("Heading Delta (Follower - IMU)",
+                    String.format(Locale.US, "%.2f", normalize180(followerHeadingDeg - imuYawDeg)));
 
             telemetry.update();
         }
@@ -421,7 +438,7 @@ public class V2TeleBlue extends LinearOpMode {
 
         final double TURRET_OFFSET_DEG = 180.0; // backwards is 0
         final double TURRET_MIN_DEG = -160.0;
-        final double TURRET_MAX_DEG = 200.0;
+        final double TURRET_MAX_DEG = 160;
         final long MANUAL_HOLD_MS = 4000;
 
         long now = System.currentTimeMillis();
@@ -579,8 +596,8 @@ public class V2TeleBlue extends LinearOpMode {
         final int TAG_ID_FOR_TX_AIM = 20;
 
         final double TX_SIGN = +1.0;      // flip if reversed
-        final double TX_KP = 0.7;         // deg command per deg tx
-        final double MAX_STEP_DEG = 10.0; // clamp per loop
+        final double TX_KP = 0.6;         // deg command per deg tx
+        final double MAX_STEP_DEG = 8; // clamp per loop
 
         llUsingTxAim = false;
         llLastSeenId = -1;

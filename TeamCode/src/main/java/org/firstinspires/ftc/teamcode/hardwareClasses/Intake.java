@@ -13,6 +13,8 @@ public class Intake {
         // Initialize motor
         motor = hardwareMap.get(DcMotorEx.class, "intakeMotor");
         motor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
+        motor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
+        motor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
     }
 
     // Spin intake inward (pull artifact in)
