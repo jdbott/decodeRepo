@@ -689,12 +689,7 @@ public class V2TeleBlue extends LinearOpMode {
 
         if (!Double.isFinite(desired)) return false;
 
-        double safe = wrapIntoTurretWindow(
-                desired,
-                turret.getCurrentAngle(),
-                turretMinDeg,
-                turretMaxDeg
-        );
+        double safe = wrapIntoTurretWindow(desired, turret.getTargetAngle(), turretMinDeg, turretMaxDeg);
 
         if (!Double.isFinite(safe)) return false;
 

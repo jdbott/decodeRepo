@@ -66,6 +66,8 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
     private static final double TURRET_TARGET_X = 6;
     private static final double TURRET_TARGET_Y = 140;
 
+    private static final double TURRET_ODOM_OFFSET_DEG = 1.5; // whatever you want (can be 0, 1.5, 3, etc.)
+
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
     private static final double TURRET_MAX_DEG =  160;
@@ -223,7 +225,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
         double turretAngleNeededDeg = normalize180(angleToTargetDeg - robotHeadingDeg);
 
         // Apply your turret mounting offset
-        double rawAutoCmdDeg = normalize180(turretAngleNeededDeg + TURRET_OFFSET_DEG);
+        double rawAutoCmdDeg = normalize180(turretAngleNeededDeg + TURRET_OFFSET_DEG + TURRET_ODOM_OFFSET_DEG);
 
         // Keep command in a safe turret window and pick the equivalent closest to the current target
         double safeAutoCmdDeg = wrapIntoTurretWindow(
