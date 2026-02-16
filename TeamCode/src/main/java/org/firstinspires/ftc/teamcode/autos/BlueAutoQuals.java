@@ -990,7 +990,7 @@ public class BlueAutoQuals extends OpMode {
             // KEEP your explicit rampForward calls in these strategies.
             case C_FRONT_POP_THEN_BALL2_RAPID: {
                 if (sortStep == 0) {
-                    basePlate.gateHoldBall2();
+                    basePlate.gateHoldBall1();
                     basePlate.rampBack();
                     sortStepStartTimeS = getRuntime();
                     sortStep++;

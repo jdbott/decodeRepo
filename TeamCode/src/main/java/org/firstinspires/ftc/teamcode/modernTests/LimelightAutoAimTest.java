@@ -5,6 +5,7 @@ import com.pedropathing.geometry.Pose;
 import com.qualcomm.hardware.limelightvision.LLResult;
 import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.IMU;
@@ -15,6 +16,7 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import java.util.Locale;
+@Disabled
 
 @TeleOp(name = "Turret Aim Test (LL + Odom)", group = "TEST")
 public class LimelightAutoAimTest extends LinearOpMode {

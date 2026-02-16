@@ -22,6 +22,8 @@ public class Intake {
         motor.setPower(INTAKE_POWER);
     }
 
+    public void intakeInSlow() {motor.setPower(INTAKE_POWER - 0.35);}
+
     // Spin intake outward (eject artifact)
     public void intakeOut() {
         motor.setPower(OUTTAKE_POWER);

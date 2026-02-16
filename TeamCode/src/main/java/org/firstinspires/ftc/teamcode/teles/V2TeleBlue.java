@@ -851,26 +851,12 @@ public class V2TeleBlue extends LinearOpMode {
     private double closeZoneRpmFromOdom(double distIn) {
 
         // Below dataset: hold lowest (flat) RPM
-        if (distIn <= CLOSE_FLAT_END_IN) return CLOSE_FLAT_RPM;
+        if (distIn <= 85) return 2900;
 
         // Above dataset max: clamp to max RPM
-        if (distIn >= CLOSE_MAX_DIST_IN) return CLOSE_MAX_RPM;
+        if (distIn > 85) return 3050;
 
-        // Small gap 70..72.5: keep flat (simplest + safest)
-        if (distIn < CLOSE_CUBIC_START_IN) return CLOSE_FLAT_RPM;
-
-        // Cubic regression (from your screenshot)
-        double x = distIn;
-        double rpm =
-                0.0162338 * x * x * x
-                        - 3.9026 * x * x
-                        + 319.58117 * x
-                        - 5937.69481;
-
-        if (!Double.isFinite(rpm)) return CLOSE_FLAT_RPM;
-
-        // Final safety clamp: do not exceed your tuned bounds
-        return Range.clip(rpm, CLOSE_FLAT_RPM, CLOSE_MAX_RPM);
+        return 2900;
     }
 
     // =========================================================

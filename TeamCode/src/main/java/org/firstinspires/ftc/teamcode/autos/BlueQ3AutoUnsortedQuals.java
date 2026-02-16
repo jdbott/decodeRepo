@@ -55,7 +55,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 
     // Tunables
     private static final double SHOOT_WAIT_S = 0.55;
-    private static final double INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.5;
+    private static double INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.7;
 
     // Intake carry flag: set TRUE when an intake path ends; cleared after we stop intake 0.5s into the shoot path.
     private boolean intakeCarryPending = false;
@@ -64,7 +64,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 // Turret tracking (AUTO) fields
 // -----------------------------
     private static final double TURRET_TARGET_X = 6;
-    private static final double TURRET_TARGET_Y = 140;
+    private static final double TURRET_TARGET_Y = 144;
 
     private static final double TURRET_ODOM_OFFSET_DEG = 1.5; // whatever you want (can be 0, 1.5, 3, etc.)
 
@@ -128,7 +128,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 
     @Override
     public void start() {
-        flywheelASG.setTargetVelocity(309 + 13);
+        flywheelASG.setTargetVelocity(303 + 10);
         setPathState(0);
     }
 
@@ -284,7 +284,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 );
                 toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
                 gantry.moveGantryToPos("middle");
-                flywheelASG.setTargetVelocity(309);
+                flywheelASG.setTargetVelocity(306);
                 follower.followPath(toLine2, false);
                 intake.intakeIn();
                 setPathState(4);
@@ -357,7 +357,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 toGateIntake = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(53.779, 53.946),
-                        new Pose(16.2, 59))
+                        new Pose(16.2, 60))
                 );
 //                toGateIntake = new Path(new BezierCurve(
 //                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
@@ -437,7 +437,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             // CLOSE LINE INTAKE
             // ------------------------------------------------------------------
             case 13: {
-                follower.setMaxPower(0.75);
+                follower.setMaxPower(0.6);
                 Path toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 86),
@@ -452,6 +452,9 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             }
 
             case 14: {
+                if (follower.isBusy()) {
+                    oneTime(() -> gantry.moveGantryToPos("middle"));
+                }
                 if (!follower.isBusy()) {
                     follower.setMaxPower(1);
                     markIntakePathFinishedGateDownAndCarry();
@@ -474,6 +477,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 gantry.moveGantryToPos("back");
                 follower.followPath(toShoot3, true);
                 setPathState(16);
+                INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.25;
                 break;
             }
 
@@ -486,68 +490,6 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             }
 
             case 17: {
-                oneTime(() -> basePlate.startShootFromPrep());
-                if (pathTimer.getElapsedTimeSeconds() >= SHOOT_WAIT_S) {
-                    setPathState(23);
-                }
-                break;
-            }
-
-            // ------------------------------------------------------------------
-            // BOTTOM LINE INTAKE
-            // ------------------------------------------------------------------
-            case 18: {
-                Path toBottomLine = new Path(new BezierCurve(
-                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(48, 84 - 48),
-                        new Pose(21, 84 - 50),
-                        new Pose(15, 84-50))
-                );
-                toBottomLine.setTangentHeadingInterpolation();
-
-                follower.followPath(toBottomLine, false);
-                intake.intakeIn();
-                setPathState(19);
-                break;
-            }
-
-            case 19: {
-                if (follower.getCurrentTValue() > 0.4) {
-                    follower.setMaxPower(0.5);
-                }
-                if (!follower.isBusy()) {
-                    follower.setMaxPower(1);
-                    markIntakePathFinishedGateDownAndCarry();
-                    setPathState(20); // shoot 4 start
-                }
-                break;
-            }
-
-            // ------------------------------------------------------------------
-            // SHOOT 4
-            // ------------------------------------------------------------------
-            case 20: {
-                Path toShoot4 = new Path(new BezierLine(
-                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(57, 85))
-                );
-                toShoot4.setTangentHeadingInterpolation();
-                toShoot4.reverseHeadingInterpolation();
-                toShoot4.setBrakingStrength(1);
-                follower.followPath(toShoot4, true);
-                setPathState(21);
-                break;
-            }
-
-            case 21: {
-                stopIntakeIfHalfSecondIntoShootPath();
-                if (!follower.isBusy()) {
-                    setPathState(22);
-                }
-                break;
-            }
-
-            case 22: {
                 oneTime(() -> basePlate.startShootFromPrep());
                 if (pathTimer.getElapsedTimeSeconds() >= SHOOT_WAIT_S) {
                     setPathState(23);

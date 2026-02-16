@@ -7,16 +7,20 @@ import com.qualcomm.robotcore.util.Range;
 public class Gantry {
     // Base (mechanical) setpoints
     private static final double FRONT_POS  = 0.05;
-    private static final double MIDDLE_POS = 0.56;
+    private static final double MIDDLE_POS = 0.6;
     private static final double BACK_POS   = 0.83;
 
-    private String currentPosName = "null";
+    private String currentPosName = "back"; // avoid "null" so reapply works immediately
 
     private final Servo servo1;
     private final Servo servo2;
 
     // Runtime-only trim (clears each TeleOp run because the object is recreated)
     private double posOffset = 0.0;
+
+    // Optional: limit how far the offset can go so you don't smash anything
+    private static final double OFFSET_MIN = -0.25;
+    private static final double OFFSET_MAX = +0.25;
 
     public Gantry(HardwareMap hardwareMap) {
         servo1 = hardwareMap.get(Servo.class, "gantry1");
@@ -28,18 +32,18 @@ public class Gantry {
     public void moveGantryToPos(String pos) {
         switch (pos) {
             case "front":
-                setBoth(applyOffset(FRONT_POS));
                 currentPosName = "front";
+                setBoth(applyOffset(FRONT_POS));
                 break;
 
             case "middle":
-                setBoth(applyOffset(MIDDLE_POS));
                 currentPosName = "middle";
+                setBoth(applyOffset(MIDDLE_POS));
                 break;
 
             case "back":
-                setBoth(applyOffset(BACK_POS));
                 currentPosName = "back";
+                setBoth(applyOffset(BACK_POS));
                 break;
 
             default:
@@ -48,29 +52,47 @@ public class Gantry {
         }
     }
 
-    /** Nudges the *offset*, not the base positions. Positive = higher servo position. */
+    /** Re-command the *current preset* (front/middle/back) using the current offset. */
+    public void reapplyCurrentPreset() {
+        switch (currentPosName) {
+            case "front":
+                setBoth(applyOffset(FRONT_POS));
+                break;
+            case "middle":
+                setBoth(applyOffset(MIDDLE_POS));
+                break;
+            case "back":
+            default:
+                setBoth(applyOffset(BACK_POS));
+                break;
+        }
+    }
+
+    /** Nudges the *offset*, then physically moves the gantry by reapplying the current preset. */
     public void nudgeOffset(double delta) {
         posOffset += delta;
 
-        // Optional safety clamp: keep BACK within [0,1] (and thus the others likely safe too)
-        double backWithOffset = BACK_POS + posOffset;
-        if (backWithOffset > 1.0) posOffset -= (backWithOffset - 1.0);
-        if (backWithOffset < 0.0) posOffset += (0.0 - backWithOffset);
+        // Clamp offset for safety
+        posOffset = Range.clip(posOffset, OFFSET_MIN, OFFSET_MAX);
 
-        // Hold wherever we are right now while nudging
-        holdCurrent();
+        // IMPORTANT: actually move to show the new offset
+        reapplyCurrentPreset();
     }
 
     /** Treat the current physical servo position as "BACK_POS" for the rest of this TeleOp run. */
     public void zeroHereAsBack() {
         double current = getServoPosition(); // assume both are same
         posOffset = current - BACK_POS;
-        // keep it safe
-        posOffset = Range.clip(posOffset, -1.0, 1.0);
-        currentPosName = "back"; // logically you're aligning "back"
+
+        // Clamp for safety
+        posOffset = Range.clip(posOffset, OFFSET_MIN, OFFSET_MAX);
+
+        // Lock logical preset to back AND reapply so it’s visible immediately
+        currentPosName = "back";
+        reapplyCurrentPreset();
     }
 
-    /** Actively command the current physical position again (useful while nudging). */
+    /** Holds the current physical position (does NOT use presets/offset). */
     public void holdCurrent() {
         double cur = getServoPosition();
         setBoth(cur);

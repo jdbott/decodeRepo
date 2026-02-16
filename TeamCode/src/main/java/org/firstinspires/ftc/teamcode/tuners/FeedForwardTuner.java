@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.tuners;
 
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -7,6 +8,7 @@ import com.qualcomm.robotcore.hardware.VoltageSensor;
 
 import java.util.ArrayList;
 import java.util.List;
+@Disabled
 
 @TeleOp(name = "Flywheel Feedforward Tuner", group = "Flywheel Tuning")
 public class FeedForwardTuner extends LinearOpMode {

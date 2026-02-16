@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.modernTests;
 
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -7,6 +8,7 @@ import com.qualcomm.robotcore.hardware.DcMotor;
 
 import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlate;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Gantry;
+@Disabled
 
 @TeleOp(name="TEST Sort Harness (Current->Desired, Prep+Execute)", group="TEST")
 public class TestSorting extends LinearOpMode {
