@@ -166,6 +166,19 @@ public class V2TeleBlue extends LinearOpMode {
     // Legacy telemetry field you were already showing
     private double lastDistanceToTargetIn = 0.0;
 
+    // =========================================================
+// Gantry emergency rezero (gamepad1)
+// =========================================================
+    private boolean gantryManualOverride = false;
+    private long gantryLastManualInputMs = 0;
+
+    private boolean gp1CrossPrev = false;
+    private boolean gp1TrianglePrev = false;
+    private boolean gp1OptionsPrev = false;
+
+    private static final double GANTRY_NUDGE_STEP = 0.01;
+    private static final long GANTRY_MANUAL_HOLD_MS = 4000;
+
     @Override
     public void runOpMode() throws InterruptedException {
 
@@ -283,6 +296,8 @@ public class V2TeleBlue extends LinearOpMode {
             // Preserve your old telemetry variable
             lastDistanceToTargetIn = distOdomIn;
 
+            handleGantryEmergencyRezero();
+
             // -----------------------------
             // Intake toggle + FSM
             // -----------------------------
@@ -384,7 +399,9 @@ public class V2TeleBlue extends LinearOpMode {
                 break;
 
             case ON:
-                gantry.moveGantryToPos("middle");
+                if (!gantryManualOverride) {
+                    gantry.moveGantryToPos("middle");
+                }
                 intake.intakeIn();
                 gateAllTheWayUp();
                 break;
@@ -392,8 +409,9 @@ public class V2TeleBlue extends LinearOpMode {
             case SHUTDOWN_WAIT:
                 intake.intakeStop();
                 gateDown();
-                gantry.moveGantryToPos("back");
-
+                if (!gantryManualOverride) {
+                    gantry.moveGantryToPos("back");
+                }
                 if (System.currentTimeMillis() - intakeShutdownStartMs >= INTAKE_SHUTDOWN_DELAY_MS) {
                     gateDown();
                     intakeReverseStartMs = System.currentTimeMillis();
@@ -427,6 +445,60 @@ public class V2TeleBlue extends LinearOpMode {
             else gateOnePosition();
         }
         rbPrev = rbNow;
+    }
+
+    private void handleGantryEmergencyRezero() {
+        if (intakeState != IntakeState.OFF) {
+            // Still update prev button states so edge-detect doesn’t “queue” presses
+            gp1CrossPrev = gamepad1.cross;
+            gp1TrianglePrev = gamepad1.triangle;
+            gp1OptionsPrev = gamepad1.options;
+            return;
+        }
+
+        long now = System.currentTimeMillis();
+
+        boolean crossNow = gamepad1.cross;
+        boolean triNow = gamepad1.triangle;
+        boolean optNow = gamepad1.options;
+
+        // Nudge forward (+)
+        if (crossNow && !gp1CrossPrev) {
+            gantry.nudgeOffset(+GANTRY_NUDGE_STEP);
+            gantryManualOverride = true;
+            gantryLastManualInputMs = now;
+            gamepad1.rumble(60);
+        }
+
+        // Nudge back (-)
+        if (triNow && !gp1TrianglePrev) {
+            gantry.nudgeOffset(-GANTRY_NUDGE_STEP);
+            gantryManualOverride = true;
+            gantryLastManualInputMs = now;
+            gamepad1.rumble(60);
+        }
+
+        // Zero here as BACK
+        if (optNow && !gp1OptionsPrev) {
+            gantry.zeroHereAsBack();
+            gantryManualOverride = true;
+            gantryLastManualInputMs = now;
+            gamepad1.rumble(150);
+        }
+
+        gp1CrossPrev = crossNow;
+        gp1TrianglePrev = triNow;
+        gp1OptionsPrev = optNow;
+
+        // Timeout: allow normal automatic commands to resume
+        if (gantryManualOverride && (now - gantryLastManualInputMs) > GANTRY_MANUAL_HOLD_MS) {
+            gantryManualOverride = false;
+        }
+
+        // Optional telemetry
+        telemetry.addData("GantryOverride", gantryManualOverride);
+        telemetry.addData("GantryPos", String.format(Locale.US, "%.3f", gantry.getServoPosition()));
+        telemetry.addData("GantryOffset", String.format(Locale.US, "%.3f", gantry.getOffset()));
     }
 
     // =========================================================
