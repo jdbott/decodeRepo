@@ -37,7 +37,7 @@ public class BasePlateFast {
     // -----------------------
     // Pusher conversion
     // -----------------------
-    private static final double HOME_CMD = 0.44;
+    private static final double HOME_CMD = 0.4;
 
     private static final double SERVO_RANGE_DEG = 355.0;
     private static final double GT2_PITCH_MM = 2.0;

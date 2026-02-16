@@ -75,7 +75,7 @@ public class V2TeleBlue extends LinearOpMode {
     private static final long INTAKE_SHUTDOWN_DELAY_MS = 400;
 
     private long intakeReverseStartMs = 0;
-    private static final long INTAKE_REVERSE_MS = 500; // example
+    private static final long INTAKE_REVERSE_MS = 200; // example
 
     // =========================================================
     // Gate toggle (RB)
@@ -677,7 +677,7 @@ public class V2TeleBlue extends LinearOpMode {
         // Normal TX aim command
         double turretCurrentDeg = turret.getCurrentAngle();
 
-        final double TX_SETPOINT_DEG = turretOffset; // Option 1: aim for tx == turretOffset
+        final double TX_SETPOINT_DEG = -turretOffset; // Option 1: aim for tx == turretOffset
 
         double txErr = txDeg - TX_SETPOINT_DEG;
 
@@ -685,7 +685,7 @@ public class V2TeleBlue extends LinearOpMode {
         delta = Range.clip(delta, -MAX_STEP_DEG, +MAX_STEP_DEG);
 
 // Integrate off TARGET (not current) to avoid measurement noise feeding command directly
-        double desired = turret.getTargetAngle() + delta;
+        double desired = turret.getCurrentAngle() + delta;
 
         if (!Double.isFinite(desired)) return false;
 

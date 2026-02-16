@@ -357,7 +357,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 toGateIntake = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(53.779, 53.946),
-                        new Pose(16.2, 60))
+                        new Pose(16.2, 59))
                 );
 //                toGateIntake = new Path(new BezierCurve(
 //                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
