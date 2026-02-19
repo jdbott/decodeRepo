@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode.autos;
+package org.firstinspires.ftc.teamcode.autos.legacy;
 
 import com.acmerobotics.dashboard.FtcDashboard;
 import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
@@ -8,36 +8,30 @@ import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.Path;
 import com.pedropathing.util.Timer;
-import com.qualcomm.hardware.limelightvision.LLResult;
-import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlate;
-import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlateFast;
-import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Gantry;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Shooter;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
-
-@Autonomous(name = "STATES PLAYOFFS BLUE")
-public class BlueQ3AutoUnsortedQuals extends OpMode {
+@Disabled
+@Autonomous(name = "Blue Auto Unsorted (Refactored Shoot)")
+public class BlueQ3AutoUnsorted extends OpMode {
 
     // Subsystems
     private Follower follower;
     private Intake intake;
     private Gantry gantry;
-    private BasePlateFast basePlate;
+    private BasePlate basePlate;
     private Turret turret;
 
-    private FlywheelASG flywheelASG;
-
-    private Limelight3A limelight3A;
+    private Shooter shooterV2;
 
     // State / timing
     private int pathState;
@@ -54,8 +48,8 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
     private int gateTrips = 0;
 
     // Tunables
-    private static final double SHOOT_WAIT_S = 0.55;
-    private static double INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.7;
+    private static final double SHOOT_WAIT_S = 1.6;
+    private static final double INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.5;
 
     // Intake carry flag: set TRUE when an intake path ends; cleared after we stop intake 0.5s into the shoot path.
     private boolean intakeCarryPending = false;
@@ -64,13 +58,11 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 // Turret tracking (AUTO) fields
 // -----------------------------
     private static final double TURRET_TARGET_X = 6;
-    private static final double TURRET_TARGET_Y = 144;
-
-    private static final double TURRET_ODOM_OFFSET_DEG = 1.5; // whatever you want (can be 0, 1.5, 3, etc.)
+    private static final double TURRET_TARGET_Y = 142.0;
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
-    private static final double TURRET_MAX_DEG =  160;
+    private static final double TURRET_MAX_DEG =  200.0;
 
     // Auto-tracking enable (for auto, usually always true)
     private boolean turretAutoTrackingEnabled = true;
@@ -88,11 +80,12 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
 
         intake = new Intake(hardwareMap);
         gantry = new Gantry(hardwareMap);
-        basePlate = new BasePlateFast(hardwareMap);
+        basePlate = new BasePlate(hardwareMap);
         turret = new Turret();
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
-        VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
-        flywheelASG = new FlywheelASG(hardwareMap, battery);
+        shooterV2 = new Shooter();
+        shooterV2.init(hardwareMap, "shooter2", "shooter1", DcMotorSimple.Direction.FORWARD, DcMotorSimple.Direction.REVERSE);
+
         intake.intakeStop();
         gantry.moveGantryToPos("back");
         basePlate.rampBack();
@@ -101,11 +94,6 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
         basePlate.setPusherMm(0);
         basePlate.gateHoldBall1();
         basePlate.prepShootOnly();
-
-        limelight3A = hardwareMap.get(Limelight3A.class, "limelight");
-        limelight3A.pipelineSwitch(6);
-        limelight3A.setPollRateHz(100);
-        limelight3A.start();
 
         pathTimer = new Timer();
         pathState = 0;
@@ -116,7 +104,6 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
         telemetryA = new MultipleTelemetry(this.telemetry, FtcDashboard.getInstance().getTelemetry());
         telemetryA.addData("Status", "Initialized");
         telemetryA.update();
-        turret.setAngle(0);
     }
 
     @Override
@@ -124,11 +111,12 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
         follower.update();
         basePlate.update();
         turret.update();
+        turret.setAngle(0);
     }
 
     @Override
     public void start() {
-        flywheelASG.setTargetVelocity(303 + 10);
+        shooterV2.setTargetRPM(3550);
         setPathState(0);
     }
 
@@ -139,7 +127,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
         basePlate.update();
         updateTurretAutoTracking();
         turret.update();
-        flywheelASG.update();
+        shooterV2.update();
 
         telemetryA.addData("State", pathState);
         telemetryA.addData("Busy", follower.isBusy());
@@ -205,37 +193,45 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
     }
 
     private void updateTurretAutoTracking() {
-        // Optional: allow you to disable turret aiming in certain states (you already do this in state 23)
         if (!turretAutoTrackingEnabled) return;
 
-        // Get robot pose from the follower (odometry)
+        // If an override is active, hold the override angle instead of tracking.
+        if (turretOverrideActive) {
+            turret.setAngle(wrapIntoTurretWindow(
+                    turretOverrideAngleDeg,
+                    turret.getTargetAngle(),
+                    TURRET_MIN_DEG,
+                    TURRET_MAX_DEG
+            ));
+            return;
+        }
+
         Pose pose = follower.getPose();
         double botX = pose.getX();
         double botY = pose.getY();
         double robotHeadingDeg = Math.toDegrees(pose.getHeading());
 
-        // Vector from robot to target point (field coordinates)
         double dx = TURRET_TARGET_X - botX;
         double dy = TURRET_TARGET_Y - botY;
 
-        // Absolute field angle from robot -> target
         double angleToTargetDeg = Math.toDegrees(Math.atan2(dy, dx));
 
-        // Convert to robot-relative turret command (subtract robot heading)
+        // same structure you used in TeleOp:
         double turretAngleNeededDeg = normalize180(angleToTargetDeg - robotHeadingDeg);
+        double rawAutoCmdDeg = normalize180(turretAngleNeededDeg + TURRET_OFFSET_DEG);
 
-        // Apply your turret mounting offset
-        double rawAutoCmdDeg = normalize180(turretAngleNeededDeg + TURRET_OFFSET_DEG + TURRET_ODOM_OFFSET_DEG);
-
-        // Keep command in a safe turret window and pick the equivalent closest to the current target
         double safeAutoCmdDeg = wrapIntoTurretWindow(
                 rawAutoCmdDeg,
-                turret.getCurrentAngle(),
+                turret.getTargetAngle(),
                 TURRET_MIN_DEG,
                 TURRET_MAX_DEG
         );
 
         turret.setAngle(safeAutoCmdDeg);
+
+        // Optional telemetry
+        telemetryA.addData("TurretAutoCmd", safeAutoCmdDeg);
+        telemetryA.addData("AngleToTarget", angleToTargetDeg);
     }
 
     private void autoPathUpdate() {
@@ -245,13 +241,12 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             // SHOOT 1
             // ------------------------------------------------------------------
             case 0: {
-                follower.setMaxPower(1);
                 Path toShoot1 = new Path(new BezierLine(
                         new Pose(35.791, 135),
                         new Pose(57, 85))
                 );
                 toShoot1.setLinearHeadingInterpolation(Math.toRadians(-90), Math.toRadians(180), 0.8);
-                toShoot1.setBrakingStrength(1);
+
                 follower.followPath(toShoot1, true);
                 setPathState(1);
                 break;
@@ -279,12 +274,10 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 Path toLine2 = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(48, 84 - 25),
-                        new Pose(40, 84 - 23),
-                        new Pose(15, 84 - 24))
+                        new Pose(40, 84 - 31),
+                        new Pose(15, 84 - 31))
                 );
                 toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
-                gantry.moveGantryToPos("middle");
-                flywheelASG.setTargetVelocity(306);
                 follower.followPath(toLine2, false);
                 intake.intakeIn();
                 setPathState(4);
@@ -313,8 +306,6 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                         new Pose(57, 85))
                 );
                 toShoot2.reverseHeadingInterpolation();
-                toShoot2.setBrakingStrength(1);
-                gantry.moveGantryToPos("back");
                 follower.followPath(toShoot2, true);
                 setPathState(6);
                 break;
@@ -327,8 +318,6 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                         new Pose(57, 85))
                 );
                 toShoot2.setConstantHeadingInterpolation(135);
-                gantry.moveGantryToPos("back");
-                toShoot2.setBrakingStrength(1);
                 follower.followPath(toShoot2, true);
                 setPathState(6);
                 break;
@@ -357,16 +346,10 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 toGateIntake = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(53.779, 53.946),
-                        new Pose(16.2, 60))
+                        new Pose(9, 74),
+                        new Pose(12.2, 62))
                 );
-//                toGateIntake = new Path(new BezierCurve(
-//                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
-//                        new Pose(53.779, 53.946),
-//                        new Pose(9, 73),
-//                        new Pose(8.5, 62))
-//                );
                 toGateIntake.setTangentHeadingInterpolation();
-                gantry.moveGantryToPos("middle");
                 follower.followPath(toGateIntake, true);
                 //intake.intakeIn();
                 setPathState(9);
@@ -374,12 +357,11 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             }
 
             case 9: {
-                if (follower.getCurrentTValue() > 0.5) {
-                    toGateIntake.setConstantHeadingInterpolation(Math.toRadians(160));
+                if (follower.getCurrentTValue() > 0.2) {
+                    toGateIntake.setConstantHeadingInterpolation(Math.toRadians(135));
+                    follower.setMaxPower(0.7);
                 }
                 if (!follower.isBusy()) {
-                    follower.startTeleOpDrive();
-                    follower.setTeleOpDrive(0.15, 0, 0);
                     intake.intakeIn();
                     gateTrips++;
                     setPathState(91);
@@ -391,7 +373,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 if (pathTimer.getElapsedTimeSeconds() > 1.5) {
                     follower.setMaxPower(1);
                     markIntakePathFinishedGateDownAndCarry();
-                    if (gateTrips < 3) {
+                    if (gateTrips < 2) {
                         setPathState(51);   // back to SHOOT 2
                     } else {
                         setPathState(10);  // shoot after last gate
@@ -409,9 +391,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                         new Pose(30, 50),
                         new Pose(57, 85))
                 );
-                gantry.moveGantryToPos("back");
                 toShootAfterLastGate.reverseHeadingInterpolation();
-                toShootAfterLastGate.setBrakingStrength(1);
                 follower.followPath(toShootAfterLastGate, true);
                 setPathState(11);
                 break;
@@ -437,14 +417,14 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             // CLOSE LINE INTAKE
             // ------------------------------------------------------------------
             case 13: {
-                follower.setMaxPower(0.6);
+                follower.setMaxPower(0.75);
                 Path toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(48, 86),
-                        new Pose(20.5, 86))
+                        new Pose(48, 84),
+                        new Pose(20, 84))
                 );
                 toCloseLine.setTangentHeadingInterpolation();
-                gantry.moveGantryToPos("middle");
+
                 follower.followPath(toCloseLine, false);
                 intake.intakeIn();
                 setPathState(14);
@@ -452,9 +432,6 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             }
 
             case 14: {
-                if (follower.isBusy()) {
-                    oneTime(() -> gantry.moveGantryToPos("middle"));
-                }
                 if (!follower.isBusy()) {
                     follower.setMaxPower(1);
                     markIntakePathFinishedGateDownAndCarry();
@@ -473,11 +450,9 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                 );
                 toShoot3.setTangentHeadingInterpolation();
                 toShoot3.reverseHeadingInterpolation();
-                toShoot3.setBrakingStrength(1);
-                gantry.moveGantryToPos("back");
+
                 follower.followPath(toShoot3, true);
                 setPathState(16);
-                INTAKE_STOP_DELAY_INTO_SHOOT_PATH_S = 0.25;
                 break;
             }
 
@@ -490,6 +465,67 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
             }
 
             case 17: {
+                oneTime(() -> basePlate.startShootFromPrep());
+                if (pathTimer.getElapsedTimeSeconds() >= SHOOT_WAIT_S) {
+                    setPathState(23);
+                }
+                break;
+            }
+
+            // ------------------------------------------------------------------
+            // BOTTOM LINE INTAKE
+            // ------------------------------------------------------------------
+            case 18: {
+                Path toBottomLine = new Path(new BezierCurve(
+                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
+                        new Pose(48, 84 - 48),
+                        new Pose(21, 84 - 50))
+                );
+                toBottomLine.setTangentHeadingInterpolation();
+
+                follower.followPath(toBottomLine, false);
+                intake.intakeIn();
+                setPathState(19);
+                break;
+            }
+
+            case 19: {
+                if (follower.getCurrentTValue() > 0.4) {
+                    follower.setMaxPower(0.5);
+                }
+                if (!follower.isBusy()) {
+                    follower.setMaxPower(1);
+                    markIntakePathFinishedGateDownAndCarry();
+                    setPathState(20); // shoot 4 start
+                }
+                break;
+            }
+
+            // ------------------------------------------------------------------
+            // SHOOT 4
+            // ------------------------------------------------------------------
+            case 20: {
+                Path toShoot4 = new Path(new BezierLine(
+                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
+                        new Pose(57, 85))
+                );
+                toShoot4.setTangentHeadingInterpolation();
+                toShoot4.reverseHeadingInterpolation();
+
+                follower.followPath(toShoot4, true);
+                setPathState(21);
+                break;
+            }
+
+            case 21: {
+                stopIntakeIfHalfSecondIntoShootPath();
+                if (!follower.isBusy()) {
+                    setPathState(22);
+                }
+                break;
+            }
+
+            case 22: {
                 oneTime(() -> basePlate.startShootFromPrep());
                 if (pathTimer.getElapsedTimeSeconds() >= SHOOT_WAIT_S) {
                     setPathState(23);
@@ -513,7 +549,7 @@ public class BlueQ3AutoUnsortedQuals extends OpMode {
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
                         new Pose(25, 85))
                 );
-                toShoot4.setConstantHeadingInterpolation(Math.toRadians(180));
+                toShoot4.setTangentHeadingInterpolation();
                 follower.followPath(toShoot4, true);
                 setPathState(25);
                 break;

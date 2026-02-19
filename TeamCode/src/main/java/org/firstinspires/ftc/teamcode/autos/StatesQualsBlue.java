@@ -20,12 +20,11 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlate;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Gantry;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
-import org.firstinspires.ftc.teamcode.hardwareClasses.Shooter;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
 @Autonomous(name = "Blue Auto Quals (Sorted Lines)")
-public class BlueAutoQuals extends OpMode {
+public class StatesQualsBlue extends OpMode {
 
     // ============================================================
     // Subsystems
@@ -57,7 +56,7 @@ public class BlueAutoQuals extends OpMode {
     // ============================================================
     // Tunables
     // ============================================================
-    private static final double SHOOTER_RAD = 309;
+    private static final double SHOOTER_RAD = 306;
 
     // After leaving a line: keep intaking for this long, then STOP intake + gate down (lock).
     private static final double POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S = 0.75;
@@ -88,7 +87,7 @@ public class BlueAutoQuals extends OpMode {
     private static final double GANTRY_BACK_TO_MIDDLE_S = 0.45;
     private static final double GANTRY_ANY_SETTLE_S = 0.10;
 
-    private static final double POPPER_UP_HOLD_S = 0.35;
+    private static final double POPPER_UP_HOLD_S = 0.65;
     private static final double POPPER_DOWN_SETTLE_S = 0.25;
 
     private static final double ALLOW_GANTRY_BACK_BEFORE_FIRE_S = 0.50;
@@ -366,7 +365,7 @@ public class BlueAutoQuals extends OpMode {
                 ));
                 toMiddleLine.setConstantHeadingInterpolation(Math.toRadians(180));
                 follower.followPath(toMiddleLine, false);
-                flywheelASG.setTargetVelocity(300);
+                flywheelASG.setTargetVelocity(303);
                 intake.intakeIn();
                 setPathState(4);
                 break;
@@ -441,7 +440,7 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 9: {
-                if (follower.getCurrentTValue() > 0.7) {
+                if (follower.getCurrentTValue() > 0.6) {
                     toShoot2.setConstantHeadingInterpolation(Math.toRadians(270));
                     turretAutoTrackingEnabled = true;
                 }
@@ -593,7 +592,7 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 18: {
-                if (pathTimer.getElapsedTimeSeconds() >= POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S) {
+                if (pathTimer.getElapsedTimeSeconds() >= 0.5) {
                     stopIntakeAndLockForSort();
                     setPathState(19);
                 }
@@ -601,7 +600,7 @@ public class BlueAutoQuals extends OpMode {
             }
 
             case 19: {
-                if (follower.getCurrentTValue() > 0.7) {
+                if (follower.getCurrentTValue() > 0.55) {
                     toShoot4.setConstantHeadingInterpolation(Math.toRadians(270));
                 }
                 if (!follower.isBusy()) {
@@ -716,7 +715,7 @@ public class BlueAutoQuals extends OpMode {
         final int TAG_ID_FOR_TX_AIM = 20;
 
         final double TX_SIGN = +1.0;           // flip if reversed
-        final double TX_KP = 0.7;             // deg command per deg tx
+        final double TX_KP = 0.5;             // deg command per deg tx
         final double MAX_STEP_DEG = 10.0;      // clamp per loop
 
         // -----------------------------
@@ -755,7 +754,7 @@ public class BlueAutoQuals extends OpMode {
             // Use TX exactly like teleop
             LLResult aimRes = limelight3A.getLatestResult();
             if (aimRes != null && aimRes.isValid()) {
-                double txDeg = aimRes.getTx(); // degrees
+                double txDeg = aimRes.getTx() + 1.5; // degrees
 
                 double turretCurrentDeg = turret.getCurrentAngle();
                 double delta = -TX_SIGN * TX_KP * txDeg;

@@ -13,17 +13,18 @@ import com.qualcomm.hardware.limelightvision.Limelight3A;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.hardwareClasses.BasePlate;
+import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Gantry;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
-import org.firstinspires.ftc.teamcode.hardwareClasses.Shooter;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
 @Autonomous(name = "Red Auto Quals (Sorted Lines)")
-public class RedAutoQuals extends OpMode {
+public class StatesQualsRed extends OpMode {
 
     // ============================================================
     // Subsystems
@@ -33,13 +34,14 @@ public class RedAutoQuals extends OpMode {
     private Gantry gantry;
     private BasePlate basePlate;
     private Turret turret;
-    private Shooter shooterV2;
+    private FlywheelASG flywheelASG;
 
     // ============================================================
     // AprilTag via Limelight
     // ============================================================
     private Limelight3A limelight3A;
     private int lastSeenTag = 21;                 // fallback
+    int tag = 21;
     private Pattern desiredPattern = Pattern.GPP; // requested shot order
 
     // ============================================================
@@ -54,23 +56,23 @@ public class RedAutoQuals extends OpMode {
     // ============================================================
     // Tunables
     // ============================================================
-    private static final double SHOOTER_RPM = 2000;
+    private static final double SHOOTER_RAD = 306;
 
     // After leaving a line: keep intaking for this long, then STOP intake + gate down (lock).
-    private static final double POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S = 0.50;
+    private static final double POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S = 0.75;
 
     // Hold at gate before returning to shoot
-    private static final double GATE_HOLD_SECONDS = 2.0;
+    private static final double GATE_HOLD_SECONDS = 0.75;
 
     // ============================================================
     // Turret auto-tracking
     // ============================================================
-    private static final double TURRET_TARGET_X = 138;
-    private static final double TURRET_TARGET_Y = 140;
+    private static final double TURRET_TARGET_X = 144-8;
+    private static final double TURRET_TARGET_Y = 150;
 
     private static final double TURRET_OFFSET_DEG = 180.0;
     private static final double TURRET_MIN_DEG = -160.0;
-    private static final double TURRET_MAX_DEG = 200.0;
+    private static final double TURRET_MAX_DEG = 160;
 
     private boolean turretAutoTrackingEnabled = true;
     private boolean turretOverrideActive = false;
@@ -79,13 +81,13 @@ public class RedAutoQuals extends OpMode {
     // ============================================================
     // Sorting harness
     // ============================================================
-    private static final double COLOR_CHANGE_DELAY_S = 1.00;
+    private static final double COLOR_CHANGE_DELAY_S = 0.75;
 
     private static final double GANTRY_BACK_TO_FRONT_S = 0.90;
     private static final double GANTRY_BACK_TO_MIDDLE_S = 0.45;
     private static final double GANTRY_ANY_SETTLE_S = 0.10;
 
-    private static final double POPPER_UP_HOLD_S = 0.35;
+    private static final double POPPER_UP_HOLD_S = 0.65;
     private static final double POPPER_DOWN_SETTLE_S = 0.25;
 
     private static final double ALLOW_GANTRY_BACK_BEFORE_FIRE_S = 0.50;
@@ -157,12 +159,42 @@ public class RedAutoQuals extends OpMode {
     private Path toPark;
 
     // ============================================================
+// Gantry aim compensation (NEW)
+// ============================================================
+    private enum GantryPos { BACK, MIDDLE, FRONT }
+    private GantryPos gantryPos = GantryPos.BACK;
+
+    // Offsets along robot-forward axis (mm)
+    private static final double GANTRY_OFFSET_BACK_MM   = 0.0;
+    private static final double GANTRY_OFFSET_MIDDLE_MM = 100.0;
+    private static final double GANTRY_OFFSET_FRONT_MM  = 200.0;
+
+    private static final double MM_TO_IN = 1.0 / 25.4;
+
+    private double getGantryOffsetInches() {
+        switch (gantryPos) {
+            case FRONT:  return GANTRY_OFFSET_FRONT_MM  * MM_TO_IN;
+            case MIDDLE: return GANTRY_OFFSET_MIDDLE_MM * MM_TO_IN;
+            case BACK:
+            default:     return GANTRY_OFFSET_BACK_MM   * MM_TO_IN;
+        }
+    }
+
+    /** Call this instead of gantry.moveGantryToPos("...") everywhere */
+    private void setGantryPos(String pos) {
+        gantry.moveGantryToPos(pos);
+        if ("front".equalsIgnoreCase(pos)) gantryPos = GantryPos.FRONT;
+        else if ("middle".equalsIgnoreCase(pos)) gantryPos = GantryPos.MIDDLE;
+        else gantryPos = GantryPos.BACK;
+    }
+
+    // ============================================================
     // Lifecycle
     // ============================================================
     @Override
     public void init() {
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(144 - 30.6, 136.500, Math.toRadians(90)));
+        follower.setStartingPose(new Pose(144-30.6, 136.500, Math.toRadians(90)));
         follower.updatePose();
         follower.setMaxPower(1);
 
@@ -174,13 +206,12 @@ public class RedAutoQuals extends OpMode {
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.FORWARD);
         turret.setAngle(-105);
 
-        shooterV2 = new Shooter();
-        shooterV2.init(hardwareMap, "shooter2", "shooter1",
-                DcMotorSimple.Direction.FORWARD, DcMotorSimple.Direction.REVERSE);
+        VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
+        flywheelASG = new FlywheelASG(hardwareMap, battery);
 
         // Baseline positions
         intake.intakeStop();
-        gantry.moveGantryToPos("back");
+        setGantryPos("back");
 
         // Preload staging (you want this)
         basePlate.rampBack();
@@ -219,7 +250,7 @@ public class RedAutoQuals extends OpMode {
 
     @Override
     public void start() {
-        shooterV2.setTargetRPM(SHOOTER_RPM);
+        flywheelASG.setTargetVelocity(SHOOTER_RAD);
 
         // Keep preload staged
         basePlate.prepShootOnly();
@@ -237,7 +268,7 @@ public class RedAutoQuals extends OpMode {
         basePlate.update();
         updateTurretAutoTracking();
         turret.update();
-        shooterV2.update();
+        flywheelASG.update();
 
         telemetryA.addData("State", pathState);
         telemetryA.addData("Busy", follower.isBusy());
@@ -258,13 +289,10 @@ public class RedAutoQuals extends OpMode {
     private void updateAprilTagDesiredPattern() {
         LLResult result = limelight3A.getLatestResult();
 
-        int tag;
         if (result != null && result.isValid()
                 && result.getFiducialResults() != null
                 && !result.getFiducialResults().isEmpty()) {
             tag = result.getFiducialResults().get(0).getFiducialId();
-        } else {
-            tag = 21;
         }
 
         lastSeenTag = tag;
@@ -285,13 +313,14 @@ public class RedAutoQuals extends OpMode {
             // SHOOT 1 (preload): NO color delays
             // ------------------------------------------------------
             case 0: {
+                limelight3A.pipelineSwitch(9);
                 toShoot1 = new Path(new BezierLine(
-                        new Pose(144 - 35.791, 135),
-                        new Pose(144 - 57, 85)
+                        new Pose(144-35.791, 135),
+                        new Pose(144-57, 85)
                 ));
-                toShoot1.setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(-20), 0.4);
+                toShoot1.setLinearHeadingInterpolation(follower.getHeading(), Math.toRadians(0), 0.6);
                 follower.followPath(toShoot1, true);
-
+                toShoot1.setBrakingStrength(0.6);
                 // preload already prepped; don't mess with ramp logic
                 turretAutoTrackingEnabled = false;
                 setPathState(1);
@@ -299,8 +328,13 @@ public class RedAutoQuals extends OpMode {
             }
 
             case 1: {
-                if (follower.getCurrentTValue() > 0.8) turretAutoTrackingEnabled = true;
-                if (!follower.isBusy()) setPathState(2);
+                if (follower.getCurrentTValue() > 0.5) turretAutoTrackingEnabled = true;
+                if (!follower.isBusy()) setPathState(111);
+                break;
+            }
+
+            case 111: {
+                if (pathTimer.getElapsedTimeSeconds() > 0.3) setPathState(2);
                 break;
             }
 
@@ -310,7 +344,7 @@ public class RedAutoQuals extends OpMode {
                     basePlate.startShootFromPrep();
                 });
 
-                if (!basePlate.isShootBusy()) {
+                if (basePlate.isDoneFiringEarly(0.25)) {
                     setPathState(3);
                 }
                 break;
@@ -321,25 +355,28 @@ public class RedAutoQuals extends OpMode {
             // ------------------------------------------------------
             case 3: {
                 startLineIntake();
-
+                setGantryPos("middle");
+                basePlate.rampBack();
                 toMiddleLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144 - 48, 66),
-                        new Pose(144 - 40, 63),
-                        new Pose(144 - 15, 62.5)
+                        new Pose(144-48, 66),
+                        new Pose(144-48, 63),
+                        new Pose(144-15, 62.5)
                 ));
                 toMiddleLine.setConstantHeadingInterpolation(Math.toRadians(0));
                 follower.followPath(toMiddleLine, false);
-
+                flywheelASG.setTargetVelocity(303);
                 intake.intakeIn();
                 setPathState(4);
                 break;
             }
 
             case 4: {
-                if (follower.getCurrentTValue() > 0.5) follower.setMaxPower(0.5);
+                if (follower.getCurrentTValue() > 0.4) follower.setMaxPower(0.5);
 
                 if (!follower.isBusy()) {
+                    turretAutoTrackingEnabled = false;
+                    turret.setAngle(0);
                     follower.setMaxPower(1);
 
                     // Begin leaving immediately, keep intake running for a bit
@@ -348,8 +385,8 @@ public class RedAutoQuals extends OpMode {
 
                     toGateFromMiddle = new Path(new BezierCurve(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(120, 69),
-                            new Pose(130, 72)
+                            new Pose(144-35, 69),
+                            new Pose(144-17.5, 74)
                     ));
                     toGateFromMiddle.setConstantHeadingInterpolation(Math.toRadians(0));
                     follower.followPath(toGateFromMiddle, true);
@@ -372,12 +409,17 @@ public class RedAutoQuals extends OpMode {
             }
 
             case 6: {
-                if (!follower.isBusy()) setPathState(7);
+                if (!follower.isBusy()) {
+                    setPathState(7);
+                    follower.startTeleOpDrive();
+                    follower.setTeleOpDrive(0.3, 0, 0);
+                }
                 break;
             }
 
             case 7: {
                 if (pathTimer.getElapsedTimeSeconds() >= GATE_HOLD_SECONDS) {
+                    follower.breakFollowing();
                     setPathState(8);
                 }
                 break;
@@ -387,19 +429,29 @@ public class RedAutoQuals extends OpMode {
             case 8: {
                 toShoot2 = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144 - 40, 60),
-                        new Pose(144 - 57, 85)
+                        new Pose(144-40, 73),
+                        new Pose(144-57, 85)
                 ));
                 toShoot2.reverseHeadingInterpolation();
                 follower.followPath(toShoot2, true);
-
-                // NO unconditional prepShootOnly here
+                toShoot2.setBrakingStrength(0.6);
                 setPathState(9);
                 break;
             }
 
             case 9: {
+                if (follower.getCurrentTValue() > 0.6) {
+                    toShoot2.setConstantHeadingInterpolation(Math.toRadians(270));
+                    turretAutoTrackingEnabled = true;
+                }
                 if (!follower.isBusy()) {
+                    setPathState(91);
+                }
+                break;
+            }
+
+            case 91: {
+                if (pathTimer.getElapsedTimeSeconds() > 0.3) {
                     sortAllowFire = true;
                     setPathState(10);
                 }
@@ -418,12 +470,13 @@ public class RedAutoQuals extends OpMode {
             // ------------------------------------------------------
             case 11: {
                 startLineIntake();
-
-                follower.setMaxPower(0.75);
+                setGantryPos("middle");
+                follower.setMaxPower(0.6);
+                basePlate.rampBack();
                 toCloseLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144 - 48, 86.5),
-                        new Pose(144 - 22, 86.5)
+                        new Pose(144-48, 86.5),
+                        new Pose(144-17.5, 86.5)
                 ));
                 toCloseLine.setTangentHeadingInterpolation();
                 follower.followPath(toCloseLine, false);
@@ -435,6 +488,13 @@ public class RedAutoQuals extends OpMode {
 
             case 12: {
                 if (!follower.isBusy()) {
+                    setPathState(13);
+                }
+            }
+            break;
+
+            case 13: {
+                if (pathTimer.getElapsedTimeSeconds() > 0.25) {
                     follower.setMaxPower(1);
 
                     pendingIntakedPattern = Pattern.PPG;
@@ -443,20 +503,20 @@ public class RedAutoQuals extends OpMode {
                     // Leave line towards shoot
                     toShoot3 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(144 - 57, 85)
+                            new Pose(144-57, 85)
                     ));
-                    toShoot3.setTangentHeadingInterpolation();
-                    toShoot3.reverseHeadingInterpolation();
+                    toShoot3.setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(270), 0.8);
                     follower.followPath(toShoot3, true);
-
+                    toShoot3.setBrakingStrength(0.6);
                     startLeavingLineStillIntaking();
-                    setPathState(13);
+                    setPathState(145);
                 }
                 break;
             }
 
-            case 13: {
-                if (pathTimer.getElapsedTimeSeconds() >= POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S) {
+            case 145: {
+                // After delay: stop intake, gate DOWN (lock), then begin strategy-aware sorting PREP (no unconditional prepShootOnly)
+                if (pathTimer.getElapsedTimeSeconds() >= 1.25) {
                     stopIntakeAndLockForSort();
                     setPathState(14);
                 }
@@ -465,6 +525,13 @@ public class RedAutoQuals extends OpMode {
 
             case 14: {
                 if (!follower.isBusy()) {
+                    setPathState(141);
+                }
+                break;
+            }
+
+            case 141: {
+                if (pathTimer.getElapsedTimeSeconds() > 0.75) {
                     sortAllowFire = true;
                     setPathState(15);
                 }
@@ -483,14 +550,14 @@ public class RedAutoQuals extends OpMode {
             // ------------------------------------------------------
             case 16: {
                 startLineIntake();
-
+                basePlate.rampBack();
                 toFarLine = new Path(new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144 - 48, 84 - 48),
-                        new Pose(144 - 21, 84 - 50),
-                        new Pose(144 - 15, 84 - 50)
+                        new Pose(144-48, 84 - 48),
+                        new Pose(144-40, 84 - 48),
+                        new Pose(144-14, 84 - 47)
                 ));
-                toFarLine.setConstantHeadingInterpolation(0);
+                toFarLine.setTangentHeadingInterpolation();
                 follower.followPath(toFarLine, false);
 
                 intake.intakeIn();
@@ -499,7 +566,10 @@ public class RedAutoQuals extends OpMode {
             }
 
             case 17: {
-                if (follower.getCurrentTValue() > 0.4) follower.setMaxPower(0.5);
+                if (follower.getCurrentTValue() > 0.15) {
+                    follower.setMaxPower(0.6);
+                    toFarLine.setConstantHeadingInterpolation(Math.toRadians(0));
+                }
 
                 if (!follower.isBusy()) {
                     follower.setMaxPower(1);
@@ -509,12 +579,12 @@ public class RedAutoQuals extends OpMode {
 
                     toShoot4 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(144 - 57, 85)
+                            new Pose(144-57, 85)
                     ));
                     toShoot4.setTangentHeadingInterpolation();
                     toShoot4.reverseHeadingInterpolation();
                     follower.followPath(toShoot4, true);
-
+                    toShoot4.setBrakingStrength(0.6);
                     startLeavingLineStillIntaking();
                     setPathState(18);
                 }
@@ -522,7 +592,7 @@ public class RedAutoQuals extends OpMode {
             }
 
             case 18: {
-                if (pathTimer.getElapsedTimeSeconds() >= POST_INTAKE_STOP_AND_GATE_DOWN_DELAY_S) {
+                if (pathTimer.getElapsedTimeSeconds() >= 0.5) {
                     stopIntakeAndLockForSort();
                     setPathState(19);
                 }
@@ -530,7 +600,17 @@ public class RedAutoQuals extends OpMode {
             }
 
             case 19: {
+                if (follower.getCurrentTValue() > 0.55) {
+                    toShoot4.setConstantHeadingInterpolation(Math.toRadians(270));
+                }
                 if (!follower.isBusy()) {
+                    setPathState(191);
+                }
+                break;
+            }
+
+            case 191: {
+                if (pathTimer.getElapsedTimeSeconds() > 0.5) {
                     sortAllowFire = true;
                     setPathState(20);
                 }
@@ -556,7 +636,7 @@ public class RedAutoQuals extends OpMode {
 
                 toPark = new Path(new BezierLine(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(144 - 25, 85)
+                        new Pose(144-25, 90)
                 ));
                 toPark.setConstantHeadingInterpolation(Math.toRadians(0));
                 follower.followPath(toPark, true);
@@ -629,6 +709,18 @@ public class RedAutoQuals extends OpMode {
     private void updateTurretAutoTracking() {
         if (!turretAutoTrackingEnabled) return;
 
+        // -----------------------------
+        // Local tunables (self-contained)
+        // -----------------------------
+        final int TAG_ID_FOR_TX_AIM = 24;
+
+        final double TX_SIGN = +1.0;           // flip if reversed
+        final double TX_KP = 0.5;             // deg command per deg tx
+        final double MAX_STEP_DEG = 10.0;      // clamp per loop
+
+        // -----------------------------
+        // Override wins
+        // -----------------------------
         if (turretOverrideActive) {
             turret.setAngle(wrapIntoTurretWindow(
                     turretOverrideAngleDeg,
@@ -639,6 +731,54 @@ public class RedAutoQuals extends OpMode {
             return;
         }
 
+        // -----------------------------
+        // Decide: TX aim only if tag ID == 20 (TeleOp-style)
+        // -----------------------------
+        boolean useTxAim = false;
+        LLResult result = (limelight3A != null) ? limelight3A.getLatestResult() : null;
+
+        if (result != null && result.isValid()
+                && result.getFiducialResults() != null
+                && !result.getFiducialResults().isEmpty()) {
+
+            int id = result.getFiducialResults().get(0).getFiducialId(); // SAME AS YOUR AUTO TAG CODE
+            useTxAim = (id == TAG_ID_FOR_TX_AIM);
+        }
+
+        if (useTxAim) {
+
+            // Update LL orientation from follower heading (same convention you used before)
+            Pose pose = follower.getPose();
+            limelight3A.updateRobotOrientation(Math.toDegrees(pose.getHeading()));
+
+            // Use TX exactly like teleop
+            LLResult aimRes = limelight3A.getLatestResult();
+            if (aimRes != null && aimRes.isValid()) {
+                double txDeg = aimRes.getTx() + 1.5; // degrees
+
+                double turretCurrentDeg = turret.getCurrentAngle();
+                double delta = -TX_SIGN * TX_KP * txDeg;
+                delta = Range.clip(delta, -MAX_STEP_DEG, +MAX_STEP_DEG);
+
+                double desired = turretCurrentDeg + delta;
+
+                double safe = wrapIntoTurretWindow(
+                        desired,
+                        turret.getTargetAngle(),
+                        TURRET_MIN_DEG,
+                        TURRET_MAX_DEG
+                );
+
+                turret.setAngle(safe);
+                telemetryA.addData("ll", "ll");
+                return; // TX aim wins
+            }
+            // If LL glitches this frame, fall through to odom aim.
+        }
+
+        // -----------------------------
+        // Fallback: odometry aim (your existing math)
+        // -----------------------------
         Pose pose = follower.getPose();
         double botX = pose.getX();
         double botY = pose.getY();
@@ -662,8 +802,9 @@ public class RedAutoQuals extends OpMode {
     }
 
     // ============================================================
-    // Sorting harness (strategy-aware PREP gating of prepShootOnly)
-    // ============================================================
+// Sorting harness (strategy-aware PREP gating of prepShootOnly)
+// ============================================================
+
     private void sortBegin(Pattern currentInsideRobotBackToFront, Pattern desiredShotOrder) {
         sortCurrentPattern = currentInsideRobotBackToFront;
         sortDesiredPattern = desiredShotOrder;
@@ -672,6 +813,8 @@ public class RedAutoQuals extends OpMode {
         sortPhase = SortAutoPhase.PREPARE;
         sortStep = 0;
         sortStepStartTimeS = getRuntime();
+
+        // Fire is gated until you reach the shoot pose
         sortAllowFire = false;
     }
 
@@ -688,7 +831,7 @@ public class RedAutoQuals extends OpMode {
                 break;
 
             case EXECUTE:
-                if (!sortAllowFire) break;
+                if (!sortAllowFire) break; // hard gate
 
                 if (runExecute(sortStrategy)) {
                     sortPhase = SortAutoPhase.RESET;
@@ -741,7 +884,10 @@ public class RedAutoQuals extends OpMode {
                     basePlate.cancelShootAndReset();
                     basePlate.rampBack();
                     basePlate.gateHoldBall1();
-                    gantry.moveGantryToPos("back");
+
+                    // CHANGED: use wrapper so gantryPos tracks
+                    setGantryPos("back");
+
                     sortStepStartTimeS = getRuntime();
                     sortStep++;
                 } else if (sortStep == 1) {
@@ -758,7 +904,10 @@ public class RedAutoQuals extends OpMode {
                     basePlate.cancelShootAndReset();
                     basePlate.rampBack();
                     basePlate.gateHoldBall1();
-                    gantry.moveGantryToPos("middle");
+
+                    // CHANGED
+                    setGantryPos("middle");
+
                     sortStepStartTimeS = getRuntime();
                     sortStep++;
                 } else if (sortStep == 1) {
@@ -776,7 +925,10 @@ public class RedAutoQuals extends OpMode {
                     basePlate.cancelShootAndReset();
                     basePlate.rampBack();
                     basePlate.gateHoldBall1();
-                    gantry.moveGantryToPos("front");
+
+                    // CHANGED
+                    setGantryPos("front");
+
                     sortStepStartTimeS = getRuntime();
                     sortStep++;
                 } else if (sortStep == 1) {
@@ -794,7 +946,10 @@ public class RedAutoQuals extends OpMode {
                     basePlate.cancelShootAndReset();
                     basePlate.rampBack();
                     basePlate.gateHoldBall1();
-                    gantry.moveGantryToPos("middle");
+
+                    // CHANGED
+                    setGantryPos("middle");
+
                     sortStepStartTimeS = getRuntime();
                     sortStep++;
                 } else if (sortStep == 1) {
@@ -826,7 +981,7 @@ public class RedAutoQuals extends OpMode {
                     basePlate.startShootFromPrep();
                     sortStep++;
                 } else if (sortStep == 2) {
-                    if (!basePlate.isShootBusy()) return true;
+                    if (basePlate.isDoneFiringEarly(0.25)) return true;
                 }
                 break;
             }
@@ -834,7 +989,7 @@ public class RedAutoQuals extends OpMode {
             // KEEP your explicit rampForward calls in these strategies.
             case C_FRONT_POP_THEN_BALL2_RAPID: {
                 if (sortStep == 0) {
-                    basePlate.gateHoldBall2();
+                    basePlate.gateHoldBall1();
                     basePlate.rampBack();
                     sortStepStartTimeS = getRuntime();
                     sortStep++;
@@ -851,7 +1006,9 @@ public class RedAutoQuals extends OpMode {
                 } else if (sortStep == 3) {
                     if (elapsed(sortStepStartTimeS) >= POPPER_DOWN_SETTLE_S) {
                         basePlate.rampForward(); // keep
-                        gantry.moveGantryToPos("back");
+
+                        // CHANGED
+                        setGantryPos("back");
 
                         double stageMm = basePlate.getShootPush1Mm() + basePlate.getShootPush2Mm();
                         basePlate.setPusherMm(stageMm);
@@ -869,7 +1026,7 @@ public class RedAutoQuals extends OpMode {
                         sortStep++;
                     }
                 } else if (sortStep == 5) {
-                    if (!basePlate.isShootBusy()) return true;
+                    if (basePlate.isDoneFiringEarly(0.25)) return true;
                 }
                 break;
             }
@@ -893,7 +1050,9 @@ public class RedAutoQuals extends OpMode {
                 } else if (sortStep == 3) {
                     if (elapsed(sortStepStartTimeS) >= POPPER_DOWN_SETTLE_S) {
                         basePlate.rampForward(); // keep
-                        gantry.moveGantryToPos("back");
+
+                        // CHANGED
+                        setGantryPos("back");
 
                         double stageMm = basePlate.getShootPush1Mm() + basePlate.getShootPush2Mm();
                         basePlate.setPusherMm(stageMm);
@@ -911,7 +1070,7 @@ public class RedAutoQuals extends OpMode {
                         sortStep++;
                     }
                 } else if (sortStep == 5) {
-                    if (!basePlate.isShootBusy()) return true;
+                    if (basePlate.isDoneFiringEarly(0.25)) return true;
                 }
                 break;
             }
@@ -954,13 +1113,15 @@ public class RedAutoQuals extends OpMode {
                         basePlate.rampForward(); // keep
                         basePlate.gateHoldBall2();
                         basePlate.setPusherMm(RETENSION_PUSHER_MM - 20);
-                        gantry.moveGantryToPos("back");
+
+                        // CHANGED
+                        setGantryPos("back");
 
                         basePlate.startLastBallOnlyFromStaged();
                         sortStep++;
                     }
                 } else if (sortStep == 7) {
-                    if (!basePlate.isShootBusy()) return true;
+                    if (basePlate.isDoneFiringEarly(0.25)) return true;
                 }
                 break;
             }
@@ -978,7 +1139,9 @@ public class RedAutoQuals extends OpMode {
             basePlate.rampBack();
             basePlate.gateUp();
             basePlate.setPusherMm(0.0);
-            gantry.moveGantryToPos("back");
+
+            // CHANGED
+            setGantryPos("back");
 
             sortStepStartTimeS = getRuntime();
             sortStep++;

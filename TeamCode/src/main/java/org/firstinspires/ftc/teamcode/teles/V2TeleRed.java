@@ -64,7 +64,8 @@ public class V2TeleRed extends LinearOpMode {
         OFF,
         ON,
         SHUTDOWN_WAIT, // gate down now; wait 0.4s then stop intake motor
-        REVERSE
+        REVERSE,
+        WAIT_FOR_PREP  // NEW: wait indefinitely until pose conditions are met, then prep chute
     }
 
     private IntakeState intakeState = IntakeState.OFF;
@@ -76,6 +77,9 @@ public class V2TeleRed extends LinearOpMode {
 
     private long intakeReverseStartMs = 0;
     private static final long INTAKE_REVERSE_MS = 200; // example
+
+    // NEW: manual cancel/force-prep during WAIT_FOR_PREP
+    private boolean lastTriangleButtonGp2 = false;
 
     // =========================================================
     // Gate toggle (RB)
@@ -150,8 +154,8 @@ public class V2TeleRed extends LinearOpMode {
 
     // Flywheel mode state
     private enum FlywheelMode { CLOSE, FAR }
-    private FlywheelMode flywheelMode = FlywheelMode.CLOSE; // default start: FAR
-    private boolean flywheelAutoEnabled = true;            // default ON
+    private FlywheelMode flywheelMode = FlywheelMode.CLOSE;
+    private boolean flywheelAutoEnabled = true;
 
     private boolean gp2DpadUpPrev = false;
     private boolean gp2DpadDownPrev = false;
@@ -167,8 +171,8 @@ public class V2TeleRed extends LinearOpMode {
     private double lastDistanceToTargetIn = 0.0;
 
     // =========================================================
-// Gantry emergency rezero (gamepad1)
-// =========================================================
+    // Gantry emergency rezero (gamepad1)
+    // =========================================================
     private boolean gantryManualOverride = false;
     private long gantryLastManualInputMs = 0;
 
@@ -179,6 +183,15 @@ public class V2TeleRed extends LinearOpMode {
     private static final double GANTRY_NUDGE_STEP = 0.01;
     private static final long GANTRY_MANUAL_HOLD_MS = 4000;
 
+    // Flywheel starts at 2900 on match start until turret tracking is enabled once
+    private boolean flywheelStartupWarmup = false;
+
+    // =========================================================
+    // Auto-prep chute conditions (TUNE HERE)
+    // =========================================================
+    private static final double AUTO_PREP_MIN_Y = 69.0;
+    private static final double AUTO_PREP_MIN_ANGLE_DEG = 30.0;
+
     @Override
     public void runOpMode() throws InterruptedException {
 
@@ -186,7 +199,7 @@ public class V2TeleRed extends LinearOpMode {
         // Follower init
         // -----------------------------
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(119, 85, Math.toRadians(0)));
+        follower.setStartingPose(new Pose(144 - 25, 90, Math.toRadians(0)));
         follower.updatePose();
         follower.setMaxPower(1);
         follower.startTeleOpDrive();
@@ -223,11 +236,6 @@ public class V2TeleRed extends LinearOpMode {
 
         // Safe defaults
         intake.intakeStop();
-        gantry.moveGantryToPos("back");
-        basePlate.rampBack();
-        basePlate.frontPopperDown();
-        basePlate.middlePopperDown();
-        basePlate.cancelShootAndReset();
 
         // -----------------------------
         // Limelight init
@@ -261,15 +269,23 @@ public class V2TeleRed extends LinearOpMode {
         while (opModeInInit()) {
             turret.update();
             basePlate.update();
-            flywheelASG.update();
         }
 
         waitForStart();
         resetRuntime();
 
+        flywheelStartupWarmup = true; // allow startup spin-up to persist while tracking is off
+
         // Latch turret's starting position so it DOES NOT snap to a park angle
         turretIdleHoldAngleDeg = turret.getCurrentAngle();
         turret.setAngle(turretIdleHoldAngleDeg);
+
+        flywheelASG.setTargetVelocity(rpmToRadPerSec(2900));
+        gantry.moveGantryToPos("back");
+        basePlate.rampBack();
+        basePlate.frontPopperDown();
+        basePlate.middlePopperDown();
+        basePlate.cancelShootAndReset();
 
         while (opModeIsActive()) {
 
@@ -292,16 +308,14 @@ public class V2TeleRed extends LinearOpMode {
             // Distances (all in inches)
             // -----------------------------
             distOdomIn = computeDistanceToTargetInches(pose);
-
-            // Preserve your old telemetry variable
             lastDistanceToTargetIn = distOdomIn;
 
             handleGantryEmergencyRezero();
 
             // -----------------------------
-            // Intake toggle + FSM
+            // Intake toggle + FSM (NOW TAKES POSE)
             // -----------------------------
-            handleIntakeToggleAndFSM();
+            handleIntakeToggleAndFSM(pose);
 
             // -----------------------------
             // Gate toggle on RB
@@ -356,9 +370,13 @@ public class V2TeleRed extends LinearOpMode {
             telemetry.addData("FlywheelCmdRadS", String.format(Locale.US, "%.2f", lastCmdRadPerSec));
             telemetry.addData("turret", turret.getCurrentAngle());
 
+            // Extra: auto-prep condition debug
+            telemetry.addData("AutoPrep: Y>=69", pose.getY() >= AUTO_PREP_MIN_Y);
+            telemetry.addData("AutoPrep OK?", shouldAutoPrepChute(pose));
+
             // =====================
-// HEADING DEBUG
-// =====================
+            // HEADING DEBUG
+            // =====================
             double followerHeadingDeg = Math.toDegrees(follower.getPose().getHeading());
             double imuYawDeg = imu.getRobotYawPitchRollAngles()
                     .getYaw(AngleUnit.DEGREES);
@@ -376,9 +394,34 @@ public class V2TeleRed extends LinearOpMode {
     }
 
     // =========================================================
-    // Intake toggle + FSM
+    // Auto-prep chute condition (mirrored goal handled by TARGET_X)
+    //  - Y must be >= 69
+    //  - angle from +Y axis must be >= 30 degrees
+    //    (angle-from-+Y uses dx,dy so X affects the angle)
     // =========================================================
-    private void handleIntakeToggleAndFSM() {
+    private boolean shouldAutoPrepChute(Pose pose) {
+        if (pose == null) return false;
+
+        double y = pose.getY();
+        if (y < AUTO_PREP_MIN_Y) return false;
+
+        // Vector from robot -> target
+        double dx = TARGET_X - pose.getX();
+        double dy = TARGET_Y - pose.getY();
+
+        // Angle measured from +Y axis: atan2(dx, dy)
+        // abs() makes the “mirror” symmetric automatically.
+        double angleFromYDeg = Math.abs(Math.toDegrees(Math.atan2(dx, dy)));
+
+        return angleFromYDeg >= AUTO_PREP_MIN_ANGLE_DEG;
+    }
+
+    // =========================================================
+    // Intake toggle + FSM (NOW TAKES POSE)
+    // =========================================================
+    private void handleIntakeToggleAndFSM(Pose pose) {
+
+        // Square toggles intake ON/OFF
         boolean squareButton = gamepad2.square;
         if (squareButton && !lastSquareButton) {
             intakeToggleActive = !intakeToggleActive;
@@ -392,6 +435,11 @@ public class V2TeleRed extends LinearOpMode {
             }
         }
         lastSquareButton = squareButton;
+
+        // Triangle = manual cancel/force-prep when waiting
+        boolean triNow = gamepad2.triangle;
+        boolean triEdge = triNow && !lastTriangleButtonGp2;
+        lastTriangleButtonGp2 = triNow;
 
         switch (intakeState) {
             case OFF:
@@ -417,15 +465,38 @@ public class V2TeleRed extends LinearOpMode {
                     intakeReverseStartMs = System.currentTimeMillis();
                     intakeState = IntakeState.REVERSE;
                     intake.intakeOut();
-                    basePlate.prepShootOnly();
+                    // IMPORTANT: removed basePlate.prepShootOnly() from here
                 }
                 break;
 
             case REVERSE:
                 intake.intakeOut();
                 if (System.currentTimeMillis() - intakeReverseStartMs >= INTAKE_REVERSE_MS) {
-                    intakeState = IntakeState.OFF;
                     intake.intakeStop();
+                    intakeState = IntakeState.WAIT_FOR_PREP; // wait indefinitely
+                }
+                break;
+
+            case WAIT_FOR_PREP:
+                // Hold safe posture indefinitely
+                intake.intakeStop();
+                gateDown();
+                if (!gantryManualOverride) {
+                    gantry.moveGantryToPos("back");
+                }
+
+                // Manual override: triangle forces prep immediately
+                if (triEdge) {
+                    basePlate.prepShootOnly();
+                    intakeState = IntakeState.OFF;
+                    gamepad2.rumble(120);
+                    break;
+                }
+
+                // Auto condition: only prep when we're in the safe region
+                if (shouldAutoPrepChute(pose)) {
+                    basePlate.prepShootOnly();
+                    intakeState = IntakeState.OFF;
                 }
                 break;
         }
@@ -435,7 +506,11 @@ public class V2TeleRed extends LinearOpMode {
     // Gate toggle (RB)
     // =========================================================
     private void handleGateToggle() {
-        if (intakeState == IntakeState.ON || intakeState == IntakeState.SHUTDOWN_WAIT) return;
+        // Block gate toggle during any intake-managed state except OFF
+        if (intakeState == IntakeState.ON
+                || intakeState == IntakeState.SHUTDOWN_WAIT
+                || intakeState == IntakeState.REVERSE
+                || intakeState == IntakeState.WAIT_FOR_PREP) return;
 
         boolean rbNow = gamepad2.right_bumper;
         if (rbNow && !rbPrev) {
@@ -503,9 +578,6 @@ public class V2TeleRed extends LinearOpMode {
 
     // =========================================================
     // Turret control and tracking
-    // - Limelight TX aim when tag==20, else odom aim
-    // - FlywheelASG target set here (like auto)
-    // - no snap on start; idle hold until shooting mode enabled
     // =========================================================
     private void handleTurretTrackingAndControl(Pose pose) {
 
@@ -522,9 +594,11 @@ public class V2TeleRed extends LinearOpMode {
             turretShootingActive = !turretShootingActive;
 
             if (turretShootingActive) {
+                flywheelStartupWarmup = false; // warmup ends once tracking is enabled
                 turretIdleHoldEnabled = false;
             } else {
-                flywheelASG.setTargetVelocity(0.0);
+                flywheelStartupWarmup = false; // ensure warmup never re-enables
+                flywheelASG.setTargetVelocity(0.0); // turning tracking off stops flywheel
                 turretIdleHoldEnabled = true;
                 turretIdleHoldAngleDeg = turret.getCurrentAngle();
                 turret.setAngle(turretIdleHoldAngleDeg);
@@ -635,9 +709,12 @@ public class V2TeleRed extends LinearOpMode {
             }
 
         } else {
-            flywheelASG.setTargetVelocity(0.0);
-            lastCmdRPM = 0.0;
-            lastCmdRadPerSec = 0.0;
+            // Only stop flywheel if we're not in the one-time startup warmup
+            if (!flywheelStartupWarmup) {
+                flywheelASG.setTargetVelocity(0.0);
+                lastCmdRPM = 0.0;
+                lastCmdRadPerSec = 0.0;
+            }
 
             if (!turretManualOverride) {
                 if (turretIdleHoldEnabled) {
@@ -670,7 +747,7 @@ public class V2TeleRed extends LinearOpMode {
     }
 
     /**
-     * Limelight TX aim: only engages if fiducial ID == 20.
+     * Limelight TX aim: only engages if fiducial ID == 24 (your RED tag ID).
      * Holds last good TX for up to LL_TX_HOLD_MS to avoid NaN jitter.
      * Returns true if it issued a turret command this frame using TX.
      */
@@ -678,8 +755,8 @@ public class V2TeleRed extends LinearOpMode {
         final int TAG_ID_FOR_TX_AIM = 24;
 
         final double TX_SIGN = +1.0;      // flip if reversed
-        final double TX_KP = 0.6;         // deg command per deg tx
-        final double MAX_STEP_DEG = 8; // clamp per loop
+        final double TX_KP = 0.7;         // deg command per deg tx
+        final double MAX_STEP_DEG = 8;    // clamp per loop
 
         llUsingTxAim = false;
         llLastSeenId = -1;
@@ -693,7 +770,7 @@ public class V2TeleRed extends LinearOpMode {
         limelight3A.updateRobotOrientation(Math.toDegrees(pose.getHeading()));
         LLResult result = limelight3A.getLatestResult();
 
-        // If the LL output is temporarily invalid/missing, HOLD turret (no odom fallback) briefly
+        // If the LL output is temporarily invalid/missing, HOLD turret briefly
         if (result == null || !result.isValid()
                 || result.getFiducialResults() == null
                 || result.getFiducialResults().isEmpty()) {
@@ -702,7 +779,6 @@ public class V2TeleRed extends LinearOpMode {
                 llUsingTxAim = true;
                 llLastTxDeg = llLastGoodTxDeg;
 
-                // actually command something: hold current target
                 double hold = wrapIntoTurretWindow(
                         turret.getTargetAngle(),
                         turret.getCurrentAngle(),
@@ -732,7 +808,7 @@ public class V2TeleRed extends LinearOpMode {
 
         double txDeg = aimRes.getTx();
 
-        // Save good TX; if TX is NaN, HOLD turret briefly (no odom fallback)
+        // Save good TX; if TX is NaN, HOLD briefly
         if (Double.isFinite(txDeg)) {
             llLastGoodTxDeg = txDeg;
             llLastGoodTxTimeMs = now;
@@ -746,23 +822,17 @@ public class V2TeleRed extends LinearOpMode {
             return false;
         }
 
-        // Normal TX aim command
-        double turretCurrentDeg = turret.getCurrentAngle();
-
-        final double TX_SETPOINT_DEG = -turretOffset; // Option 1: aim for tx == turretOffset
+        final double TX_SETPOINT_DEG = -turretOffset;
 
         double txErr = txDeg - TX_SETPOINT_DEG;
 
         double delta = -TX_SIGN * TX_KP * txErr;
         delta = Range.clip(delta, -MAX_STEP_DEG, +MAX_STEP_DEG);
 
-// Integrate off TARGET (not current) to avoid measurement noise feeding command directly
         double desired = turret.getCurrentAngle() + delta;
-
         if (!Double.isFinite(desired)) return false;
 
         double safe = wrapIntoTurretWindow(desired, turret.getTargetAngle(), turretMinDeg, turretMaxDeg);
-
         if (!Double.isFinite(safe)) return false;
 
         turret.setAngle(safe);
@@ -794,7 +864,7 @@ public class V2TeleRed extends LinearOpMode {
         if (upNow && !gp2DpadUpPrev) {
             flywheelMode = FlywheelMode.FAR;
             gamepad2.rumble(80);
-            turretOffset = 1.5;
+            turretOffset = -1.5;
         }
         gp2DpadUpPrev = upNow;
     }
@@ -838,39 +908,17 @@ public class V2TeleRed extends LinearOpMode {
     }
 
     // =========================================================
-    // Close-zone polynomial placeholder (YOU FILL THIS IN)
-    // distIn is inches; return RPM
+    // Close-zone RPM from ODOM distance (inches)
     // =========================================================
-    // =========================================================
-// Close-zone RPM from ODOM distance (inches)
-// Piecewise:
-//  - <= 70 in: flat 2900
-//  - >= 72.5 in: cubic regression
-//  - >= 95 in: clamp 3120
-// =========================================================
     private double closeZoneRpmFromOdom(double distIn) {
 
         // Below dataset: hold lowest (flat) RPM
-        if (distIn <= CLOSE_FLAT_END_IN) return CLOSE_FLAT_RPM;
+        if (distIn <= 85) return 2900;
 
         // Above dataset max: clamp to max RPM
-        if (distIn >= CLOSE_MAX_DIST_IN) return CLOSE_MAX_RPM;
+        if (distIn > 85) return 3050;
 
-        // Small gap 70..72.5: keep flat (simplest + safest)
-        if (distIn < CLOSE_CUBIC_START_IN) return CLOSE_FLAT_RPM;
-
-        // Cubic regression (from your screenshot)
-        double x = distIn;
-        double rpm =
-                0.0162338 * x * x * x
-                        - 3.9026 * x * x
-                        + 319.58117 * x
-                        - 5937.69481;
-
-        if (!Double.isFinite(rpm)) return CLOSE_FLAT_RPM;
-
-        // Final safety clamp: do not exceed your tuned bounds
-        return Range.clip(rpm, CLOSE_FLAT_RPM, CLOSE_MAX_RPM);
+        return 2900;
     }
 
     // =========================================================

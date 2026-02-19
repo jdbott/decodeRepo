@@ -6,7 +6,7 @@ import com.qualcomm.robotcore.util.Range;
 
 public class Gantry {
     // Base (mechanical) setpoints
-    private static final double FRONT_POS  = 0.05;
+    private static final double FRONT_POS  = 0.0;
     private static final double MIDDLE_POS = 0.6;
     private static final double BACK_POS   = 0.83;
 
