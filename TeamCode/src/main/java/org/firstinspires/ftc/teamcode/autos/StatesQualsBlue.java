@@ -480,7 +480,8 @@ public class StatesQualsBlue extends OpMode {
                 ));
                 toCloseLine.setTangentHeadingInterpolation();
                 follower.followPath(toCloseLine, false);
-
+                turretAutoTrackingEnabled = false;
+                turret.setAngle(0);
                 intake.intakeIn();
                 setPathState(12);
                 break;
@@ -505,7 +506,7 @@ public class StatesQualsBlue extends OpMode {
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
                             new Pose(57, 85)
                     ));
-                    toShoot3.setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(270), 0.8);
+                    toShoot3.setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(270), 0.6);
                     follower.followPath(toShoot3, true);
                     toShoot3.setBrakingStrength(0.6);
                     startLeavingLineStillIntaking();
@@ -516,6 +517,14 @@ public class StatesQualsBlue extends OpMode {
 
             case 145: {
                 // After delay: stop intake, gate DOWN (lock), then begin strategy-aware sorting PREP (no unconditional prepShootOnly)
+                if (desiredPattern == StatesQualsBlue.Pattern.GPP) {
+                    if (pathTimer.getElapsedTimeSeconds() >= 0) {
+                        stopIntakeAndLockForSort();
+                        basePlate.gateHoldBall1();
+                        setPathState(14);
+                    }
+                    break;
+                }
                 if (pathTimer.getElapsedTimeSeconds() >= 1.25) {
                     stopIntakeAndLockForSort();
                     setPathState(14);
@@ -524,7 +533,12 @@ public class StatesQualsBlue extends OpMode {
             }
 
             case 14: {
+                intake.intakeIn();
+                if (follower.getCurrentTValue() > 0.6) {
+                    turretAutoTrackingEnabled = true;
+                }
                 if (!follower.isBusy()) {
+                    intake.intakeStop();
                     setPathState(141);
                 }
                 break;
@@ -592,7 +606,7 @@ public class StatesQualsBlue extends OpMode {
             }
 
             case 18: {
-                if (pathTimer.getElapsedTimeSeconds() >= 0.5) {
+                if (pathTimer.getElapsedTimeSeconds() >= 1) {
                     stopIntakeAndLockForSort();
                     setPathState(19);
                 }

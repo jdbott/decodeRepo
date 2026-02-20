@@ -365,7 +365,7 @@ public class StatesQualsRed extends OpMode {
                 ));
                 toMiddleLine.setConstantHeadingInterpolation(Math.toRadians(0));
                 follower.followPath(toMiddleLine, false);
-                flywheelASG.setTargetVelocity(303);
+                flywheelASG.setTargetVelocity(300);
                 intake.intakeIn();
                 setPathState(4);
                 break;
@@ -440,7 +440,7 @@ public class StatesQualsRed extends OpMode {
             }
 
             case 9: {
-                if (follower.getCurrentTValue() > 0.6) {
+                if (follower.getCurrentTValue() > 0.75) {
                     toShoot2.setConstantHeadingInterpolation(Math.toRadians(270));
                     turretAutoTrackingEnabled = true;
                 }
@@ -516,6 +516,14 @@ public class StatesQualsRed extends OpMode {
 
             case 145: {
                 // After delay: stop intake, gate DOWN (lock), then begin strategy-aware sorting PREP (no unconditional prepShootOnly)
+                if (desiredPattern == Pattern.GPP) {
+                    if (pathTimer.getElapsedTimeSeconds() >= 0) {
+                        stopIntakeAndLockForSort();
+                        basePlate.gateHoldBall1();
+                        setPathState(14);
+                    }
+                    break;
+                }
                 if (pathTimer.getElapsedTimeSeconds() >= 1.25) {
                     stopIntakeAndLockForSort();
                     setPathState(14);
@@ -524,7 +532,9 @@ public class StatesQualsRed extends OpMode {
             }
 
             case 14: {
+                intake.intakeIn();
                 if (!follower.isBusy()) {
+                    intake.intakeStop();
                     setPathState(141);
                 }
                 break;
@@ -592,7 +602,7 @@ public class StatesQualsRed extends OpMode {
             }
 
             case 18: {
-                if (pathTimer.getElapsedTimeSeconds() >= 0.5) {
+                if (pathTimer.getElapsedTimeSeconds() >= 1) {
                     stopIntakeAndLockForSort();
                     setPathState(19);
                 }
@@ -754,7 +764,7 @@ public class StatesQualsRed extends OpMode {
             // Use TX exactly like teleop
             LLResult aimRes = limelight3A.getLatestResult();
             if (aimRes != null && aimRes.isValid()) {
-                double txDeg = aimRes.getTx() + 1.5; // degrees
+                double txDeg = aimRes.getTx() + 3; // degrees
 
                 double turretCurrentDeg = turret.getCurrentAngle();
                 double delta = -TX_SIGN * TX_KP * txDeg;
@@ -789,7 +799,7 @@ public class StatesQualsRed extends OpMode {
 
         double angleToTargetDeg = Math.toDegrees(Math.atan2(dy, dx));
         double turretAngleNeededDeg = normalize180(angleToTargetDeg - robotHeadingDeg);
-        double rawAutoCmdDeg = normalize180(turretAngleNeededDeg + TURRET_OFFSET_DEG);
+        double rawAutoCmdDeg = normalize180(turretAngleNeededDeg - TURRET_OFFSET_DEG);
 
         double safeAutoCmdDeg = wrapIntoTurretWindow(
                 rawAutoCmdDeg,
