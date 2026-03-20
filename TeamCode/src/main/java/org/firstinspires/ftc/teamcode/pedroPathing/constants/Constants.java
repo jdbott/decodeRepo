@@ -17,18 +17,18 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 public class Constants {
 
     public static FollowerConstants followerConstants = new FollowerConstants()
-            .mass(10.9)
-            .forwardZeroPowerAcceleration(-44.5)
-            .lateralZeroPowerAcceleration(-77.2)
+            .mass(10.46)
+            .forwardZeroPowerAcceleration(-33.7)
+            .lateralZeroPowerAcceleration(-60.9)
             .useSecondaryTranslationalPIDF(false)
             .useSecondaryHeadingPIDF(false)
             .useSecondaryDrivePIDF(false)
             .drivePIDFSwitch(8)
             .centripetalScaling(0.0005)
             .translationalPIDFCoefficients(new PIDFCoefficients(0.15, 0, 0.02, 0))
-            .headingPIDFCoefficients(new PIDFCoefficients(2, 0, 0.1, 0))
+            .headingPIDFCoefficients(new PIDFCoefficients(1, 0, 0.05, 0))
             .drivePIDFCoefficients(
-                    new FilteredPIDFCoefficients(0.02, 0, 0.0035, 0.6, 0.1)
+                    new FilteredPIDFCoefficients(0.018, 0, 0.0025, 0.6, 0.1)
             );
 
     public static MecanumConstants driveConstants = new MecanumConstants()
@@ -40,8 +40,8 @@ public class Constants {
             .leftRearMotorDirection(DcMotorSimple.Direction.FORWARD)
             .rightFrontMotorDirection(DcMotorSimple.Direction.REVERSE)
             .rightRearMotorDirection(DcMotorSimple.Direction.REVERSE)
-            .xVelocity(79.6)
-            .yVelocity(60.5)
+            .xVelocity(73.8)
+            .yVelocity(60.8)
             .useVoltageCompensation(true)
             .nominalVoltage(13)
             .useBrakeModeInTeleOp(true);
@@ -61,7 +61,7 @@ public class Constants {
     public static PathConstraints pathConstraints = new PathConstraints(
             0.995,
             50,
-            1.75,
+            1.25,
             1.25
     );
 

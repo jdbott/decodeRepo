@@ -19,13 +19,13 @@ public class FlywheelASG {
     private double targetVelocity = 0.0;
 
     // Proportional gain
-    private double kP = 0.0017;
+    private double kP = 0.0019;
 
     // Feedforward parameters
     // power_ff = (kV * ω + kS) * (V_tuned / V_batt)
     private double kV = 0.0016;
-    private double kS = 0.1146;
-    private double tunedVoltage = 13.899;
+    private double kS = 0.0988;
+    private double tunedVoltage = 13.726;
 
     // Encoder conversion
     // Keep consistent with your tuning code (you used 28 ticks/rev).
@@ -36,6 +36,14 @@ public class FlywheelASG {
     private final Deque<Double> velBuffer = new ArrayDeque<>();
     private int bufferSize = 18;
     private double smoothedVelocity = 0.0;
+
+    // Bang-bang threshold.
+// Example: 0.93 means if actual velocity is below 93% of target,
+// command full power until it climbs back above that threshold.
+    private double bangBangThreshold = 0.93;
+
+    // Optional: enable/disable hybrid bang-bang behavior
+    private boolean useBangBang = true;
 
     /**
      * Default ctor that matches your tuner naming:
@@ -53,7 +61,7 @@ public class FlywheelASG {
      * Here, you will call setPower(+power) on BOTH, and the directions handle the inversion.
      */
     public FlywheelASG(HardwareMap hardwareMap, VoltageSensor battery) {
-        this(hardwareMap, battery, "shooter1", "shooter2", true, false);
+        this(hardwareMap, battery, "shootTop", "shootBottom", true, false);
     }
 
     /**
@@ -120,7 +128,7 @@ public class FlywheelASG {
     /** Compute smoothed velocity in rad/s using ONLY flywheel2 encoder velocity. Call frequently. */
     public void updateVelocity() {
         // getVelocity() returns ticks/sec
-        double velTicksPerSec = flywheel2.getVelocity();
+        double velTicksPerSec = flywheel1.getVelocity();
 
         // Match your tuner convention: you did "double velTicks = -flywheel2.getVelocity();"
         // Instead of relying on sign, take absolute value and let motor direction handle physical direction.
@@ -154,16 +162,31 @@ public class FlywheelASG {
     public void update() {
         updateVelocity();
 
-        double voltage = (battery != null) ? battery.getVoltage() : 13.0; // fallback
+        // If target is zero, just stop
+        if (targetVelocity <= 0.0) {
+            flywheel1.setPower(0.0);
+            flywheel2.setPower(0.0);
+            return;
+        }
+
+        // Hybrid bang-bang:
+        // If measured speed is below threshold * target, slam full power
+        if (useBangBang && smoothedVelocity < bangBangThreshold * targetVelocity) {
+            flywheel1.setPower(-1.0);
+            flywheel2.setPower(1.0);
+            return;
+        }
+
+        // Otherwise fall back to your normal feedforward + P control
+        double voltage = (battery != null) ? battery.getVoltage() : 13.0;
         double feedforwardPower = (kV * targetVelocity + kS) * (tunedVoltage / voltage);
 
         double error = targetVelocity - smoothedVelocity;
         double power = feedforwardPower + (kP * error);
 
-        // Shooter only: clamp to [0, 1]
         power = Range.clip(power, 0.0, 1.0);
 
-        flywheel1.setPower(power);
+        flywheel1.setPower(-power);
         flywheel2.setPower(power);
     }
 

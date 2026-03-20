@@ -298,8 +298,7 @@ public class V2TeleBlue extends LinearOpMode {
             // -----------------------------
             // Drive
             // -----------------------------
-            double robotHeadingDeg = Math.toDegrees(pose.getHeading());
-            drive(robotHeadingDeg);
+
 
             // -----------------------------
             // Flywheel mode select + manual tuning

@@ -487,6 +487,10 @@ public class StatesQualsRed extends OpMode {
             }
 
             case 12: {
+                if (follower.getCurrentTValue() > 0.9) {
+                    basePlate.gateHoldBall1();
+                    intake.intakeStop();
+                }
                 if (!follower.isBusy()) {
                     setPathState(13);
                 }
@@ -497,18 +501,19 @@ public class StatesQualsRed extends OpMode {
                 if (pathTimer.getElapsedTimeSeconds() > 0.25) {
                     follower.setMaxPower(1);
 
-                    pendingIntakedPattern = Pattern.PPG;
+                    pendingIntakedPattern = StatesQualsRed.Pattern.PPG;
                     pendingSortBegin = true;
 
                     // Leave line towards shoot
                     toShoot3 = new Path(new BezierLine(
                             new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                            new Pose(144-57, 85)
+                            new Pose(57, 85)
                     ));
-                    toShoot3.setLinearHeadingInterpolation(Math.toRadians(0), Math.toRadians(270), 0.8);
+                    toShoot3.setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(270), 0.6);
                     follower.followPath(toShoot3, true);
                     toShoot3.setBrakingStrength(0.6);
-                    startLeavingLineStillIntaking();
+                    intake.intakeStop();
+                    //startLeavingLineStillIntaking();
                     setPathState(145);
                 }
                 break;
@@ -516,15 +521,15 @@ public class StatesQualsRed extends OpMode {
 
             case 145: {
                 // After delay: stop intake, gate DOWN (lock), then begin strategy-aware sorting PREP (no unconditional prepShootOnly)
-                if (desiredPattern == Pattern.GPP) {
+                if (desiredPattern == StatesQualsRed.Pattern.GPP) {
                     if (pathTimer.getElapsedTimeSeconds() >= 0) {
                         stopIntakeAndLockForSort();
-                        basePlate.gateHoldBall1();
+                        //basePlate.gateHoldBall1();
                         setPathState(14);
                     }
                     break;
                 }
-                if (pathTimer.getElapsedTimeSeconds() >= 1.25) {
+                if (pathTimer.getElapsedTimeSeconds() >= 1) {
                     stopIntakeAndLockForSort();
                     setPathState(14);
                 }
@@ -532,7 +537,10 @@ public class StatesQualsRed extends OpMode {
             }
 
             case 14: {
-                intake.intakeIn();
+                // intake.intakeIn();
+                if (follower.getCurrentTValue() > 0.6) {
+                    turretAutoTrackingEnabled = true;
+                }
                 if (!follower.isBusy()) {
                     intake.intakeStop();
                     setPathState(141);

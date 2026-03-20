@@ -488,6 +488,10 @@ public class StatesQualsBlue extends OpMode {
             }
 
             case 12: {
+                if (follower.getCurrentTValue() > 0.9) {
+                    basePlate.gateHoldBall1();
+                    intake.intakeStop();
+                }
                 if (!follower.isBusy()) {
                     setPathState(13);
                 }
@@ -509,7 +513,8 @@ public class StatesQualsBlue extends OpMode {
                     toShoot3.setLinearHeadingInterpolation(Math.toRadians(180), Math.toRadians(270), 0.6);
                     follower.followPath(toShoot3, true);
                     toShoot3.setBrakingStrength(0.6);
-                    startLeavingLineStillIntaking();
+                    intake.intakeStop();
+                    //startLeavingLineStillIntaking();
                     setPathState(145);
                 }
                 break;
@@ -520,12 +525,12 @@ public class StatesQualsBlue extends OpMode {
                 if (desiredPattern == StatesQualsBlue.Pattern.GPP) {
                     if (pathTimer.getElapsedTimeSeconds() >= 0) {
                         stopIntakeAndLockForSort();
-                        basePlate.gateHoldBall1();
+                        //basePlate.gateHoldBall1();
                         setPathState(14);
                     }
                     break;
                 }
-                if (pathTimer.getElapsedTimeSeconds() >= 1.25) {
+                if (pathTimer.getElapsedTimeSeconds() >= 1) {
                     stopIntakeAndLockForSort();
                     setPathState(14);
                 }
@@ -533,7 +538,7 @@ public class StatesQualsBlue extends OpMode {
             }
 
             case 14: {
-                intake.intakeIn();
+               // intake.intakeIn();
                 if (follower.getCurrentTValue() > 0.6) {
                     turretAutoTrackingEnabled = true;
                 }

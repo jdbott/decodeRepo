@@ -4,12 +4,11 @@ import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
+import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 
 import java.util.ArrayList;
 import java.util.List;
-@Disabled
-
 @TeleOp(name = "Flywheel Feedforward Tuner", group = "Flywheel Tuning")
 public class FeedForwardTuner extends LinearOpMode {
 
@@ -22,8 +21,9 @@ public class FeedForwardTuner extends LinearOpMode {
 
     @Override
     public void runOpMode() {
-        DcMotorEx flywheel = hardwareMap.get(DcMotorEx.class, "shooter1");
-        DcMotorEx flywheel2 = hardwareMap.get(DcMotorEx.class, "shooter2");
+        DcMotorEx flywheel = hardwareMap.get(DcMotorEx.class, "shootTop");
+        flywheel.setDirection(DcMotorSimple.Direction.REVERSE);
+        DcMotorEx flywheel2 = hardwareMap.get(DcMotorEx.class, "shootBottom");
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
 
         flywheel.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
@@ -46,7 +46,7 @@ public class FeedForwardTuner extends LinearOpMode {
             flywheel2.setPower(power);
             sleep((long)(WAIT_TIME * 1000));
 
-            double velTicks = -flywheel2.getVelocity();
+            double velTicks = flywheel.getVelocity();
             double velRad = -velTicks * 2 * Math.PI / 28.0;
             double velRPM = -velRad * 60 / (2 * Math.PI);
 

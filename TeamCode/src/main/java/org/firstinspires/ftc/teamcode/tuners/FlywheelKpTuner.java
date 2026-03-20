@@ -9,7 +9,7 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 
 import java.util.ArrayList;
 import java.util.List;
-@Disabled
+
 
 @TeleOp(name = "Flywheel kP Tuner", group = "Flywheel Tuning")
 public class FlywheelKpTuner extends LinearOpMode {
@@ -29,9 +29,9 @@ public class FlywheelKpTuner extends LinearOpMode {
         flywheel = new FlywheelASG(hardwareMap, battery);
 
         // Replace with feedforward values from previous tuner
-        double kV = 0.0017;
-        double kS = 0.1146;
-        double tunedVoltage = 13.899;
+        double kV = 0.0016;
+        double kS = 0.0988;
+        double tunedVoltage = 13.726;
 
         flywheel.setFeedforward(kV, kS, tunedVoltage);
         flywheel.setTargetVelocity(TARGET_VELOCITY_RAD);
