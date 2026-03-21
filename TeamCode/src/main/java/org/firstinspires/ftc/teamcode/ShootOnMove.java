@@ -305,38 +305,32 @@ public class ShootOnMove extends LinearOpMode {
         double turretX = robotX - TURRET_CENTER_OFFSET_IN * Math.cos(robotHeadingRad);
         double turretY = robotY - TURRET_CENTER_OFFSET_IN * Math.sin(robotHeadingRad);
 
-        // Build vectors (INCHES)
-        Vector robotPosVec = new Vector(turretX, turretY);
-        Vector targetVec = new Vector(TARGET_X, TARGET_Y);
-        Vector robotVelVec = new Vector(fieldVxInPerSec, fieldVyInPerSec);
+        // Vector from turret to goal (in inches)
+        Vector toGoalVec = new Vector(TARGET_X - turretX, TARGET_Y - turretY);
+        double distanceInches = toGoalVec.getMagnitude();
+        double distanceMeters = distanceInches / 39.3701;
 
-        // Distance (meters for physics)
-        double distanceMeters = targetVec.minus(robotPosVec).getMagnitude() / 39.3701;
+        // Only update turret if distance > small threshold
+        if (distanceMeters < 0.01) return; // Prevent divide-by-zero noise
 
-        // Height difference (meters)
-        double heightMeters = 1.04 - 0.32; // TUNE if needed
+        // Fixed height diff (meters)
+        double heightMeters = 1.04 - 0.32;
 
-        // Compute optimal shooting angle
-        double shootingAngle = ShootingCalc.flatShootingAngleCalc(distanceMeters, heightMeters);
+        // Compute flat shot
+        double shootingAngleRad = ShootingCalc.flatShootingAngleCalc(distanceMeters, heightMeters);
 
-        // Clamp angle (safety)
-        shootingAngle = Range.clip(shootingAngle, Math.toRadians(25), Math.toRadians(55));
+        // Compute shot velocity vector
+        Vector robotVelMeters = new Vector(fieldVxInPerSec / 39.3701, fieldVyInPerSec / 39.3701);
+        Vector shotVec = ShootingCalc.getShotVector(robotVelMeters, new Vector(turretX / 39.3701, turretY / 39.3701),
+                new Vector(TARGET_X / 39.3701, TARGET_Y / 39.3701), shootingAngleRad, heightMeters);
 
-        // Compute shot vector (THIS IS THE KEY UPGRADE)
-        Vector shotVec = ShootingCalc.getShotVector(
-                robotVelVec,
-                robotPosVec,
-                targetVec,
-                shootingAngle,
-                heightMeters
-        );
-
-        // Convert to turret angle
+        // Convert angle to degrees
         double angleFieldDeg = Math.toDegrees(shotVec.getTheta());
         double angleRobotDeg = normalize180(angleFieldDeg - robotHeadingDeg);
 
         double desiredTurretDeg = normalize180(angleRobotDeg + TURRET_OFFSET_DEG);
 
+        // Wrap into safe turret window
         double safeTurretDeg = wrapIntoTurretWindow(
                 desiredTurretDeg,
                 turret.getCurrentAngle(),
@@ -346,43 +340,10 @@ public class ShootOnMove extends LinearOpMode {
 
         turret.setAngle(safeTurretDeg);
 
-        // =========================
-        // KEEP YOUR DISTANCE SYSTEM
-        // =========================
-
-        double actualDx = TARGET_X - turretX;
-        double actualDy = TARGET_Y - turretY;
-        double actualDistance = Math.hypot(actualDx, actualDy);
-
-        double shotTimeSec = estimateShotTimeSec(actualDistance);
-
-        double ux = 0.0;
-        double uy = 0.0;
-        if (actualDistance > 1e-6) {
-            ux = actualDx / actualDistance;
-            uy = actualDy / actualDistance;
-        }
-
-        radialVelocityToGoal = fieldVxInPerSec * ux + fieldVyInPerSec * uy;
-
-        predictedShotDistance = actualDistance - radialVelocityToGoal * shotTimeSec;
-        predictedShotDistance = Math.max(0.0, predictedShotDistance);
-
-        if (!predictedDistanceInitialized) {
-            filteredPredictedShotDistance = predictedShotDistance;
-            predictedDistanceInitialized = true;
-        } else {
-            filteredPredictedShotDistance =
-                    PREDICTED_DISTANCE_ALPHA * predictedShotDistance
-                            + (1.0 - PREDICTED_DISTANCE_ALPHA) * filteredPredictedShotDistance;
-        }
-
-        // =========================
-        // TELEMETRY
-        // =========================
-        telemetry.addData("Distance (m)", distanceMeters);
-        telemetry.addData("Shot Angle (deg)", Math.toDegrees(shootingAngle));
+        // Telemetry
         telemetry.addData("Turret Target", safeTurretDeg);
+        telemetry.addData("Shot Vec Angle", angleFieldDeg);
+        telemetry.addData("Distance M", distanceMeters);
     }
 
     private void initVelocityEstimator(Pose pose) {
