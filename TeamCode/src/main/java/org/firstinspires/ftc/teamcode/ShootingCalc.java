@@ -68,3 +68,4 @@ public class ShootingCalc {
         return Math.atan2(flatMagVy(distance, height), flatMagVx(distance, height));
     }
 }
+//
