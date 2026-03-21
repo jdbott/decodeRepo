@@ -35,16 +35,11 @@ public class V3IntakeTest extends LinearOpMode {
     // Toggle this to enable rudimentary shooting-on-the-move aim compensation
     private static final boolean ENABLE_SHOT_ON_MOVE_COMP = true;
 
-    // Simple empirical shot time model:
-    // time = intercept + slope * distanceInches
-    // Tune these on the real robot.
-    private static final double SHOT_TIME_INTERCEPT_SEC = 0.10;
-    private static final double SHOT_TIME_SLOPE_SEC_PER_IN = 0.0016;
-    private static final double SHOT_TIME_MIN_SEC = 0.12;
-    private static final double SHOT_TIME_MAX_SEC = 0.35;
-
     // Light filtering for velocity estimate
     private static final double VELOCITY_FILTER_ALPHA = 0.25;
+
+    // Very light smoothing for predicted shot distance
+    private static final double PREDICTED_DISTANCE_ALPHA = 0.45;
 
     // Intake toggle
     private boolean lastX = false;
@@ -71,6 +66,12 @@ public class V3IntakeTest extends LinearOpMode {
     private double lastPoseY = 0.0;
     private double fieldVxInPerSec = 0.0;
     private double fieldVyInPerSec = 0.0;
+
+    // Predicted distance state for hood/flywheel shot-on-move compensation
+    private double predictedShotDistance = 0.0;
+    private double filteredPredictedShotDistance = 0.0;
+    private boolean predictedDistanceInitialized = false;
+    private double radialVelocityToGoal = 0.0;
 
     private enum FeedState {
         IDLE,
@@ -160,14 +161,12 @@ public class V3IntakeTest extends LinearOpMode {
             trackGoalFromOdometry(pose);
             turret.update();
 
-            // Distance calculation to target used for hood/flywheel lookup
-            double robotX = pose.getX();
-            double robotY = pose.getY();
-            double distance = Math.hypot(TARGET_X - robotX, TARGET_Y - robotY);
-
-            // Automatic shot control
+            // Automatic shot control using predicted future distance
             if (AUTO_SHOT_FROM_DISTANCE) {
-                updateShotFromDistance(distance);
+                double lookupDistance = predictedDistanceInitialized
+                        ? filteredPredictedShotDistance
+                        : Math.hypot(TARGET_X - pose.getX(), TARGET_Y - pose.getY());
+                updateShotFromDistance(lookupDistance);
             } else {
                 handleFlywheelAdjustment();
                 handleHoodAdjustment();
@@ -181,23 +180,25 @@ public class V3IntakeTest extends LinearOpMode {
             flywheel.setTargetVelocity(targetVelocityRad);
             flywheel.update();
 
-            telemetry.addData("Distance to Target", distance);
-            telemetry.addData("Auto Shot", AUTO_SHOT_FROM_DISTANCE);
-
-            telemetry.addData("Field Vx (in/s)", fieldVxInPerSec);
-            telemetry.addData("Field Vy (in/s)", fieldVyInPerSec);
-            telemetry.addData("Shot On Move Comp", ENABLE_SHOT_ON_MOVE_COMP);
-
-            telemetry.addData("Intake Toggle", intakeToggleOn);
-            telemetry.addData("Feed State", feedState);
-
-            telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
-
-            telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
-            telemetry.addData("Flywheel Actual (rad/s)", flywheel.getVelocityRadPerSec());
-            telemetry.addData("Flywheel Actual (RPM)", flywheel.getVelocityRPM());
-            telemetry.addData("Flywheel Power", flywheel.getPower());
-
+//            telemetry.addData("Predicted Shot Distance", predictedShotDistance);
+//            telemetry.addData("Filtered Predicted Shot Distance", filteredPredictedShotDistance);
+//            telemetry.addData("Radial Velocity To Goal", radialVelocityToGoal);
+//            telemetry.addData("Auto Shot", AUTO_SHOT_FROM_DISTANCE);
+//
+//            telemetry.addData("Field Vx (in/s)", fieldVxInPerSec);
+//            telemetry.addData("Field Vy (in/s)", fieldVyInPerSec);
+//            telemetry.addData("Shot On Move Comp", ENABLE_SHOT_ON_MOVE_COMP);
+//
+//            telemetry.addData("Intake Toggle", intakeToggleOn);
+//            telemetry.addData("Feed State", feedState);
+//
+//            telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
+//
+//            telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
+//            telemetry.addData("Flywheel Actual (rad/s)", flywheel.getVelocityRadPerSec());
+//            telemetry.addData("Flywheel Actual (RPM)", flywheel.getVelocityRPM());
+//            telemetry.addData("Flywheel Power", flywheel.getPower());
+            telemetry.addData("Pose", follower.getPose().toString());
             telemetry.update();
         }
 
@@ -310,6 +311,31 @@ public class V3IntakeTest extends LinearOpMode {
         // Estimate shot time from distance
         double shotTimeSec = estimateShotTimeSec(actualDistance);
 
+        // Unit vector from turret center to target
+        double ux = 0.0;
+        double uy = 0.0;
+        if (actualDistance > 1e-6) {
+            ux = actualDx / actualDistance;
+            uy = actualDy / actualDistance;
+        }
+
+        // Positive radial velocity = moving toward the goal
+        // Negative radial velocity = moving away from the goal
+        radialVelocityToGoal = fieldVxInPerSec * ux + fieldVyInPerSec * uy;
+
+        // Predict effective future shot distance for hood/flywheel lookup
+        predictedShotDistance = actualDistance - radialVelocityToGoal * shotTimeSec;
+        predictedShotDistance = Math.max(0.0, predictedShotDistance);
+
+        if (!predictedDistanceInitialized) {
+            filteredPredictedShotDistance = predictedShotDistance;
+            predictedDistanceInitialized = true;
+        } else {
+            filteredPredictedShotDistance =
+                    PREDICTED_DISTANCE_ALPHA * predictedShotDistance
+                            + (1.0 - PREDICTED_DISTANCE_ALPHA) * filteredPredictedShotDistance;
+        }
+
         // Build virtual target for shooting on the move:
         // goal_virtual = goal_actual - v_robot * t
         double compensatedTargetX = TARGET_X;
@@ -347,6 +373,9 @@ public class V3IntakeTest extends LinearOpMode {
         telemetry.addData("Turret Center Y", turretY);
         telemetry.addData("Actual Dist To Goal", actualDistance);
         telemetry.addData("Shot Time (s)", shotTimeSec);
+        telemetry.addData("Radial Vel To Goal", radialVelocityToGoal);
+        telemetry.addData("Predicted Shot Dist", predictedShotDistance);
+        telemetry.addData("Filtered Pred Shot Dist", filteredPredictedShotDistance);
         telemetry.addData("Comp Target X", compensatedTargetX);
         telemetry.addData("Comp Target Y", compensatedTargetY);
         telemetry.addData("Angle To Goal Field", angleToTargetFieldDeg);
@@ -463,17 +492,17 @@ public class V3IntakeTest extends LinearOpMode {
         double[][] shotTable = {
                 {47.0, 30.0, 275.0},
                 {52.0, 30.0, 275.0},
-                {59.0, 33.0, 275.0},
-                {64.5, 36.0, 275.0},
-                {70.0, 36.0, 280.0},
-                {76.5, 36.0, 300.0},
-                {81.0, 38.0, 300.0},
-                {88.0, 38.0, 310.0},
-                {94.0, 38.0, 320.0},
-                {102.0, 40.0, 320.0},
-                {115.0, 44.0, 355.0},
-                {119.7, 44.0, 360.0},
-                {126.0, 44.0, 365.0}
+                {59.0, 33.0, 280.0},
+                {64.5, 36.0, 285.0},
+                {70.0, 36.0, 300.0},
+                {76.5, 36.0, 320.0},
+                {81.0, 38.0, 320.0},
+                {88.0, 38.0, 330.0},
+                {94.0, 38.0, 340.0},
+                {102.0, 40.0, 340.0},
+                {115.0, 44.0, 375.0},
+                {119.7, 44.0, 380.0},
+                {126.0, 44.0, 385.0}
         };
 
         // Clamp below first point
@@ -507,7 +536,7 @@ public class V3IntakeTest extends LinearOpMode {
                 double t = (distance - d1) / (d2 - d1);
 
                 hoodAngleDeg = a1 + t * (a2 - a1);
-                targetVelocityRad = v1 + t * (v2 - v1);
+                targetVelocityRad = (v1 + t * (v2 - v1)) + 10;
 
                 setHoodAngle(hoodAngleDeg);
                 return;

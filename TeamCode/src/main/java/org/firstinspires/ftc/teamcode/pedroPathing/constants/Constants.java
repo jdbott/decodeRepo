@@ -24,7 +24,7 @@ public class Constants {
             .useSecondaryHeadingPIDF(false)
             .useSecondaryDrivePIDF(false)
             .drivePIDFSwitch(8)
-            .centripetalScaling(0.0005)
+            .centripetalScaling(0)
             .translationalPIDFCoefficients(new PIDFCoefficients(0.15, 0, 0.02, 0))
             .headingPIDFCoefficients(new PIDFCoefficients(1, 0, 0.05, 0))
             .drivePIDFCoefficients(
@@ -47,8 +47,8 @@ public class Constants {
             .useBrakeModeInTeleOp(true);
 
     public static PinpointConstants localizerConstants = new PinpointConstants()
-            .forwardPodY(-3.54)
-            .strafePodX(-5.91)
+            .forwardPodY(-3)
+            .strafePodX(-5.46)
             .distanceUnit(DistanceUnit.INCH)
             .hardwareMapName("pinpoint")
             .yawScalar(1.0)
