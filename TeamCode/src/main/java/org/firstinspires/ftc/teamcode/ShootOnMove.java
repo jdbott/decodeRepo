@@ -40,6 +40,7 @@ public class ShootOnMove extends LinearOpMode {
     private boolean lastCross = false;
     private boolean lastDpadUp = false;
     private boolean lastDpadDown = false;
+    private boolean shootOnTheMove = ENABLE_SHOT_ON_MOVE_COMP;
 
     private final ElapsedTime sequenceTimer = new ElapsedTime();
     private final ElapsedTime poseVelocityTimer = new ElapsedTime();
@@ -228,7 +229,16 @@ public class ShootOnMove extends LinearOpMode {
 
         double compensatedTargetX = TARGET_X;
         double compensatedTargetY = TARGET_Y;
-        if (ENABLE_SHOT_ON_MOVE_COMP) {
+
+        if (follower.getVelocity().getMagnitude() <= 1 && follower.getAcceleration().getMagnitude() >= 4){
+            shootOnTheMove = true;
+        } else if (follower.getVelocity().getMagnitude() >= 2){
+            shootOnTheMove = true;
+        } else {
+            shootOnTheMove = false;
+        }
+
+        if (shootOnTheMove) {
             compensatedTargetX = TARGET_X - fieldVxInPerSec * shotTimeSec;
             compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec;
         }
@@ -242,6 +252,12 @@ public class ShootOnMove extends LinearOpMode {
         double safeTurretDeg = wrapIntoTurretWindow(desiredTurretDeg, turret.getCurrentAngle(), TURRET_MIN_DEG, TURRET_MAX_DEG);
 
         turret.setAngle(safeTurretDeg);
+
+        telemetry.addData("Shoot on the move: ", shootOnTheMove);
+        telemetry.addData("Velocity: ", follower.getVelocity().getMagnitude());
+        telemetry.addData("Acceleration ", follower.getAcceleration().getMagnitude());
+        telemetry.addData("Actual Dist To Goal", actualDistance);
+        telemetry.addData("Shot Time (s)", shotTimeSec);
     }
 
     private void initVelocityEstimator(Pose pose) {
