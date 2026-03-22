@@ -218,7 +218,7 @@ public class ShootOnMove extends LinearOpMode {
         radialVelocityToGoal = fieldVxInPerSec * ux + fieldVyInPerSec * uy;
 
 
-        predictedShotDistance = Math.max(0.0, actualDistance - radialVelocityToGoal * shotTimeSec);
+        predictedShotDistance = Math.max(0.0, actualDistance - radialVelocityToGoal * 0.77);
 
         if (!predictedDistanceInitialized) {
             filteredPredictedShotDistance = predictedShotDistance;
