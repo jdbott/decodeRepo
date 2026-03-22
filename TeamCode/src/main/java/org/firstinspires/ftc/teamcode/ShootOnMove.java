@@ -239,7 +239,7 @@ public class ShootOnMove extends LinearOpMode {
 
         if (shootOnTheMove) {
             compensatedTargetX = TARGET_X - fieldVxInPerSec * shotTimeSec * compFactor;
-            compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec * compFactor;
+            compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec * compFactor;//
         }
 
         double dx = compensatedTargetX - turretX;
