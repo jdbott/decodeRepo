@@ -230,17 +230,16 @@ public class ShootOnMove extends LinearOpMode {
         double compensatedTargetX = TARGET_X;
         double compensatedTargetY = TARGET_Y;
 
-        if (follower.getVelocity().getMagnitude() <= 1 && follower.getAcceleration().getMagnitude() >= 4){
-            shootOnTheMove = true;
-        } else if (follower.getVelocity().getMagnitude() >= 2){
-            shootOnTheMove = true;
-        } else {
-            shootOnTheMove = false;
-        }
+
+        double MIN_SPEED = 0.5;
+        double FULL_COMP_SPEED = 15.0;
+
+        double compFactor = (follower.getVelocity().getMagnitude() - MIN_SPEED) / (FULL_COMP_SPEED - MIN_SPEED);
+        compFactor = Math.max(0.0, Math.min(1.0, compFactor));
 
         if (shootOnTheMove) {
-            compensatedTargetX = TARGET_X - fieldVxInPerSec * shotTimeSec;
-            compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec;
+            compensatedTargetX = TARGET_X - fieldVxInPerSec * shotTimeSec * compFactor;
+            compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec * compFactor;
         }
 
         double dx = compensatedTargetX - turretX;
