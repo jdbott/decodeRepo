@@ -37,13 +37,13 @@ public class ShootingCalc {
         return Math.sqrt(vx * vx + vy * vy);
     }
 
-    public static Vector getShotVector(Vector robotVelocity, Vector robotPosition, Vector targetVector, double shootingAngle, double height){
+    public static Vector get2DShotVector(Vector robotVelocity, Vector robotPosition, Vector targetVector, double shootingAngle, double height){
 
         Vector toTarget = targetVector.minus(robotPosition);
 
         double distanceMeters = toTarget.getMagnitude() / 39.3701;
 
-        double velocity = getVelocityNeeded(distanceMeters, shootingAngle, height);
+        double velocity = get2DVelocityNeeded(distanceMeters, shootingAngle, height);
 
         // direction stays same
         Vector idealShot = new Vector(velocity, toTarget.getTheta());
@@ -67,5 +67,20 @@ public class ShootingCalc {
     public static double flatShootingAngleCalc(double distance, double height){
         return Math.atan2(flatMagVy(distance, height), flatMagVx(distance, height));
     }
+
+    public static double get2DVelocityNeeded(double distance, double shootingAngle, double height){
+        double GRAVITY = 9.80665;
+
+        double vx = Math.sqrt((GRAVITY * distance * distance) / (2 * Math.pow(Math.cos(shootingAngle), 2) * (distance * Math.tan(shootingAngle) - height)));
+        return vx;
+    }
+
+    public static double get2DTimeNeeded(double distance, double shootingAngle, double height){
+        return distance/get2DVelocityNeeded(distance, shootingAngle, height);
+    }
+
+
+
+
 }
 //
