@@ -217,7 +217,8 @@ public class ShootOnMove extends LinearOpMode {
 
         radialVelocityToGoal = fieldVxInPerSec * ux + fieldVyInPerSec * uy;
 
-        predictedShotDistance = Math.max(0.0, actualDistance - radialVelocityToGoal * shotTimeSec);
+
+        predictedShotDistance = Math.max(0.0, actualDistance - radialVelocityToGoal * 0.77);
 
         if (!predictedDistanceInitialized) {
             filteredPredictedShotDistance = predictedShotDistance;
@@ -233,8 +234,8 @@ public class ShootOnMove extends LinearOpMode {
 
         double MIN_SPEED = 0.5;
         double FULL_COMP_SPEED = 15.0;
-
-        double compFactor = (follower.getVelocity().getMagnitude() - MIN_SPEED) / (FULL_COMP_SPEED - MIN_SPEED);
+        double speed = Math.sqrt(fieldVxInPerSec * fieldVxInPerSec + fieldVyInPerSec * fieldVyInPerSec);
+        double compFactor = (speed- MIN_SPEED) / (FULL_COMP_SPEED - MIN_SPEED);
         compFactor = Math.max(0.0, Math.min(1.0, compFactor));
 
         if (shootOnTheMove) {
@@ -253,7 +254,7 @@ public class ShootOnMove extends LinearOpMode {
         turret.setAngle(safeTurretDeg);
 
         telemetry.addData("Shoot on the move: ", shootOnTheMove);
-        telemetry.addData("Velocity: ", follower.getVelocity().getMagnitude());
+        telemetry.addData("Velocity: ", speed);
         telemetry.addData("Acceleration ", follower.getAcceleration().getMagnitude());
         telemetry.addData("Actual Dist To Goal", actualDistance);
         telemetry.addData("Shot Time (s)", shotTimeSec);
@@ -296,13 +297,20 @@ public class ShootOnMove extends LinearOpMode {
 
     private double wrapIntoTurretWindow(double desiredDeg, double referenceDeg, double minDeg, double maxDeg) {
         double best = Double.NaN;
+
         for (int k = -2; k <= 2; k++) {
             double candidate = desiredDeg + 360.0 * k;
             if (candidate >= minDeg && candidate <= maxDeg) {
-                if (Double.isNaN(best) || Math.abs(candidate - referenceDeg) < Math.abs(best - referenceDeg)) best = candidate;
+                if (Double.isNaN(best) || Math.abs(candidate - referenceDeg) < Math.abs(best - referenceDeg)) {
+                    best = candidate;
+                }
             }
         }
-        if (Double.isNaN(best)) best = Range.clip(desiredDeg, minDeg, maxDeg);
+
+        if (Double.isNaN(best)) {
+            best = Range.clip(desiredDeg, minDeg, maxDeg);
+        }
+
         return best;
     }
 
@@ -310,8 +318,14 @@ public class ShootOnMove extends LinearOpMode {
         boolean trianglePressed = gamepad1.triangle;
         boolean crossPressed = gamepad1.cross;
 
-        if (trianglePressed && !lastTriangle) targetVelocityRad += 5.0;
-        if (crossPressed && !lastCross) targetVelocityRad = Math.max(0.0, targetVelocityRad - 5.0);
+        if (trianglePressed && !lastTriangle) {
+            targetVelocityRad += 5.0;
+        }
+
+        if (crossPressed && !lastCross) {
+            targetVelocityRad -= 5.0;
+            targetVelocityRad = Math.max(0.0, targetVelocityRad);
+        }
 
         lastTriangle = trianglePressed;
         lastCross = crossPressed;
@@ -321,32 +335,71 @@ public class ShootOnMove extends LinearOpMode {
         boolean dpadUpPressed = gamepad1.dpad_up;
         boolean dpadDownPressed = gamepad1.dpad_down;
 
-        if (dpadUpPressed && !lastDpadUp) setHoodAngle(hoodAngleDeg + 1.0);
-        if (dpadDownPressed && !lastDpadDown) setHoodAngle(hoodAngleDeg - 1.0);
+        if (dpadUpPressed && !lastDpadUp) {
+            hoodAngleDeg += 1.0;
+            setHoodAngle(hoodAngleDeg);
+        }
+
+        if (dpadDownPressed && !lastDpadDown) {
+            hoodAngleDeg -= 1.0;
+            setHoodAngle(hoodAngleDeg);
+        }
 
         lastDpadUp = dpadUpPressed;
         lastDpadDown = dpadDownPressed;
     }
 
     private void updateShotFromDistance(double distance) {
+        // [distance inches, hood angle deg, flywheel velocity rad/s]
         double[][] shotTable = {
-                {47.0, 30.0, 275.0},{52.0,30.0,275.0},{59.0,33.0,280.0},{64.5,36.0,285.0},
-                {70.0,36.0,300.0},{76.5,36.0,320.0},{81.0,38.0,320.0},{88.0,38.0,330.0},
-                {94.0,38.0,340.0},{102.0,40.0,340.0},{115.0,44.0,375.0},{119.7,44.0,380.0},
-                {126.0,44.0,385.0}
+                {47.0, 30.0, 275.0},
+                {52.0, 30.0, 275.0},
+                {59.0, 33.0, 280.0},
+                {64.5, 36.0, 285.0},
+                {70.0, 36.0, 300.0},
+                {76.5, 36.0, 320.0},
+                {81.0, 38.0, 320.0},
+                {88.0, 38.0, 330.0},
+                {94.0, 38.0, 340.0},
+                {102.0, 40.0, 340.0},
+                {115.0, 44.0, 375.0},
+                {119.7, 44.0, 380.0},
+                {126.0, 44.0, 385.0}
         };
 
-        if (distance <= shotTable[0][0]) { hoodAngleDeg = shotTable[0][1]; targetVelocityRad = shotTable[0][2]; setHoodAngle(hoodAngleDeg); return; }
-        int last = shotTable.length - 1;
-        if (distance >= shotTable[last][0]) { hoodAngleDeg = shotTable[last][1]; targetVelocityRad = shotTable[last][2]; setHoodAngle(hoodAngleDeg); return; }
+        // Clamp below first point
+        if (distance <= shotTable[0][0]) {
+            hoodAngleDeg = shotTable[0][1];
+            targetVelocityRad = shotTable[0][2];
+            setHoodAngle(hoodAngleDeg);
+            return;
+        }
 
+        // Clamp above last point
+        int last = shotTable.length - 1;
+        if (distance >= shotTable[last][0]) {
+            hoodAngleDeg = shotTable[last][1];
+            targetVelocityRad = shotTable[last][2];
+            setHoodAngle(hoodAngleDeg);
+            return;
+        }
+
+        // Interpolate between surrounding points
         for (int i = 0; i < shotTable.length - 1; i++) {
-            double d1 = shotTable[i][0], a1 = shotTable[i][1], v1 = shotTable[i][2];
-            double d2 = shotTable[i+1][0], a2 = shotTable[i+1][1], v2 = shotTable[i+1][2];
+            double d1 = shotTable[i][0];
+            double a1 = shotTable[i][1];
+            double v1 = shotTable[i][2];
+
+            double d2 = shotTable[i + 1][0];
+            double a2 = shotTable[i + 1][1];
+            double v2 = shotTable[i + 1][2];
+
             if (distance >= d1 && distance <= d2) {
-                double t = (distance - d1)/(d2 - d1);
-                hoodAngleDeg = a1 + t*(a2-a1);
-                targetVelocityRad = (v1 + t*(v2-v1)) + 10;
+                double t = (distance - d1) / (d2 - d1);
+
+                hoodAngleDeg = a1 + t * (a2 - a1);
+                targetVelocityRad = (v1 + t * (v2 - v1)) + 10;
+
                 setHoodAngle(hoodAngleDeg);
                 return;
             }
