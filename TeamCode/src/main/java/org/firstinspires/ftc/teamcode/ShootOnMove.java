@@ -31,7 +31,7 @@ public class ShootOnMove extends LinearOpMode {
     private static final double VELOCITY_FILTER_ALPHA = 0.25;
     private static final double PREDICTED_DISTANCE_ALPHA = 0.45;
     private static final double METERS_TO_INCHES = 39.3701;
-    private static final double TIME_TUNER = 1;
+    private static final double TIME_TUNER = 2.5;
 
     private boolean lastX = false;
     private boolean intakeToggleOn = false;
