@@ -29,11 +29,15 @@ public class V3IntakeTest extends LinearOpMode {
 
     private FlywheelASG flywheel;
 
-    // Toggle this to enable automatic hood + flywheel adjustment from distance
-    private static final boolean AUTO_SHOT_FROM_DISTANCE = true;
+    // Starts in auto shot tracking mode
+    private boolean autoShotFromDistance = true;
 
     // Toggle this to enable rudimentary shooting-on-the-move aim compensation
-    private static final boolean ENABLE_SHOT_ON_MOVE_COMP = true;
+    private static final boolean ENABLE_SHOT_ON_MOVE_COMP = false;
+
+    // Fixed override shot settings
+    private static final double FIXED_POWER_SHOT_VELOCITY_RAD = 420.0;
+    private static final double FIXED_POWER_SHOT_HOOD_DEG = 53.0;
 
     // Light filtering for velocity estimate
     private static final double VELOCITY_FILTER_ALPHA = 0.25;
@@ -56,6 +60,10 @@ public class V3IntakeTest extends LinearOpMode {
     private boolean lastDpadUp = false;
     private boolean lastDpadDown = false;
 
+    // Debounce for shot mode toggle
+    private boolean lastRightBumper1 = false;
+    private boolean lastRightBumper2 = false;
+
     // Timed shoot/feed sequence
     private final ElapsedTime sequenceTimer = new ElapsedTime();
 
@@ -72,6 +80,8 @@ public class V3IntakeTest extends LinearOpMode {
     private double filteredPredictedShotDistance = 0.0;
     private boolean predictedDistanceInitialized = false;
     private double radialVelocityToGoal = 0.0;
+
+    private boolean oneDriver = true;
 
     private enum FeedState {
         IDLE,
@@ -135,12 +145,22 @@ public class V3IntakeTest extends LinearOpMode {
 
         telemetry.addLine("Initialized");
         telemetry.addLine("Clutch out, hood set, arm blocked, intake off");
-        telemetry.addData("Auto Shot From Distance", AUTO_SHOT_FROM_DISTANCE);
+        telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
         telemetry.addData("Shot On Move Compensation", ENABLE_SHOT_ON_MOVE_COMP);
         telemetry.update();
 
         while (opModeInInit()) {
             turret.update();
+
+            if (gamepad1.x) {
+                oneDriver = true;
+            } else if (gamepad1.b) {
+                oneDriver = false;
+            }
+
+            telemetry.addData("One Driver", oneDriver);
+            telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
+            telemetry.update();
         }
 
         waitForStart();
@@ -161,15 +181,18 @@ public class V3IntakeTest extends LinearOpMode {
             trackGoalFromOdometry(pose);
             turret.update();
 
+            handleShotModeToggle();
+
             // Automatic shot control using predicted future distance
-            if (AUTO_SHOT_FROM_DISTANCE) {
+            if (autoShotFromDistance) {
                 double lookupDistance = predictedDistanceInitialized
                         ? filteredPredictedShotDistance
                         : Math.hypot(TARGET_X - pose.getX(), TARGET_Y - pose.getY());
                 updateShotFromDistance(lookupDistance);
             } else {
-                handleFlywheelAdjustment();
-                handleHoodAdjustment();
+                hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
+                targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
+                setHoodAngle(hoodAngleDeg);
             }
 
             handleXToggle();
@@ -180,24 +203,9 @@ public class V3IntakeTest extends LinearOpMode {
             flywheel.setTargetVelocity(targetVelocityRad);
             flywheel.update();
 
-//            telemetry.addData("Predicted Shot Distance", predictedShotDistance);
-//            telemetry.addData("Filtered Predicted Shot Distance", filteredPredictedShotDistance);
-//            telemetry.addData("Radial Velocity To Goal", radialVelocityToGoal);
-//            telemetry.addData("Auto Shot", AUTO_SHOT_FROM_DISTANCE);
-//
-//            telemetry.addData("Field Vx (in/s)", fieldVxInPerSec);
-//            telemetry.addData("Field Vy (in/s)", fieldVyInPerSec);
-//            telemetry.addData("Shot On Move Comp", ENABLE_SHOT_ON_MOVE_COMP);
-//
-//            telemetry.addData("Intake Toggle", intakeToggleOn);
-//            telemetry.addData("Feed State", feedState);
-//
-//            telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
-//
-//            telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
-//            telemetry.addData("Flywheel Actual (rad/s)", flywheel.getVelocityRadPerSec());
-//            telemetry.addData("Flywheel Actual (RPM)", flywheel.getVelocityRPM());
-//            telemetry.addData("Flywheel Power", flywheel.getPower());
+            telemetry.addData("Shot Mode", autoShotFromDistance ? "AUTO TRACKING" : "FIXED POWER SHOT");
+            telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
+            telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
             telemetry.addData("Pose", follower.getPose().toString());
             telemetry.update();
         }
@@ -231,8 +239,45 @@ public class V3IntakeTest extends LinearOpMode {
         }
     }
 
+    private void handleShotModeToggle() {
+        boolean rb1Pressed = gamepad1.right_bumper;
+        boolean rb2Pressed = gamepad2.right_bumper;
+
+        if (oneDriver) {
+            if (rb1Pressed && !lastRightBumper1) {
+                autoShotFromDistance = !autoShotFromDistance;
+                gamepad1.rumble(400);
+
+                if (!autoShotFromDistance) {
+                    hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
+                    targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
+                    setHoodAngle(hoodAngleDeg);
+                }
+            }
+        } else {
+            if (rb2Pressed && !lastRightBumper2) {
+                autoShotFromDistance = !autoShotFromDistance;
+                gamepad2.rumble(400);
+
+                if (!autoShotFromDistance) {
+                    hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
+                    targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
+                    setHoodAngle(hoodAngleDeg);
+                }
+            }
+        }
+
+        lastRightBumper1 = rb1Pressed;
+        lastRightBumper2 = rb2Pressed;
+    }
+
     private void handleXToggle() {
-        boolean xPressed = gamepad1.x;
+        boolean xPressed;
+        if (oneDriver) {
+            xPressed = gamepad1.x;
+        } else {
+            xPressed = gamepad2.x;
+        }
 
         if (xPressed && !lastX) {
             intakeToggleOn = !intakeToggleOn;
@@ -252,7 +297,12 @@ public class V3IntakeTest extends LinearOpMode {
     }
 
     private void handleBSequence() {
-        boolean bPressed = gamepad1.b;
+        boolean bPressed;
+        if (oneDriver) {
+            bPressed = gamepad1.b;
+        } else {
+            bPressed = gamepad2.b;
+        }
 
         if (bPressed && !lastB) {
             intakeToggleOn = false;
@@ -467,6 +517,8 @@ public class V3IntakeTest extends LinearOpMode {
 
         lastTriangle = trianglePressed;
         lastCross = crossPressed;
+
+        telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
     }
 
     private void handleHoodAdjustment() {
@@ -485,6 +537,8 @@ public class V3IntakeTest extends LinearOpMode {
 
         lastDpadUp = dpadUpPressed;
         lastDpadDown = dpadDownPressed;
+
+        telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
     }
 
     private void updateShotFromDistance(double distance) {

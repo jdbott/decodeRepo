@@ -37,7 +37,7 @@ public class V3Auto extends LinearOpMode {
 
     // First shot fixed setup
     private static final double FIRST_SHOT_HOOD_DEG = 37;
-    private static final double FIRST_SHOT_FLYWHEEL_RAD = 315;
+    private static final double FIRST_SHOT_FLYWHEEL_RAD = 310;
 
     // Goal position in field coordinates
     private static final double TARGET_X = 5.0;
@@ -50,6 +50,9 @@ public class V3Auto extends LinearOpMode {
     private static final double TURRET_MIN_DEG = -180.0;
     private static final double TURRET_MAX_DEG = 180.0;
     private static final double TURRET_OFFSET_DEG = 180.0;
+
+    // Extra intake move after gate intake
+    private static final double EXTRA_GATE_INTAKE_Y_IN = 4.5;
 
     // Dynamic shot control toggles
     private boolean enableDynamicShotControl = false;
@@ -74,12 +77,31 @@ public class V3Auto extends LinearOpMode {
     // Paths / poses
     private Pose startPose;
     private Pose firstShotPose;
+
     private Path toFirstShot;
     private Path toLine2;
     private Path backToShoot;
 
+    private Path toGateOpenGate;
+    private Path toGateIntake;
+    private Path backToShootFromGate;
+    private Path gateExtraIntakeMove;
+
+    private Path toFourthPickup;
+    private Path backToFinalShoot;
+
+    private Path backToShootFromGateAgain;
+    private Path gateExtraIntakeMoveAgain;
+
+    private Path toLastLine;
+    private Path backToShootFromLastLine;
+
     // Feed timer / state
     private final ElapsedTime feedTimer = new ElapsedTime();
+    private final ElapsedTime autoTimer = new ElapsedTime();
+
+    private final ElapsedTime reverseTimer = new ElapsedTime();
+    private boolean reversingIntake = false;
 
     private enum FeedState {
         IDLE,
@@ -93,9 +115,33 @@ public class V3Auto extends LinearOpMode {
     private enum AutoState {
         DRIVE_TO_FIRST_SHOT,
         WAIT_FOR_FIRST_SHOT_TO_FINISH,
+
         DRIVE_TO_LINE2,
         DRIVE_BACK_TO_SHOOT,
         SHOOT_SECOND,
+
+        DRIVE_TO_GATE,
+        WAIT_AT_GATE,
+        WAIT_FOR_GATE_INTAKE,
+        DRIVE_EXTRA_INTAKE_AT_GATE,
+        DRIVE_BACK_TO_SHOOT_THIRD,
+        SHOOT_THIRD,
+
+        DRIVE_TO_FOURTH_PICKUP,
+        DRIVE_BACK_TO_FINAL_SHOOT,
+        SHOOT_FOURTH,
+
+        DRIVE_TO_GATE_AGAIN,
+        WAIT_AT_GATE_AGAIN,
+        WAIT_FOR_GATE_INTAKE_AGAIN,
+        DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN,
+        DRIVE_BACK_TO_SHOOT_FIFTH,
+        SHOOT_FIFTH,
+
+        DRIVE_TO_LAST_LINE,
+        DRIVE_BACK_TO_SHOOT_LAST,
+        SHOOT_LAST,
+
         DONE
     }
 
@@ -127,15 +173,12 @@ public class V3Auto extends LinearOpMode {
         turret = new Turret();
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.REVERSE);
 
-        // Compute first shot pose:
-        // your current style, but make Y 20 inches less so it is farther from the goal.
         double firstShotX = START_X + 35 * Math.cos(Math.toRadians(START_HEADING_DEG));
         double firstShotY = START_Y + 55.0 * Math.sin(Math.toRadians(START_HEADING_DEG));
         firstShotPose = new Pose(firstShotX, firstShotY);
 
         buildPaths();
 
-        // Init state
         intakeMotor.setPower(0.0);
         flywheel.stop();
         clutchIn();
@@ -168,7 +211,6 @@ public class V3Auto extends LinearOpMode {
         waitForStart();
         if (isStopRequested()) return;
 
-        // First shot fixed setup
         hoodAngleDeg = FIRST_SHOT_HOOD_DEG;
         targetVelocityRad = FIRST_SHOT_FLYWHEEL_RAD;
         setHoodAngle(hoodAngleDeg);
@@ -182,7 +224,6 @@ public class V3Auto extends LinearOpMode {
 
             Pose pose = follower.getPose();
 
-            // Shot logic
             if (enableDynamicShotControl) {
                 trackGoalFromOdometry(pose, enableShotOnMoveComp);
 
@@ -232,31 +273,83 @@ public class V3Auto extends LinearOpMode {
         toLine2 = new Path(
                 new BezierCurve(
                         new Pose(firstShotPose.getX(), firstShotPose.getY()),
-                        new Pose(48.0, 69.0),
-                        new Pose(40.0, 66.0),
-                        new Pose(12, 65.0)
+                        new Pose(48.0, 67.0),
+                        new Pose(40.0, 63.0),
+                        new Pose(12.5, 62.0)
                 )
         );
-        toLine2.setTangentHeadingInterpolation();
+        toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
 
         backToShoot = new Path(
-                new BezierLine(
-                        new Pose(15.0, 65.0),
+                new BezierCurve(
+                        new Pose(11.0, 65.0),
+                        new Pose(30.0, 65.0),
                         firstShotPose
                 )
         );
         backToShoot.reverseHeadingInterpolation();
+
+        toGateOpenGate = new Path(
+                new BezierCurve(
+                        new Pose(firstShotPose.getX(), firstShotPose.getY()),
+                        new Pose(50.0, 66.326),
+                        new Pose(16.0, 66.5)
+                )
+        );
+        toGateOpenGate.setLinearHeadingInterpolation(Math.toRadians(235), Math.toRadians(165), 0.9);
+
+        toGateIntake = new Path(
+                new BezierLine(
+                        new Pose(16.0, 69.5),
+                        new Pose(11.0, 59.0)
+                )
+        );
+        toGateIntake.setConstantHeadingInterpolation(Math.toRadians(135));
+
+        toFourthPickup = new Path(
+                new BezierCurve(
+                        new Pose(firstShotPose.getX(), firstShotPose.getY()),
+                        new Pose(40.0, 84.0),
+                        new Pose(20.0, 84.0)
+                )
+        );
+        toFourthPickup.setConstantHeadingInterpolation(Math.toRadians(180));
+
+        backToFinalShoot = new Path(
+                new BezierLine(
+                        new Pose(20.0, 84.0),
+                        new Pose(firstShotPose.getX(), firstShotPose.getY())
+                )
+        );
+        backToFinalShoot.reverseHeadingInterpolation();
+
+        toLastLine = new Path(
+                new BezierCurve(
+                        new Pose(firstShotPose.getX(), firstShotPose.getY()),
+                        new Pose(48.0, 43.0),
+                        new Pose(40.0, 39.0),
+                        new Pose(12.5, 38.0)
+                )
+        );
+        toLastLine.setTangentHeadingInterpolation();
+
+        backToShootFromLastLine = new Path(
+                new BezierCurve(
+                        new Pose(11.0, 41.0),
+                        new Pose(30.0, 41.0),
+                        new Pose(firstShotPose.getX() + 10, firstShotPose.getY() + 18)
+                )
+        );
+        backToShootFromLastLine.reverseHeadingInterpolation();
     }
 
     private void updateAutoState() {
         switch (autoState) {
             case DRIVE_TO_FIRST_SHOT:
-                // Start feeding while still moving once t > 0.6
                 if (feedState == FeedState.IDLE && follower.getCurrentTValue() > 0.9) {
                     startFeedSequence();
                 }
 
-                // If path finished, either continue immediately or wait for shot to finish
                 if (!follower.isBusy()) {
                     if (feedState == FeedState.DONE) {
                         finishFirstShotAndStartLine2();
@@ -273,8 +366,12 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case DRIVE_TO_LINE2:
+                if (follower.getCurrentTValue() > 0.35) {
+                    follower.setMaxPower(0.8);
+                    toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
+                }
                 if (!follower.isBusy()) {
-                    intakeMotor.setPower(1.0);
+                    follower.setMaxPower(1.0);
                     follower.followPath(backToShoot, true);
                     autoState = AutoState.DRIVE_BACK_TO_SHOOT;
 
@@ -284,6 +381,7 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case DRIVE_BACK_TO_SHOOT:
+                follower.setMaxPower(1.0);
                 if (!follower.isBusy()) {
                     startFeedSequence();
                     autoState = AutoState.SHOOT_SECOND;
@@ -292,10 +390,160 @@ public class V3Auto extends LinearOpMode {
 
             case SHOOT_SECOND:
                 if (feedState == FeedState.DONE) {
-                    intakeMotor.setPower(0.0);
-                    flywheel.stop();
                     armBlock();
-                    clutchIn();
+                    clutchOut();
+                    startThirdCycleToGate();
+                }
+                break;
+
+            case DRIVE_TO_GATE:
+                if (!follower.isBusy()) {
+                    autoTimer.reset();
+                    autoState = AutoState.WAIT_AT_GATE;
+                }
+                break;
+
+            case WAIT_AT_GATE:
+                intakeMotor.setPower(1.0);
+                if (autoTimer.seconds() >= 0.1) {
+                    follower.setMaxPower(1.0);
+                    follower.followPath(toGateIntake, false);
+                    autoTimer.reset();
+                    autoState = AutoState.WAIT_FOR_GATE_INTAKE;
+                }
+                break;
+
+            case WAIT_FOR_GATE_INTAKE:
+                intakeMotor.setPower(1.0);
+                if (autoTimer.seconds() >= 1.5) {
+                    startExtraGateIntakeMove();
+                }
+                break;
+
+            case DRIVE_EXTRA_INTAKE_AT_GATE:
+                intakeMotor.setPower(1.0);
+                if (!follower.isBusy()) {
+                    startReturnFromGateToShoot();
+                }
+                break;
+
+            case DRIVE_BACK_TO_SHOOT_THIRD:
+                intakeMotor.setPower(1.0);
+                if (!follower.isBusy()) {
+                    startFeedSequence();
+                    autoState = AutoState.SHOOT_THIRD;
+                }
+                break;
+
+            case SHOOT_THIRD:
+                if (feedState == FeedState.DONE) {
+                    armBlock();
+                    clutchOut();
+                    startFourthPickupCycle();
+                }
+                break;
+
+            case DRIVE_TO_FOURTH_PICKUP:
+                if (!follower.isBusy()) {
+                    startReturnToFinalShoot();
+                }
+                break;
+
+            case DRIVE_BACK_TO_FINAL_SHOOT:
+                intakeMotor.setPower(1.0);
+                if (!follower.isBusy()) {
+                    startFeedSequence();
+                    autoState = AutoState.SHOOT_FOURTH;
+                }
+                break;
+
+            case SHOOT_FOURTH:
+                if (feedState == FeedState.DONE) {
+                    armBlock();
+                    clutchOut();
+                    startGateCycleAgain();
+                }
+                break;
+
+            case DRIVE_TO_GATE_AGAIN:
+                if (!follower.isBusy()) {
+                    autoTimer.reset();
+                    autoState = AutoState.WAIT_AT_GATE_AGAIN;
+                }
+                break;
+
+            case WAIT_AT_GATE_AGAIN:
+                intakeMotor.setPower(1.0);
+                if (autoTimer.seconds() >= 0.2) {
+                    follower.setMaxPower(1.0);
+                    follower.followPath(toGateIntake, true);
+                    autoTimer.reset();
+                    autoState = AutoState.WAIT_FOR_GATE_INTAKE_AGAIN;
+                }
+                break;
+
+            case WAIT_FOR_GATE_INTAKE_AGAIN:
+                intakeMotor.setPower(1.0);
+                if (autoTimer.seconds() >= 1.5) {
+                    startExtraGateIntakeMoveAgain();
+                }
+                break;
+
+            case DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN:
+                intakeMotor.setPower(1.0);
+                if (!follower.isBusy()) {
+                    startReturnFromGateToShootAgain();
+                }
+                break;
+
+            case DRIVE_BACK_TO_SHOOT_FIFTH:
+                intakeMotor.setPower(1.0);
+                if (!follower.isBusy()) {
+                    startFeedSequence();
+                    autoState = AutoState.SHOOT_FIFTH;
+                }
+                break;
+
+            case SHOOT_FIFTH:
+                if (feedState == FeedState.DONE) {
+                    armBlock();
+                    clutchOut();
+                    startLastLineCycle();
+                }
+                break;
+
+            case DRIVE_TO_LAST_LINE:
+                if (follower.getCurrentTValue() > 0.25) {
+                    follower.setMaxPower(0.8);
+                    toLastLine.setConstantHeadingInterpolation(Math.toRadians(180));
+                }
+                if (!follower.isBusy()) {
+                    intakeMotor.setPower(1.0);
+                    follower.setMaxPower(1.0);
+                    follower.followPath(backToShootFromLastLine, true);
+                    autoState = AutoState.DRIVE_BACK_TO_SHOOT_LAST;
+
+                    enableDynamicShotControl = true;
+                    enableShotOnMoveComp = true;
+                }
+                break;
+
+            case DRIVE_BACK_TO_SHOOT_LAST:
+                intakeMotor.setPower(1.0);
+                if (!follower.isBusy()) {
+                    startFeedSequence();
+                    autoState = AutoState.SHOOT_LAST;
+                }
+                break;
+
+            case SHOOT_LAST:
+                if (feedState == FeedState.DONE) {
+                    intakeMotor.setPower(0.0);
+                    armBlock();
+                    clutchOut();
+                    enableDynamicShotControl = false;
+                    enableShotOnMoveComp = false;
+                    turret.setAngle(0);
                     autoState = AutoState.DONE;
                 }
                 break;
@@ -309,13 +557,149 @@ public class V3Auto extends LinearOpMode {
     private void finishFirstShotAndStartLine2() {
         clutchOut();
         armBlock();
-        intakeMotor.setPower(1.0);
 
         enableDynamicShotControl = true;
         enableShotOnMoveComp = true;
 
+        follower.setMaxPower(1.0);
         follower.followPath(toLine2, false);
         autoState = AutoState.DRIVE_TO_LINE2;
+    }
+
+    private void startThirdCycleToGate() {
+        intakeMotor.setPower(1.0);
+        feedState = FeedState.IDLE;
+
+        enableDynamicShotControl = true;
+        enableShotOnMoveComp = true;
+
+        follower.setMaxPower(1.0);
+        follower.followPath(toGateOpenGate, false);
+        autoState = AutoState.DRIVE_TO_GATE;
+    }
+
+    private void startExtraGateIntakeMove() {
+        follower.setMaxPower(1.0);
+
+        Pose currentPose = follower.getPose();
+        gateExtraIntakeMove = new Path(
+                new BezierLine(
+                        new Pose(currentPose.getX(), currentPose.getY()),
+                        new Pose(currentPose.getX(), currentPose.getY() + EXTRA_GATE_INTAKE_Y_IN)
+                )
+        );
+        gateExtraIntakeMove.setConstantHeadingInterpolation(Math.toRadians(135));
+
+        follower.followPath(gateExtraIntakeMove, true);
+        autoState = AutoState.DRIVE_EXTRA_INTAKE_AT_GATE;
+    }
+
+    private void startReturnFromGateToShoot() {
+        follower.setMaxPower(1.0);
+
+        backToShootFromGate = new Path(
+                new BezierCurve(
+                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
+                        new Pose(42.0, 62.0),
+                        new Pose(firstShotPose.getX(), firstShotPose.getY())
+                )
+        );
+        backToShootFromGate.reverseHeadingInterpolation();
+
+        intakeMotor.setPower(1.0);
+        feedState = FeedState.IDLE;
+
+        enableDynamicShotControl = true;
+        enableShotOnMoveComp = true;
+
+        follower.followPath(backToShootFromGate, true);
+        autoState = AutoState.DRIVE_BACK_TO_SHOOT_THIRD;
+    }
+
+    private void startFourthPickupCycle() {
+        intakeMotor.setPower(1.0);
+        feedState = FeedState.IDLE;
+
+        enableDynamicShotControl = true;
+        enableShotOnMoveComp = true;
+
+        follower.setMaxPower(1.0);
+        follower.followPath(toFourthPickup, false);
+        autoState = AutoState.DRIVE_TO_FOURTH_PICKUP;
+    }
+
+    private void startReturnToFinalShoot() {
+        intakeMotor.setPower(1.0);
+        feedState = FeedState.IDLE;
+
+        enableDynamicShotControl = true;
+        enableShotOnMoveComp = true;
+
+        follower.setMaxPower(1.0);
+        follower.followPath(backToFinalShoot, true);
+        autoState = AutoState.DRIVE_BACK_TO_FINAL_SHOOT;
+    }
+
+    private void startGateCycleAgain() {
+        intakeMotor.setPower(1.0);
+        feedState = FeedState.IDLE;
+
+        enableDynamicShotControl = true;
+        enableShotOnMoveComp = true;
+
+        follower.setMaxPower(1.0);
+        follower.followPath(toGateOpenGate, false);
+        autoState = AutoState.DRIVE_TO_GATE_AGAIN;
+    }
+
+    private void startExtraGateIntakeMoveAgain() {
+        follower.setMaxPower(1.0);
+
+        Pose currentPose = follower.getPose();
+        gateExtraIntakeMoveAgain = new Path(
+                new BezierLine(
+                        new Pose(currentPose.getX(), currentPose.getY()),
+                        new Pose(currentPose.getX(), currentPose.getY() + EXTRA_GATE_INTAKE_Y_IN)
+                )
+        );
+        gateExtraIntakeMoveAgain.setConstantHeadingInterpolation(Math.toRadians(135));
+
+        follower.followPath(gateExtraIntakeMoveAgain, true);
+        autoState = AutoState.DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN;
+    }
+
+    private void startReturnFromGateToShootAgain() {
+        follower.setMaxPower(1.0);
+
+        backToShootFromGateAgain = new Path(
+                new BezierCurve(
+                        new Pose(follower.getPose().getX(), follower.getPose().getY()),
+                        new Pose(42.0, 62.0),
+                        new Pose(firstShotPose.getX(), firstShotPose.getY())
+                )
+        );
+        backToShootFromGateAgain.reverseHeadingInterpolation();
+
+        intakeMotor.setPower(1.0);
+        feedState = FeedState.IDLE;
+
+        enableDynamicShotControl = true;
+        enableShotOnMoveComp = true;
+
+        follower.followPath(backToShootFromGateAgain, true);
+        autoState = AutoState.DRIVE_BACK_TO_SHOOT_FIFTH;
+    }
+
+    private void startLastLineCycle() {
+        intakeMotor.setPower(1.0);
+        feedState = FeedState.IDLE;
+
+        enableDynamicShotControl = true;
+        enableShotOnMoveComp = true;
+
+        follower.setMaxPower(1.0);
+        follower.followPath(toLastLine, false);
+        autoState = AutoState.DRIVE_TO_LAST_LINE;
     }
 
     private void startFeedSequence() {
@@ -325,12 +709,24 @@ public class V3Auto extends LinearOpMode {
     }
 
     private void updateFeedSequence() {
+
+        if (reversingIntake) {
+            if (reverseTimer.seconds() < 0.25) {
+                intakeMotor.setPower(-1.0);
+            } else {
+                intakeMotor.setPower(1.0);
+                reversingIntake = false;
+            }
+        }
+
         switch (feedState) {
             case IDLE:
                 break;
 
             case WAIT_BEFORE_INTAKE:
+                clutchIn();
                 intakeMotor.setPower(0.0);
+
                 if (feedTimer.seconds() >= 0.1) {
                     intakeMotor.setPower(1.0);
                     feedState = FeedState.RUN_INTAKE;
@@ -339,8 +735,12 @@ public class V3Auto extends LinearOpMode {
 
             case RUN_INTAKE:
                 if (feedTimer.seconds() >= 1.0) {
+                    reversingIntake = true;
+                    reverseTimer.reset();
+
                     intakeMotor.setPower(0.0);
                     feedState = FeedState.DONE;
+                    clutchOut();
                 }
                 break;
 
@@ -459,7 +859,7 @@ public class V3Auto extends LinearOpMode {
 
         if (distance <= shotTable[0][0]) {
             hoodAngleDeg = shotTable[0][1];
-            targetVelocityRad = shotTable[0][2] + 10.0;
+            targetVelocityRad = shotTable[0][2] + 20.0;
             setHoodAngle(hoodAngleDeg);
             return;
         }
@@ -484,7 +884,7 @@ public class V3Auto extends LinearOpMode {
             if (distance >= d1 && distance <= d2) {
                 double t = (distance - d1) / (d2 - d1);
                 hoodAngleDeg = a1 + t * (a2 - a1);
-                targetVelocityRad = (v1 + t * (v2 - v1)) + 10.0;
+                targetVelocityRad = (v1 + t * (v2 - v1)) + 10;
                 setHoodAngle(hoodAngleDeg);
                 return;
             }
