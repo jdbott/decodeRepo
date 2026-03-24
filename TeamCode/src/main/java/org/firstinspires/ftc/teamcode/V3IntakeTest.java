@@ -107,8 +107,8 @@ public class V3IntakeTest extends LinearOpMode {
     private static final double TURRET_CENTER_OFFSET_IN = 1.5;
 
     // Turret limits
-    private static final double TURRET_MIN_DEG = -160.0;
-    private static final double TURRET_MAX_DEG = 160.0;
+    private static final double TURRET_MIN_DEG = -175;
+    private static final double TURRET_MAX_DEG = 175;
 
     // IMPORTANT:
     // This is the angular offset between your robot-relative target angle and what your turret class
