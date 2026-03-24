@@ -429,6 +429,9 @@ public class V3Auto extends LinearOpMode {
 
             case DRIVE_BACK_TO_SHOOT_THIRD:
                 intakeMotor.setPower(1.0);
+                if (follower.getCurrentTValue() > 0.3) {
+                    backToShootFromGate.reverseHeadingInterpolation();
+                }
                 if (!follower.isBusy()) {
                     startFeedSequence();
                     autoState = AutoState.SHOOT_THIRD;
@@ -600,11 +603,11 @@ public class V3Auto extends LinearOpMode {
         backToShootFromGate = new Path(
                 new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(42.0, 62.0),
+                        new Pose(42.0, 59),
                         new Pose(firstShotPose.getX(), firstShotPose.getY())
                 )
         );
-        backToShootFromGate.reverseHeadingInterpolation();
+        backToShootFromGate.setConstantHeadingInterpolation(Math.toRadians(135));
 
         intakeMotor.setPower(1.0);
         feedState = FeedState.IDLE;
