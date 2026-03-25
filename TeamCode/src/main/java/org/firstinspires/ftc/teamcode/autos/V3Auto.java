@@ -554,6 +554,7 @@ public class V3Auto extends LinearOpMode {
                     enableShotOnMoveComp = false;
                     turret.setAngle(0);
                     autoState = AutoState.DONE;
+                    follower.turnTo(Math.toRadians(-90));
                 }
                 break;
 

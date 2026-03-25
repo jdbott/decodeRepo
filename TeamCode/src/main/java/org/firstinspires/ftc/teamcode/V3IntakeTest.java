@@ -81,7 +81,7 @@ public class V3IntakeTest extends LinearOpMode {
     private boolean predictedDistanceInitialized = false;
     private double radialVelocityToGoal = 0.0;
 
-    private boolean oneDriver = true;
+    private boolean oneDriver = false;
 
     private enum FeedState {
         IDLE,
@@ -129,7 +129,7 @@ public class V3IntakeTest extends LinearOpMode {
         flywheel = new FlywheelASG(hardwareMap, battery);
 
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(72, 72, Math.toRadians(0)));
+        follower.setStartingPose(new Pose(57.8, 111.2, Math.toRadians(-90)));
         follower.updatePose();
         follower.setMaxPower(1);
         follower.startTeleOpDrive();
@@ -156,6 +156,10 @@ public class V3IntakeTest extends LinearOpMode {
                 oneDriver = true;
             } else if (gamepad1.b) {
                 oneDriver = false;
+            }
+
+            if (gamepad1.y) {
+                follower.setStartingPose(new Pose(72, 72, Math.toRadians(0)));
             }
 
             telemetry.addData("One Driver", oneDriver);
