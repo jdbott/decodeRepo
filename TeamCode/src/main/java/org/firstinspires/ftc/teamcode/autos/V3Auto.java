@@ -36,8 +36,8 @@ public class V3Auto extends LinearOpMode {
     private static final double START_HEADING_DEG = -39.38;
 
     // First shot fixed setup
-    private static final double FIRST_SHOT_HOOD_DEG = 37;
-    private static final double FIRST_SHOT_FLYWHEEL_RAD = 310;
+    private static double FIRST_SHOT_HOOD_DEG = 37;
+    private static double FIRST_SHOT_FLYWHEEL_RAD = 310;
 
     // Goal position in field coordinates
     private static final double TARGET_X = 5.0;
@@ -381,7 +381,9 @@ public class V3Auto extends LinearOpMode {
                     follower.followPath(backToShoot, true);
                     autoState = AutoState.DRIVE_BACK_TO_SHOOT;
 
-                    enableDynamicShotControl = true;
+                    enableDynamicShotControl = false;
+                    FIRST_SHOT_HOOD_DEG = 37;
+                    FIRST_SHOT_FLYWHEEL_RAD = 350;
                     enableShotOnMoveComp = true;
                 }
                 break;
