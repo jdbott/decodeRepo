@@ -15,7 +15,7 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
-@TeleOp(name = "V3 IntakeTest")
+@TeleOp(name = "A V3 Tele")
 public class V3IntakeTest extends LinearOpMode {
 
     private Servo hoodServo;
@@ -96,7 +96,7 @@ public class V3IntakeTest extends LinearOpMode {
     private double hoodAngleDeg = 50.0;
 
     // Flywheel target velocity state
-    private double targetVelocityRad = 250.0;
+    private double targetVelocityRad = 275;
 
     // Goal position in field coordinates
     private static final double TARGET_X = 5;
@@ -139,7 +139,7 @@ public class V3IntakeTest extends LinearOpMode {
 
         // Initialization state
         clutchOut();
-        setHoodAngle(hoodAngleDeg);
+        //setHoodAngle(hoodAngleDeg);
         armBlock();
         intakeMotor.setPower(0.0);
 

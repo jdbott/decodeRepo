@@ -224,18 +224,24 @@ public class V3Auto extends LinearOpMode {
 
             Pose pose = follower.getPose();
 
-            if (enableDynamicShotControl) {
-                trackGoalFromOdometry(pose, enableShotOnMoveComp);
+            boolean turretShouldTrackGoal = autoState != AutoState.DONE;
 
-                double lookupDistance = predictedDistanceInitialized
-                        ? filteredPredictedShotDistance
-                        : Math.hypot(TARGET_X - pose.getX(), TARGET_Y - pose.getY());
+            if (turretShouldTrackGoal) {
+                if (enableDynamicShotControl) {
+                    trackGoalFromOdometry(pose, enableShotOnMoveComp);
 
-                updateShotFromDistance(lookupDistance);
+                    double lookupDistance = predictedDistanceInitialized
+                            ? filteredPredictedShotDistance
+                            : Math.hypot(TARGET_X - pose.getX(), TARGET_Y - pose.getY());
+
+                    updateShotFromDistance(lookupDistance);
+                } else {
+                    trackGoalFromOdometry(pose, false);
+                    setHoodAngle(FIRST_SHOT_HOOD_DEG);
+                    targetVelocityRad = FIRST_SHOT_FLYWHEEL_RAD;
+                }
             } else {
-                trackGoalFromOdometry(pose, false);
-                setHoodAngle(FIRST_SHOT_HOOD_DEG);
-                targetVelocityRad = FIRST_SHOT_FLYWHEEL_RAD;
+                turret.setAngle(0);
             }
 
             flywheel.setTargetVelocity(targetVelocityRad);
@@ -552,6 +558,7 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case DONE:
+                turret.setAngle(0);
                 intakeMotor.setPower(0.0);
                 break;
         }
