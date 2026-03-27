@@ -44,6 +44,7 @@ public class V3IntakeTest extends LinearOpMode {
 
     // Very light smoothing for predicted shot distance
     private static final double PREDICTED_DISTANCE_ALPHA = 0.45;
+    private static double TIME_TUNER = 1.0;
 
     // Intake toggle
     private boolean lastX = false;
@@ -191,6 +192,12 @@ public class V3IntakeTest extends LinearOpMode {
             handleTurretOffsetAdjustment();
             trackGoalFromOdometry(pose);
             turret.update();
+
+            if(gamepad1.rightBumperWasPressed()){
+                TIME_TUNER += 0.1;
+            } else if(gamepad1.leftBumperWasPressed()){
+                TIME_TUNER -= 0.1;
+            }
 
             handleShotModeToggle();
 
@@ -416,8 +423,8 @@ public class V3IntakeTest extends LinearOpMode {
         double compensatedTargetY = TARGET_Y;
 
         if (ENABLE_SHOT_ON_MOVE_COMP) {
-            compensatedTargetX = TARGET_X - fieldVxInPerSec * shotTimeSec;
-            compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec;
+            compensatedTargetX = TARGET_X - fieldVxInPerSec * shotTimeSec * TIME_TUNER;
+            compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec * TIME_TUNER;
         }
 
         // Vector from turret center to compensated target
