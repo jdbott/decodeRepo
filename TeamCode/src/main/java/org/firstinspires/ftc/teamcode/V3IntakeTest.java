@@ -408,20 +408,7 @@ public class V3IntakeTest extends LinearOpMode {
 
         // Positive radial velocity = moving toward the goal
         // Negative radial velocity = moving away from the goal
-        radialVelocityToGoal = fieldVxInPerSec * ux + fieldVyInPerSec * uy;
 
-        // Predict effective future shot distance for hood/flywheel lookup
-        predictedShotDistance = actualDistance - radialVelocityToGoal * shotTimeSec;
-        predictedShotDistance = Math.max(0.0, predictedShotDistance);
-
-        if (!predictedDistanceInitialized) {
-            filteredPredictedShotDistance = predictedShotDistance;
-            predictedDistanceInitialized = true;
-        } else {
-            filteredPredictedShotDistance =
-                    PREDICTED_DISTANCE_ALPHA * predictedShotDistance
-                            + (1.0 - PREDICTED_DISTANCE_ALPHA) * filteredPredictedShotDistance;
-        }
 
         // Build virtual target for shooting on the move:
         // goal_virtual = goal_actual - v_robot * t
@@ -446,6 +433,21 @@ public class V3IntakeTest extends LinearOpMode {
         // Convert into turret command space
         double desiredTurretDeg = normalize180(angleToTargetRobotDeg + TURRET_OFFSET_DEG + turretAngleOffsetDeg+baseTurretAngleOffsetDeg);
 
+        radialVelocityToGoal = fieldVxInPerSec * ux + fieldVyInPerSec * uy;
+
+        // Predict effective future shot distance for hood/flywheel lookup
+        //predictedShotDistance = actualDistance - radialVelocityToGoal * shotTimeSec;
+        predictedShotDistance = Math.hypot(dx, dy);
+        predictedShotDistance = Math.max(0.0, predictedShotDistance);
+
+        if (!predictedDistanceInitialized) {
+            filteredPredictedShotDistance = predictedShotDistance;
+            predictedDistanceInitialized = true;
+        } else {
+            filteredPredictedShotDistance =
+                    PREDICTED_DISTANCE_ALPHA * predictedShotDistance
+                            + (1.0 - PREDICTED_DISTANCE_ALPHA) * filteredPredictedShotDistance;
+        }
         // Keep command inside allowed turret window, choosing nearest equivalent
         double safeTurretDeg = wrapIntoTurretWindow(
                 desiredTurretDeg,
