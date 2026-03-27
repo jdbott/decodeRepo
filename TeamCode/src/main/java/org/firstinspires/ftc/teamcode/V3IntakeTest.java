@@ -30,14 +30,14 @@ public class V3IntakeTest extends LinearOpMode {
     private FlywheelASG flywheel;
 
     // Starts in auto shot tracking mode
-    private boolean autoShotFromDistance = true;
+    private boolean autoShotFromDistance = false;
 
     // Toggle this to enable rudimentary shooting-on-the-move aim compensation
-    private static final boolean ENABLE_SHOT_ON_MOVE_COMP = false;
+    private static final boolean ENABLE_SHOT_ON_MOVE_COMP = true;
 
     // Fixed override shot settings
-    private static final double FIXED_POWER_SHOT_VELOCITY_RAD = 420.0;
-    private static final double FIXED_POWER_SHOT_HOOD_DEG = 53.0;
+    private static final double FIXED_POWER_SHOT_VELOCITY_RAD = 450;
+    private static final double FIXED_POWER_SHOT_HOOD_DEG = 55.0;
 
     // Light filtering for velocity estimate
     private static final double VELOCITY_FILTER_ALPHA = 0.25;
@@ -83,6 +83,13 @@ public class V3IntakeTest extends LinearOpMode {
 
     private boolean oneDriver = false;
 
+    // Debounce for turret offset adjustment
+    private boolean lastDpadLeft = false;
+    private boolean lastDpadRight = false;
+
+    // Manual turret trim in degrees
+    private double turretAngleOffsetDeg = 3;
+
     private enum FeedState {
         IDLE,
         WAIT_BEFORE_INTAKE,
@@ -110,6 +117,8 @@ public class V3IntakeTest extends LinearOpMode {
     private static final double TURRET_MIN_DEG = -175;
     private static final double TURRET_MAX_DEG = 175;
 
+    private double baseTurretAngleOffsetDeg = 3;
+
     // IMPORTANT:
     // This is the angular offset between your robot-relative target angle and what your turret class
     // considers "0 deg". In your other program, 180 worked because turret 0 was effectively backward.
@@ -130,6 +139,7 @@ public class V3IntakeTest extends LinearOpMode {
 
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(new Pose(57.8, 111.2, Math.toRadians(-90)));
+        //follower.setStartingPose(new Pose(72, 72, Math.toRadians(0)));
         follower.updatePose();
         follower.setMaxPower(1);
         follower.startTeleOpDrive();
@@ -158,10 +168,6 @@ public class V3IntakeTest extends LinearOpMode {
                 oneDriver = false;
             }
 
-            if (gamepad1.y) {
-                follower.setStartingPose(new Pose(72, 72, Math.toRadians(0)));
-            }
-
             telemetry.addData("One Driver", oneDriver);
             telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
             telemetry.update();
@@ -182,6 +188,7 @@ public class V3IntakeTest extends LinearOpMode {
             double robotHeadingDeg = Math.toDegrees(pose.getHeading());
             drive(robotHeadingDeg);
 
+            handleTurretOffsetAdjustment();
             trackGoalFromOdometry(pose);
             turret.update();
 
@@ -193,10 +200,14 @@ public class V3IntakeTest extends LinearOpMode {
                         ? filteredPredictedShotDistance
                         : Math.hypot(TARGET_X - pose.getX(), TARGET_Y - pose.getY());
                 updateShotFromDistance(lookupDistance);
+                baseTurretAngleOffsetDeg = 3;
             } else {
-                hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
-                targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
+                //targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
+                //hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
+                handleFlywheelAdjustment();
+                handleHoodAdjustment();
                 setHoodAngle(hoodAngleDeg);
+                baseTurretAngleOffsetDeg = 1;
             }
 
             handleXToggle();
@@ -253,9 +264,6 @@ public class V3IntakeTest extends LinearOpMode {
                 gamepad1.rumble(400);
 
                 if (!autoShotFromDistance) {
-                    hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
-                    targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
-                    setHoodAngle(hoodAngleDeg);
                 }
             }
         } else {
@@ -264,15 +272,38 @@ public class V3IntakeTest extends LinearOpMode {
                 gamepad2.rumble(400);
 
                 if (!autoShotFromDistance) {
-                    hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
-                    targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
-                    setHoodAngle(hoodAngleDeg);
                 }
             }
         }
 
         lastRightBumper1 = rb1Pressed;
         lastRightBumper2 = rb2Pressed;
+    }
+
+    private void handleTurretOffsetAdjustment() {
+        boolean leftPressed;
+        boolean rightPressed;
+
+        if (oneDriver) {
+            leftPressed = gamepad1.dpad_left;
+            rightPressed = gamepad1.dpad_right;
+        } else {
+            leftPressed = gamepad2.dpad_left;
+            rightPressed = gamepad2.dpad_right;
+        }
+
+        if (leftPressed && !lastDpadLeft) {
+            turretAngleOffsetDeg += 1.0;
+        }
+
+        if (rightPressed && !lastDpadRight) {
+            turretAngleOffsetDeg -= 1.0;
+        }
+
+        lastDpadLeft = leftPressed;
+        lastDpadRight = rightPressed;
+
+        telemetry.addData("Turret Offset (deg)", turretAngleOffsetDeg);
     }
 
     private void handleXToggle() {
@@ -337,7 +368,9 @@ public class V3IntakeTest extends LinearOpMode {
 
             case RUN_INTAKE:
                 if (sequenceTimer.seconds() >= 0.9) {
-                    intakeMotor.setPower(0.0);
+                    intakeMotor.setPower(1);
+                    clutchOut();
+                    armBlock();
                     feedState = FeedState.DONE;
                 }
                 break;
@@ -411,7 +444,7 @@ public class V3IntakeTest extends LinearOpMode {
         double angleToTargetRobotDeg = normalize180(angleToTargetFieldDeg - robotHeadingDeg);
 
         // Convert into turret command space
-        double desiredTurretDeg = normalize180(angleToTargetRobotDeg + TURRET_OFFSET_DEG);
+        double desiredTurretDeg = normalize180(angleToTargetRobotDeg + TURRET_OFFSET_DEG + turretAngleOffsetDeg+baseTurretAngleOffsetDeg);
 
         // Keep command inside allowed turret window, choosing nearest equivalent
         double safeTurretDeg = wrapIntoTurretWindow(
@@ -548,19 +581,20 @@ public class V3IntakeTest extends LinearOpMode {
     private void updateShotFromDistance(double distance) {
         // [distance inches, hood angle deg, flywheel velocity rad/s]
         double[][] shotTable = {
-                {47.0, 30.0, 275.0},
-                {52.0, 30.0, 275.0},
-                {59.0, 33.0, 280.0},
-                {64.5, 36.0, 285.0},
-                {70.0, 36.0, 300.0},
-                {76.5, 36.0, 320.0},
-                {81.0, 38.0, 320.0},
-                {88.0, 38.0, 330.0},
-                {94.0, 38.0, 340.0},
-                {102.0, 40.0, 340.0},
-                {115.0, 44.0, 375.0},
-                {119.7, 44.0, 380.0},
-                {126.0, 44.0, 385.0}
+                {37.0, 30.0, 267.0},
+                {43.0, 30.0, 267.0},
+                {50.0, 37.0, 277.0+5},
+                {57.0, 37.0, 282.0+5},
+                {63.5, 37.0, 292.0+5},
+                {71.0, 39.0, 307.0+5},
+                {77.0, 40.0, 312.0+5},
+                {82.0, 42.0, 327.0+5},
+                {88.0, 43.0, 332.0+5},
+                {93.0, 44.0, 347.0+5},
+                {99.0, 46.0, 364.0+5},
+                {104.0, 47.0, 374.0+5},
+                {110.0, 48.0, 389.0+5},
+                {122.0, 53.0, 409.5+5}
         };
 
         // Clamp below first point
@@ -594,7 +628,7 @@ public class V3IntakeTest extends LinearOpMode {
                 double t = (distance - d1) / (d2 - d1);
 
                 hoodAngleDeg = a1 + t * (a2 - a1);
-                targetVelocityRad = (v1 + t * (v2 - v1)) + 10;
+                targetVelocityRad = (v1 + t * (v2 - v1));
 
                 setHoodAngle(hoodAngleDeg);
                 return;

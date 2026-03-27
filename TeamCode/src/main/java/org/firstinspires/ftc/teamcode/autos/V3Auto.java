@@ -299,10 +299,10 @@ public class V3Auto extends LinearOpMode {
                 new BezierCurve(
                         new Pose(firstShotPose.getX(), firstShotPose.getY()),
                         new Pose(50.0, 66.326),
-                        new Pose(16.0, 66.5)
+                        new Pose(15, 67.5)
                 )
         );
-        toGateOpenGate.setLinearHeadingInterpolation(Math.toRadians(235), Math.toRadians(165), 0.9);
+        toGateOpenGate.setLinearHeadingInterpolation(Math.toRadians(235), Math.toRadians(170), 0.9);
 
         toGateIntake = new Path(
                 new BezierLine(
@@ -381,9 +381,7 @@ public class V3Auto extends LinearOpMode {
                     follower.followPath(backToShoot, true);
                     autoState = AutoState.DRIVE_BACK_TO_SHOOT;
 
-                    enableDynamicShotControl = false;
-                    FIRST_SHOT_HOOD_DEG = 37;
-                    FIRST_SHOT_FLYWHEEL_RAD = 350;
+                    enableDynamicShotControl = true;
                     enableShotOnMoveComp = true;
                 }
                 break;
@@ -437,9 +435,6 @@ public class V3Auto extends LinearOpMode {
 
             case DRIVE_BACK_TO_SHOOT_THIRD:
                 intakeMotor.setPower(1.0);
-                if (follower.getCurrentTValue() > 0.3) {
-                    backToShootFromGate.reverseHeadingInterpolation();
-                }
                 if (!follower.isBusy()) {
                     startFeedSequence();
                     autoState = AutoState.SHOOT_THIRD;
@@ -485,7 +480,7 @@ public class V3Auto extends LinearOpMode {
 
             case WAIT_AT_GATE_AGAIN:
                 intakeMotor.setPower(1.0);
-                if (autoTimer.seconds() >= 0.2) {
+                if (autoTimer.seconds() >= 0.25) {
                     follower.setMaxPower(1.0);
                     follower.followPath(toGateIntake, true);
                     autoTimer.reset();
@@ -495,7 +490,7 @@ public class V3Auto extends LinearOpMode {
 
             case WAIT_FOR_GATE_INTAKE_AGAIN:
                 intakeMotor.setPower(1.0);
-                if (autoTimer.seconds() >= 1.5) {
+                if (autoTimer.seconds() >= 1.3) {
                     startExtraGateIntakeMoveAgain();
                 }
                 break;
@@ -524,7 +519,7 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case DRIVE_TO_LAST_LINE:
-                if (follower.getCurrentTValue() > 0.25) {
+                if (follower.getCurrentTValue() > 0.2) {
                     follower.setMaxPower(0.8);
                     toLastLine.setConstantHeadingInterpolation(Math.toRadians(180));
                 }
@@ -617,7 +612,7 @@ public class V3Auto extends LinearOpMode {
                         new Pose(firstShotPose.getX(), firstShotPose.getY())
                 )
         );
-        backToShootFromGate.setConstantHeadingInterpolation(Math.toRadians(135));
+        backToShootFromGate.reverseHeadingInterpolation();
 
         intakeMotor.setPower(1.0);
         feedState = FeedState.IDLE;
@@ -855,24 +850,25 @@ public class V3Auto extends LinearOpMode {
 
     private void updateShotFromDistance(double distance) {
         double[][] shotTable = {
-                {47.0, 30.0, 275.0},
-                {52.0, 30.0, 275.0},
-                {59.0, 33.0, 280.0},
-                {64.5, 36.0, 285.0},
-                {70.0, 36.0, 300.0},
-                {76.5, 36.0, 320.0},
-                {81.0, 38.0, 320.0},
-                {88.0, 38.0, 330.0},
-                {94.0, 38.0, 340.0},
-                {102.0, 40.0, 340.0},
-                {115.0, 44.0, 375.0},
-                {119.7, 44.0, 380.0},
-                {126.0, 44.0, 385.0}
+                {37.0, 30.0, 267.0},
+                {43.0, 30.0, 267.0},
+                {50.0, 37.0, 277.0+5},
+                {57.0, 37.0, 282.0+5},
+                {63.5, 37.0, 292.0+5},
+                {71.0, 39.0, 307.0+5},
+                {77.0, 40.0, 312.0+5},
+                {82.0, 42.0, 327.0+5},
+                {88.0, 43.0, 332.0+5},
+                {93.0, 44.0, 347.0+5},
+                {99.0, 46.0, 364.0+5},
+                {104.0, 47.0, 374.0+5},
+                {110.0, 48.0, 389.0+5},
+                {122.0, 53.0, 409.5+5}
         };
 
         if (distance <= shotTable[0][0]) {
             hoodAngleDeg = shotTable[0][1];
-            targetVelocityRad = shotTable[0][2] + 20.0;
+            targetVelocityRad = shotTable[0][2];
             setHoodAngle(hoodAngleDeg);
             return;
         }
@@ -880,7 +876,7 @@ public class V3Auto extends LinearOpMode {
         int last = shotTable.length - 1;
         if (distance >= shotTable[last][0]) {
             hoodAngleDeg = shotTable[last][1];
-            targetVelocityRad = shotTable[last][2] + 10.0;
+            targetVelocityRad = shotTable[last][2];
             setHoodAngle(hoodAngleDeg);
             return;
         }
@@ -897,7 +893,7 @@ public class V3Auto extends LinearOpMode {
             if (distance >= d1 && distance <= d2) {
                 double t = (distance - d1) / (d2 - d1);
                 hoodAngleDeg = a1 + t * (a2 - a1);
-                targetVelocityRad = (v1 + t * (v2 - v1)) + 10;
+                targetVelocityRad = (v1 + t * (v2 - v1)) + 15;
                 setHoodAngle(hoodAngleDeg);
                 return;
             }

@@ -30,6 +30,7 @@ public class Constants {
             .drivePIDFCoefficients(
                     new FilteredPIDFCoefficients(0.018, 0, 0.0025, 0.6, 0.1)
             );
+    //.predictiveBrakingCoefficients(new PredictiveBrakingCoefficients(0.15, 0.146551085, 0.000622545779));
 
     public static MecanumConstants driveConstants = new MecanumConstants()
             .leftFrontMotorName("leftFront")
@@ -59,7 +60,7 @@ public class Constants {
             .strafeEncoderDirection(GoBildaPinpointDriver.EncoderDirection.REVERSED);
 
     public static PathConstraints pathConstraints = new PathConstraints(
-            0.995,
+            0.99,
             50,
             1.25,
             1.25
