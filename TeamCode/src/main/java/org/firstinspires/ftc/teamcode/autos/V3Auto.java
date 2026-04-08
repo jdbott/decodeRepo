@@ -17,6 +17,8 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
+import org.firstinspires.ftc.teamcode.AllianceMirror;
+import org.firstinspires.ftc.teamcode.AllianceStore;
 
 @Autonomous(name = "V3 Auto FSM")
 public class V3Auto extends LinearOpMode {
@@ -30,7 +32,9 @@ public class V3Auto extends LinearOpMode {
     private DcMotorEx intakeMotor;
     private FlywheelASG flywheel;
 
-    // Starting pose
+    private boolean isRedAlliance = false;
+
+    // Starting pose (blue-native)
     private static final double START_X = 20.75;
     private static final double START_Y = 128.1;
     private static final double START_HEADING_DEG = -39.38;
@@ -39,8 +43,8 @@ public class V3Auto extends LinearOpMode {
     private static double FIRST_SHOT_HOOD_DEG = 37;
     private static double FIRST_SHOT_FLYWHEEL_RAD = 310;
 
-    // Goal position in field coordinates
-    private static final double TARGET_X = 5.0;
+    // Goal position in field coordinates (blue-native)
+    private static final double BLUE_TARGET_X = 5.0;
     private static final double TARGET_Y = 139.0;
 
     // Turret center offset from robot center (inches)
@@ -149,11 +153,14 @@ public class V3Auto extends LinearOpMode {
 
     @Override
     public void runOpMode() {
-        startPose = new Pose(
+        isRedAlliance = AllianceStore.isRed(hardwareMap.appContext);
+
+        Pose blueStartPose = new Pose(
                 START_X,
                 START_Y,
                 Math.toRadians(START_HEADING_DEG)
         );
+        startPose = AllianceMirror.mirrorPose(blueStartPose, isRedAlliance);
 
         intakeMotor = hardwareMap.get(DcMotorEx.class, "intake_motor");
         intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
@@ -173,9 +180,12 @@ public class V3Auto extends LinearOpMode {
         turret = new Turret();
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.REVERSE);
 
-        double firstShotX = START_X + 35 * Math.cos(Math.toRadians(START_HEADING_DEG));
-        double firstShotY = START_Y + 55.0 * Math.sin(Math.toRadians(START_HEADING_DEG));
-        firstShotPose = new Pose(firstShotX, firstShotY);
+        double blueFirstShotX = START_X + 35 * Math.cos(Math.toRadians(START_HEADING_DEG));
+        double blueFirstShotY = START_Y + 55.0 * Math.sin(Math.toRadians(START_HEADING_DEG));
+        firstShotPose = AllianceMirror.mirrorPose(
+                new Pose(blueFirstShotX, blueFirstShotY, 0),
+                isRedAlliance
+        );
 
         buildPaths();
 
@@ -187,6 +197,7 @@ public class V3Auto extends LinearOpMode {
         turret.setAngle(90.0);
 
         telemetry.addLine("Initialized");
+        telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
         telemetry.addData("Start Pose", startPose);
         telemetry.addData("First Shot Pose", firstShotPose);
         telemetry.addLine("Press cross in init to re-zero starting pose");
@@ -203,6 +214,7 @@ public class V3Auto extends LinearOpMode {
             turret.setAngle(90.0);
             turret.update();
 
+            telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
             telemetry.addData("Pose", follower.getPose());
             telemetry.addData("Turret Target", 90.0);
             telemetry.update();
@@ -232,7 +244,7 @@ public class V3Auto extends LinearOpMode {
 
                     double lookupDistance = predictedDistanceInitialized
                             ? filteredPredictedShotDistance
-                            : Math.hypot(TARGET_X - pose.getX(), TARGET_Y - pose.getY());
+                            : Math.hypot(getTargetX() - pose.getX(), TARGET_Y - pose.getY());
 
                     updateShotFromDistance(lookupDistance);
                 } else {
@@ -252,6 +264,7 @@ public class V3Auto extends LinearOpMode {
 
             turret.update();
 
+            telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
             telemetry.addData("Auto State", autoState);
             telemetry.addData("Feed State", feedState);
             telemetry.addData("Pose", pose);
@@ -270,6 +283,25 @@ public class V3Auto extends LinearOpMode {
         intakeMotor.setPower(0.0);
     }
 
+    private double getTargetX() {
+        return AllianceMirror.mirrorX(BLUE_TARGET_X, isRedAlliance);
+    }
+
+    private Pose p(double x, double y) {
+        return AllianceMirror.mirrorPose(new Pose(x, y, 0), isRedAlliance);
+    }
+
+    private Pose p(double x, double y, double headingDeg) {
+        return AllianceMirror.mirrorPose(
+                new Pose(x, y, Math.toRadians(headingDeg)),
+                isRedAlliance
+        );
+    }
+
+    private double h(double headingDeg) {
+        return Math.toRadians(AllianceMirror.mirrorHeadingDeg(headingDeg, isRedAlliance));
+    }
+
     private void buildPaths() {
         toFirstShot = new Path(
                 new BezierLine(startPose, firstShotPose)
@@ -278,18 +310,18 @@ public class V3Auto extends LinearOpMode {
 
         toLine2 = new Path(
                 new BezierCurve(
-                        new Pose(firstShotPose.getX(), firstShotPose.getY()),
-                        new Pose(48.0, 67.0),
-                        new Pose(40.0, 63.0),
-                        new Pose(12.5, 62.0)
+                        firstShotPose,
+                        p(48.0, 67.0),
+                        p(40.0, 63.0),
+                        p(12.5, 62.0)
                 )
         );
-        toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
+        toLine2.setConstantHeadingInterpolation(h(180));
 
         backToShoot = new Path(
                 new BezierCurve(
-                        new Pose(11.0, 65.0),
-                        new Pose(30.0, 65.0),
+                        p(11.0, 65.0),
+                        p(30.0, 65.0),
                         firstShotPose
                 )
         );
@@ -297,53 +329,62 @@ public class V3Auto extends LinearOpMode {
 
         toGateOpenGate = new Path(
                 new BezierCurve(
-                        new Pose(firstShotPose.getX(), firstShotPose.getY()),
-                        new Pose(50.0, 66.326),
-                        new Pose(15, 67.5)
+                        firstShotPose,
+                        p(50.0, 66.326),
+                        p(15.0, 67.5)
                 )
         );
-        toGateOpenGate.setLinearHeadingInterpolation(Math.toRadians(235), Math.toRadians(170), 0.9);
+        toGateOpenGate.setLinearHeadingInterpolation(h(235), h(170), 0.9);
 
         toGateIntake = new Path(
                 new BezierLine(
-                        new Pose(16.0, 69.5),
-                        new Pose(11.0, 59.0)
+                        p(16.0, 69.5),
+                        p(11.0, 59.0)
                 )
         );
-        toGateIntake.setConstantHeadingInterpolation(Math.toRadians(135));
+        toGateIntake.setConstantHeadingInterpolation(h(135));
 
         toFourthPickup = new Path(
                 new BezierCurve(
-                        new Pose(firstShotPose.getX(), firstShotPose.getY()),
-                        new Pose(40.0, 84.0),
-                        new Pose(20.0, 84.0)
+                        firstShotPose,
+                        p(40.0, 84.0),
+                        p(20.0, 84.0)
                 )
         );
-        toFourthPickup.setConstantHeadingInterpolation(Math.toRadians(180));
+        toFourthPickup.setConstantHeadingInterpolation(h(180));
 
         backToFinalShoot = new Path(
                 new BezierLine(
-                        new Pose(20.0, 84.0),
-                        new Pose(firstShotPose.getX(), firstShotPose.getY())
+                        p(20.0, 84.0),
+                        firstShotPose
                 )
         );
         backToFinalShoot.reverseHeadingInterpolation();
 
         toLastLine = new Path(
                 new BezierCurve(
-                        new Pose(firstShotPose.getX(), firstShotPose.getY()),
-                        new Pose(48.0, 43.0),
-                        new Pose(40.0, 39.0),
-                        new Pose(12.5, 38.0)
+                        firstShotPose,
+                        p(48.0, 43.0),
+                        p(40.0, 36.0),
+                        p(12.5, 35.0)
                 )
         );
         toLastLine.setTangentHeadingInterpolation();
 
+        Pose lastReturnEndPose = AllianceMirror.mirrorPose(
+                new Pose(
+                        (START_X + 35 * Math.cos(Math.toRadians(START_HEADING_DEG))) + 10,
+                        (START_Y + 55.0 * Math.sin(Math.toRadians(START_HEADING_DEG))) + 18,
+                        0
+                ),
+                isRedAlliance
+        );
+
         backToShootFromLastLine = new Path(
                 new BezierCurve(
-                        new Pose(11.0, 41.0),
-                        new Pose(30.0, 41.0),
-                        new Pose(firstShotPose.getX() + 10, firstShotPose.getY() + 18)
+                        p(11.0, 41.0),
+                        p(30.0, 41.0),
+                        lastReturnEndPose
                 )
         );
         backToShootFromLastLine.reverseHeadingInterpolation();
@@ -374,7 +415,7 @@ public class V3Auto extends LinearOpMode {
             case DRIVE_TO_LINE2:
                 if (follower.getCurrentTValue() > 0.35) {
                     follower.setMaxPower(0.8);
-                    toLine2.setConstantHeadingInterpolation(Math.toRadians(180));
+                    toLine2.setConstantHeadingInterpolation(h(180));
                 }
                 if (!follower.isBusy()) {
                     follower.setMaxPower(1.0);
@@ -521,7 +562,7 @@ public class V3Auto extends LinearOpMode {
             case DRIVE_TO_LAST_LINE:
                 if (follower.getCurrentTValue() > 0.2) {
                     follower.setMaxPower(0.8);
-                    toLastLine.setConstantHeadingInterpolation(Math.toRadians(180));
+                    toLastLine.setConstantHeadingInterpolation(h(180));
                 }
                 if (!follower.isBusy()) {
                     intakeMotor.setPower(1.0);
@@ -536,6 +577,9 @@ public class V3Auto extends LinearOpMode {
 
             case DRIVE_BACK_TO_SHOOT_LAST:
                 intakeMotor.setPower(1.0);
+                if (follower.getCurrentTValue() > 0.8) {
+                    backToShootFromLastLine.setConstantHeadingInterpolation(Math.toRadians(-90));
+                }
                 if (!follower.isBusy()) {
                     startFeedSequence();
                     autoState = AutoState.SHOOT_LAST;
@@ -551,7 +595,6 @@ public class V3Auto extends LinearOpMode {
                     enableShotOnMoveComp = false;
                     turret.setAngle(0);
                     autoState = AutoState.DONE;
-                    follower.turnTo(Math.toRadians(-90));
                 }
                 break;
 
@@ -596,7 +639,7 @@ public class V3Auto extends LinearOpMode {
                         new Pose(currentPose.getX(), currentPose.getY() + EXTRA_GATE_INTAKE_Y_IN)
                 )
         );
-        gateExtraIntakeMove.setConstantHeadingInterpolation(Math.toRadians(135));
+        gateExtraIntakeMove.setConstantHeadingInterpolation(h(135));
 
         follower.followPath(gateExtraIntakeMove, true);
         autoState = AutoState.DRIVE_EXTRA_INTAKE_AT_GATE;
@@ -608,8 +651,8 @@ public class V3Auto extends LinearOpMode {
         backToShootFromGate = new Path(
                 new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(42.0, 59),
-                        new Pose(firstShotPose.getX(), firstShotPose.getY())
+                        p(42.0, 59.0),
+                        firstShotPose
                 )
         );
         backToShootFromGate.reverseHeadingInterpolation();
@@ -644,7 +687,7 @@ public class V3Auto extends LinearOpMode {
         enableShotOnMoveComp = true;
 
         follower.setMaxPower(1.0);
-        follower.followPath(backToFinalShoot, true);
+        follower.followPath(backToFinalShoot, false);
         autoState = AutoState.DRIVE_BACK_TO_FINAL_SHOOT;
     }
 
@@ -670,7 +713,7 @@ public class V3Auto extends LinearOpMode {
                         new Pose(currentPose.getX(), currentPose.getY() + EXTRA_GATE_INTAKE_Y_IN)
                 )
         );
-        gateExtraIntakeMoveAgain.setConstantHeadingInterpolation(Math.toRadians(135));
+        gateExtraIntakeMoveAgain.setConstantHeadingInterpolation(h(135));
 
         follower.followPath(gateExtraIntakeMoveAgain, true);
         autoState = AutoState.DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN;
@@ -682,8 +725,8 @@ public class V3Auto extends LinearOpMode {
         backToShootFromGateAgain = new Path(
                 new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        new Pose(42.0, 62.0),
-                        new Pose(firstShotPose.getX(), firstShotPose.getY())
+                        p(42.0, 62.0),
+                        firstShotPose
                 )
         );
         backToShootFromGateAgain.reverseHeadingInterpolation();
@@ -758,6 +801,8 @@ public class V3Auto extends LinearOpMode {
     }
 
     private void trackGoalFromOdometry(Pose pose, boolean useShotOnMoveComp) {
+        double targetX = getTargetX();
+
         double robotX = pose.getX();
         double robotY = pose.getY();
         double robotHeadingRad = pose.getHeading();
@@ -769,7 +814,7 @@ public class V3Auto extends LinearOpMode {
         double turretX = robotX - TURRET_CENTER_OFFSET_IN * Math.cos(robotHeadingRad);
         double turretY = robotY - TURRET_CENTER_OFFSET_IN * Math.sin(robotHeadingRad);
 
-        double actualDx = TARGET_X - turretX;
+        double actualDx = targetX - turretX;
         double actualDy = TARGET_Y - turretY;
         double actualDistance = Math.hypot(actualDx, actualDy);
 
@@ -796,11 +841,11 @@ public class V3Auto extends LinearOpMode {
                             + (1.0 - PREDICTED_DISTANCE_ALPHA) * filteredPredictedShotDistance;
         }
 
-        double compensatedTargetX = TARGET_X;
+        double compensatedTargetX = targetX;
         double compensatedTargetY = TARGET_Y;
 
         if (useShotOnMoveComp) {
-            compensatedTargetX = TARGET_X - fieldVxInPerSec * shotTimeSec;
+            compensatedTargetX = targetX - fieldVxInPerSec * shotTimeSec;
             compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec;
         }
 
@@ -852,18 +897,18 @@ public class V3Auto extends LinearOpMode {
         double[][] shotTable = {
                 {37.0, 30.0, 267.0},
                 {43.0, 30.0, 267.0},
-                {50.0, 37.0, 277.0+5},
-                {57.0, 37.0, 282.0+5},
-                {63.5, 37.0, 292.0+5},
-                {71.0, 39.0, 307.0+5},
-                {77.0, 40.0, 312.0+5},
-                {82.0, 42.0, 327.0+5},
-                {88.0, 43.0, 332.0+5},
-                {93.0, 44.0, 347.0+5},
-                {99.0, 46.0, 364.0+5},
-                {104.0, 47.0, 374.0+5},
-                {110.0, 48.0, 389.0+5},
-                {122.0, 53.0, 409.5+5}
+                {50.0, 37.0, 277.0 + 5},
+                {57.0, 37.0, 282.0 + 5},
+                {63.5, 37.0, 292.0 + 5},
+                {71.0, 39.0, 307.0 + 5},
+                {77.0, 40.0, 312.0 + 5},
+                {82.0, 42.0, 327.0 + 5},
+                {88.0, 43.0, 332.0 + 5},
+                {93.0, 44.0, 347.0 + 5},
+                {99.0, 46.0, 364.0 + 5},
+                {104.0, 47.0, 374.0 + 5},
+                {110.0, 48.0, 389.0 + 5},
+                {122.0, 53.0, 409.5 + 5}
         };
 
         if (distance <= shotTable[0][0]) {
@@ -909,11 +954,11 @@ public class V3Auto extends LinearOpMode {
     }
 
     public void armBlock() {
-        armServo.setPosition(0.39);
+        armServo.setPosition(0.26);
     }
 
     public void armShoot() {
-        armServo.setPosition(0.54);
+        armServo.setPosition(0.395);
     }
 
     public void setHoodAngle(double angleDeg) {

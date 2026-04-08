@@ -10,7 +10,7 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import java.util.ArrayList;
 import java.util.List;
 
-
+@Disabled
 @TeleOp(name = "Flywheel kP Tuner", group = "Flywheel Tuning")
 public class FlywheelKpTuner extends LinearOpMode {
 

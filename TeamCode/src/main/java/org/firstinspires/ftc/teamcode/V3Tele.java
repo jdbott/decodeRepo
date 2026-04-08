@@ -16,7 +16,7 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
 @TeleOp(name = "A V3 Tele")
-public class V3IntakeTest extends LinearOpMode {
+public class V3Tele extends LinearOpMode {
 
     private Servo hoodServo;
     private Servo armServo;
@@ -26,17 +26,18 @@ public class V3IntakeTest extends LinearOpMode {
     private Turret turret;
 
     private DcMotorEx intakeMotor;
-
     private FlywheelASG flywheel;
 
+    private boolean isRedAlliance = false;
+
     // Starts in auto shot tracking mode
-    private boolean autoShotFromDistance = false;
+    private boolean autoShotFromDistance = true;
 
     // Toggle this to enable rudimentary shooting-on-the-move aim compensation
     private static final boolean ENABLE_SHOT_ON_MOVE_COMP = true;
 
     // Fixed override shot settings
-    private static final double FIXED_POWER_SHOT_VELOCITY_RAD = 450;
+    private static final double FIXED_POWER_SHOT_VELOCITY_RAD = 440;
     private static final double FIXED_POWER_SHOT_HOOD_DEG = 55.0;
 
     // Light filtering for velocity estimate
@@ -44,7 +45,7 @@ public class V3IntakeTest extends LinearOpMode {
 
     // Very light smoothing for predicted shot distance
     private static final double PREDICTED_DISTANCE_ALPHA = 0.45;
-    private static double TIME_TUNER = 1.0;
+    private static double TIME_TUNER = 0.77;
 
     // Intake toggle
     private boolean lastX = false;
@@ -82,6 +83,13 @@ public class V3IntakeTest extends LinearOpMode {
     private boolean predictedDistanceInitialized = false;
     private double radialVelocityToGoal = 0.0;
 
+    // Desired turret angular velocity estimation
+    private final ElapsedTime turretTargetVelTimer = new ElapsedTime();
+    private boolean turretTargetVelInitialized = false;
+    private double lastDesiredTurretDeg = 0.0;
+    private double desiredTurretVelDegPerSec = 0.0;
+    private static final double TURRET_TARGET_VEL_FILTER_ALPHA = 0.8;
+
     private boolean oneDriver = false;
 
     // Debounce for turret offset adjustment
@@ -90,6 +98,12 @@ public class V3IntakeTest extends LinearOpMode {
 
     // Manual turret trim in degrees
     private double turretAngleOffsetDeg = 3;
+
+    // Turret zeroing mode
+    private boolean turretZeroingMode = false;
+    private double turretZeroingTargetDeg = 0.0;
+    private boolean lastTurretZeroingToggle = false;
+    private static final double TURRET_ZERO_STEP_DEG = 2.0;
 
     private enum FeedState {
         IDLE,
@@ -107,7 +121,7 @@ public class V3IntakeTest extends LinearOpMode {
     private double targetVelocityRad = 275;
 
     // Goal position in field coordinates
-    private static final double TARGET_X = 5;
+    private static final double BLUE_TARGET_X = 5;
     private static final double TARGET_Y = 139;
 
     // Turret center offset from robot center (inches)
@@ -118,12 +132,9 @@ public class V3IntakeTest extends LinearOpMode {
     private static final double TURRET_MIN_DEG = -175;
     private static final double TURRET_MAX_DEG = 175;
 
-    private double baseTurretAngleOffsetDeg = 3;
+    private double baseTurretAngleOffsetDeg = 1;
 
-    // IMPORTANT:
-    // This is the angular offset between your robot-relative target angle and what your turret class
-    // considers "0 deg". In your other program, 180 worked because turret 0 was effectively backward.
-    // Start with 180.0 if your turret zero is backward, and tune if needed.
+    // This stays the same unless your turret's own mechanical frame needs changing
     private static final double TURRET_OFFSET_DEG = 180.0;
 
     @Override
@@ -138,9 +149,14 @@ public class V3IntakeTest extends LinearOpMode {
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
         flywheel = new FlywheelASG(hardwareMap, battery);
 
+        isRedAlliance = AllianceStore.isRed(hardwareMap.appContext);
+
         follower = Constants.createFollower(hardwareMap);
-        follower.setStartingPose(new Pose(57.8, 111.2, Math.toRadians(-90)));
-        //follower.setStartingPose(new Pose(72, 72, Math.toRadians(0)));
+        Pose startPose = AllianceMirror.mirrorPose(
+                new Pose(57.8, 111.2, Math.toRadians(-90)),
+                isRedAlliance
+        );
+        follower.setStartingPose(startPose);
         follower.updatePose();
         follower.setMaxPower(1);
         follower.startTeleOpDrive();
@@ -148,14 +164,13 @@ public class V3IntakeTest extends LinearOpMode {
         turret = new Turret();
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.REVERSE);
 
-        // Initialization state
         clutchOut();
-        //setHoodAngle(hoodAngleDeg);
         armBlock();
         intakeMotor.setPower(0.0);
 
         telemetry.addLine("Initialized");
-        telemetry.addLine("Clutch out, hood set, arm blocked, intake off");
+        telemetry.addLine("Clutch out, arm blocked, intake off");
+        telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
         telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
         telemetry.addData("Shot On Move Compensation", ENABLE_SHOT_ON_MOVE_COMP);
         telemetry.update();
@@ -169,6 +184,7 @@ public class V3IntakeTest extends LinearOpMode {
                 oneDriver = false;
             }
 
+            telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
             telemetry.addData("One Driver", oneDriver);
             telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
             telemetry.update();
@@ -177,6 +193,7 @@ public class V3IntakeTest extends LinearOpMode {
         waitForStart();
         if (isStopRequested()) return;
 
+        intakeMotor.setPower(1);
         flywheel.setTargetVelocity(targetVelocityRad);
 
         while (opModeIsActive()) {
@@ -185,34 +202,33 @@ public class V3IntakeTest extends LinearOpMode {
 
             fieldVxInPerSec = follower.getVelocity().getXComponent();
             fieldVyInPerSec = follower.getVelocity().getYComponent();
+            double robotAngularVelRadPerSec = follower.getAngularVelocity();
 
             double robotHeadingDeg = Math.toDegrees(pose.getHeading());
             drive(robotHeadingDeg);
 
-            handleTurretOffsetAdjustment();
-            trackGoalFromOdometry(pose);
-            turret.update();
+            handleTurretZeroingMode();
 
-            if(gamepad1.rightBumperWasPressed()){
-                TIME_TUNER += 0.1;
-            } else if(gamepad1.leftBumperWasPressed()){
-                TIME_TUNER -= 0.1;
+            if (!turretZeroingMode) {
+                handleTurretOffsetAdjustment();
+                trackGoalFromOdometry(pose, robotAngularVelRadPerSec);
             }
 
-            handleShotModeToggle();
+            turret.update();
 
-            // Automatic shot control using predicted future distance
+            if (!turretZeroingMode) {
+                handleShotModeToggle();
+            }
+
             if (autoShotFromDistance) {
                 double lookupDistance = predictedDistanceInitialized
                         ? filteredPredictedShotDistance
-                        : Math.hypot(TARGET_X - pose.getX(), TARGET_Y - pose.getY());
+                        : Math.hypot(getTargetX() - pose.getX(), TARGET_Y - pose.getY());
                 updateShotFromDistance(lookupDistance);
-                baseTurretAngleOffsetDeg = 3;
+                baseTurretAngleOffsetDeg = 1;
             } else {
-                //targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
-                //hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
-                handleFlywheelAdjustment();
-                handleHoodAdjustment();
+                targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
+                hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
                 setHoodAngle(hoodAngleDeg);
                 baseTurretAngleOffsetDeg = 1;
             }
@@ -221,11 +237,13 @@ public class V3IntakeTest extends LinearOpMode {
             handleBSequence();
             updateFeedSequence();
 
-            // Continuous flywheel update
             flywheel.setTargetVelocity(targetVelocityRad);
             flywheel.update();
 
+            telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
             telemetry.addData("Shot Mode", autoShotFromDistance ? "AUTO TRACKING" : "FIXED POWER SHOT");
+            telemetry.addData("Turret Zeroing Mode", turretZeroingMode);
+            telemetry.addData("Turret Offset (deg)", turretAngleOffsetDeg);
             telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
             telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
             telemetry.addData("Pose", follower.getPose().toString());
@@ -236,14 +254,32 @@ public class V3IntakeTest extends LinearOpMode {
         intakeMotor.setPower(0.0);
     }
 
+    private double getTargetX() {
+        return AllianceMirror.mirrorX(BLUE_TARGET_X, isRedAlliance);
+    }
+
+    private boolean getZeroingTogglePressed() {
+        return oneDriver ? gamepad1.dpad_up : gamepad2.dpad_up;
+    }
+
     private void drive(double robotHeadingDeg) {
         double trigger = Range.clip(1 - gamepad1.right_trigger, 0.2, 1);
 
+        double forward = gamepad1.left_stick_y * trigger;
+        double strafe = gamepad1.left_stick_x * trigger;
+        double turn = -gamepad1.right_stick_x * trigger;
+
+        // Mirror field-centric translation on red
+        if (isRedAlliance) {
+            forward = -forward;
+            strafe = -strafe;
+        }
+
         if (!(gamepad1.left_trigger > 0.5)) {
             follower.setTeleOpDrive(
-                    gamepad1.left_stick_y * trigger,
-                    gamepad1.left_stick_x * trigger,
-                    -gamepad1.right_stick_x * trigger,
+                    forward,
+                    strafe,
+                    turn,
                     false
             );
         } else {
@@ -256,35 +292,95 @@ public class V3IntakeTest extends LinearOpMode {
         }
 
         if (gamepad1.circle) {
-            // follower.setPose(new Pose(24.4, 126, Math.toRadians(142)));
+            Pose resetPose = AllianceMirror.mirrorPose(
+                    new Pose(24, 125.2, Math.toRadians(141)),
+                    isRedAlliance
+            );
+            follower.setPose(resetPose);
             gamepad1.rumble(500);
         }
     }
 
     private void handleShotModeToggle() {
-        boolean rb1Pressed = gamepad1.right_bumper;
-        boolean rb2Pressed = gamepad2.right_bumper;
+        boolean rb1Pressed = gamepad1.left_bumper;
+        boolean rb2Pressed = gamepad2.left_bumper;
 
         if (oneDriver) {
             if (rb1Pressed && !lastRightBumper1) {
                 autoShotFromDistance = !autoShotFromDistance;
                 gamepad1.rumble(400);
-
-                if (!autoShotFromDistance) {
-                }
             }
         } else {
             if (rb2Pressed && !lastRightBumper2) {
                 autoShotFromDistance = !autoShotFromDistance;
                 gamepad2.rumble(400);
-
-                if (!autoShotFromDistance) {
-                }
             }
         }
 
         lastRightBumper1 = rb1Pressed;
         lastRightBumper2 = rb2Pressed;
+    }
+
+    private void handleTurretZeroingMode() {
+        boolean togglePressed = getZeroingTogglePressed();
+
+        if (togglePressed && !lastTurretZeroingToggle) {
+            if (!turretZeroingMode) {
+                if (autoShotFromDistance) {
+                    turretZeroingMode = true;
+                    turretZeroingTargetDeg = 0.0;
+
+                    if (oneDriver) {
+                        gamepad1.rumble(250);
+                    } else {
+                        gamepad2.rumble(250);
+                    }
+                }
+            } else {
+                turret.zeroTurret();
+                turretZeroingMode = false;
+                turretZeroingTargetDeg = 0.0;
+
+                if (oneDriver) {
+                    gamepad1.rumble(500);
+                } else {
+                    gamepad2.rumble(500);
+                }
+            }
+        }
+
+        lastTurretZeroingToggle = togglePressed;
+
+        if (!turretZeroingMode) {
+            return;
+        }
+
+        boolean leftPressed = oneDriver ? gamepad1.dpad_left : gamepad2.dpad_left;
+        boolean rightPressed = oneDriver ? gamepad1.dpad_right : gamepad2.dpad_right;
+
+        if (leftPressed && !lastDpadLeft) {
+            turretZeroingTargetDeg += TURRET_ZERO_STEP_DEG;
+        }
+
+        if (rightPressed && !lastDpadRight) {
+            turretZeroingTargetDeg -= TURRET_ZERO_STEP_DEG;
+        }
+
+        lastDpadLeft = leftPressed;
+        lastDpadRight = rightPressed;
+
+        turretZeroingTargetDeg = Range.clip(
+                turretZeroingTargetDeg,
+                TURRET_MIN_DEG,
+                TURRET_MAX_DEG
+        );
+
+        turret.setAngle(turretZeroingTargetDeg);
+
+        telemetry.addLine("TURRET ZEROING MODE");
+        telemetry.addData("Zeroing Target (deg)", turretZeroingTargetDeg);
+        telemetry.addData("Current Turret Angle (deg)", turret.getCurrentAngle());
+        telemetry.addLine("Press D-pad Up again to save zero and resume tracking");
     }
 
     private void handleTurretOffsetAdjustment() {
@@ -309,8 +405,6 @@ public class V3IntakeTest extends LinearOpMode {
 
         lastDpadLeft = leftPressed;
         lastDpadRight = rightPressed;
-
-        telemetry.addData("Turret Offset (deg)", turretAngleOffsetDeg);
     }
 
     private void handleXToggle() {
@@ -341,9 +435,9 @@ public class V3IntakeTest extends LinearOpMode {
     private void handleBSequence() {
         boolean bPressed;
         if (oneDriver) {
-            bPressed = gamepad1.b;
+            bPressed = gamepad1.right_bumper;
         } else {
-            bPressed = gamepad2.b;
+            bPressed = gamepad2.right_bumper;
         }
 
         if (bPressed && !lastB) {
@@ -387,25 +481,29 @@ public class V3IntakeTest extends LinearOpMode {
         }
     }
 
-    private void trackGoalFromOdometry(Pose pose) {
+    private void trackGoalFromOdometry(Pose pose, double robotAngularVelRadPerSec) {
+        double targetX = getTargetX();
+
         double robotX = pose.getX();
         double robotY = pose.getY();
         double robotHeadingRad = pose.getHeading();
         double robotHeadingDeg = Math.toDegrees(robotHeadingRad);
 
-        // Compute turret center position from robot pose
+        // Actual shooter location in field coordinates
         double turretX = robotX - TURRET_CENTER_OFFSET_IN * Math.cos(robotHeadingRad);
         double turretY = robotY - TURRET_CENTER_OFFSET_IN * Math.sin(robotHeadingRad);
 
-        // Actual distance from turret center to target
-        double actualDx = TARGET_X - turretX;
+        // Vector from robot center to shooter center in field coordinates
+        double rx = turretX - robotX;
+        double ry = turretY - robotY;
+
+        // Actual current geometry to goal
+        double actualDx = targetX - turretX;
         double actualDy = TARGET_Y - turretY;
         double actualDistance = Math.hypot(actualDx, actualDy);
 
-        // Estimate shot time from distance
         double shotTimeSec = estimateShotTimeSec(actualDistance);
 
-        // Unit vector from turret center to target
         double ux = 0.0;
         double uy = 0.0;
         if (actualDistance > 1e-6) {
@@ -413,37 +511,46 @@ public class V3IntakeTest extends LinearOpMode {
             uy = actualDy / actualDistance;
         }
 
-        // Positive radial velocity = moving toward the goal
-        // Negative radial velocity = moving away from the goal
+        // Tangential velocity of the shooter caused by robot rotation
+        // v_rot = omega x r
+        double rotVx = -robotAngularVelRadPerSec * ry;
+        double rotVy =  robotAngularVelRadPerSec * rx;
 
+        // Total shooter velocity in field coordinates
+        double shooterVx = fieldVxInPerSec + rotVx;
+        double shooterVy = fieldVyInPerSec + rotVy;
 
-        // Build virtual target for shooting on the move:
-        // goal_virtual = goal_actual - v_robot * t
-        double compensatedTargetX = TARGET_X;
+        double compensatedTargetX = targetX;
         double compensatedTargetY = TARGET_Y;
 
         if (ENABLE_SHOT_ON_MOVE_COMP) {
-            compensatedTargetX = TARGET_X - fieldVxInPerSec * shotTimeSec * TIME_TUNER;
-            compensatedTargetY = TARGET_Y - fieldVyInPerSec * shotTimeSec * TIME_TUNER;
+            compensatedTargetX = targetX - shooterVx * shotTimeSec * TIME_TUNER;
+            compensatedTargetY = TARGET_Y - shooterVy * shotTimeSec * TIME_TUNER;
         }
 
-        // Vector from turret center to compensated target
         double dx = compensatedTargetX - turretX;
         double dy = compensatedTargetY - turretY;
 
-        // Field angle from turret center to compensated target
         double angleToTargetFieldDeg = Math.toDegrees(Math.atan2(dy, dx));
-
-        // Convert to robot-relative angle
         double angleToTargetRobotDeg = normalize180(angleToTargetFieldDeg - robotHeadingDeg);
 
-        // Convert into turret command space
-        double desiredTurretDeg = normalize180(angleToTargetRobotDeg + TURRET_OFFSET_DEG + turretAngleOffsetDeg+baseTurretAngleOffsetDeg);
+        double tunableOffset = AllianceMirror.maybeMirrorTunableTurretOffset(
+                turretAngleOffsetDeg, isRedAlliance
+        );
+        double baseOffset = AllianceMirror.maybeMirrorBaseTurretOffset(
+                baseTurretAngleOffsetDeg, isRedAlliance
+        );
 
-        radialVelocityToGoal = fieldVxInPerSec * ux + fieldVyInPerSec * uy;
+        double desiredTurretDeg = normalize180(
+                angleToTargetRobotDeg
+                        + TURRET_OFFSET_DEG
+                        + tunableOffset
+                        + baseOffset
+        );
 
-        // Predict effective future shot distance for hood/flywheel lookup
-        //predictedShotDistance = actualDistance - radialVelocityToGoal * shotTimeSec;
+        // Radial velocity of the shooter toward the goal
+        radialVelocityToGoal = shooterVx * ux + shooterVy * uy;
+
         predictedShotDistance = Math.hypot(dx, dy);
         predictedShotDistance = Math.max(0.0, predictedShotDistance);
 
@@ -455,7 +562,7 @@ public class V3IntakeTest extends LinearOpMode {
                     PREDICTED_DISTANCE_ALPHA * predictedShotDistance
                             + (1.0 - PREDICTED_DISTANCE_ALPHA) * filteredPredictedShotDistance;
         }
-        // Keep command inside allowed turret window, choosing nearest equivalent
+
         double safeTurretDeg = wrapIntoTurretWindow(
                 desiredTurretDeg,
                 turret.getCurrentAngle(),
@@ -463,12 +570,20 @@ public class V3IntakeTest extends LinearOpMode {
                 TURRET_MAX_DEG
         );
 
-        turret.setAngle(safeTurretDeg);
+        updateDesiredTurretVelocity(safeTurretDeg);
 
+        turret.setTargetState(safeTurretDeg, desiredTurretVelDegPerSec);
+
+        telemetry.addData("Target X", targetX);
         telemetry.addData("Turret Center X", turretX);
         telemetry.addData("Turret Center Y", turretY);
         telemetry.addData("Actual Dist To Goal", actualDistance);
         telemetry.addData("Shot Time (s)", shotTimeSec);
+        telemetry.addData("Robot Omega (rad/s)", robotAngularVelRadPerSec);
+        telemetry.addData("Rot Vel X", rotVx);
+        telemetry.addData("Rot Vel Y", rotVy);
+        telemetry.addData("Shooter Vel X", shooterVx);
+        telemetry.addData("Shooter Vel Y", shooterVy);
         telemetry.addData("Radial Vel To Goal", radialVelocityToGoal);
         telemetry.addData("Predicted Shot Dist", predictedShotDistance);
         telemetry.addData("Filtered Pred Shot Dist", filteredPredictedShotDistance);
@@ -477,6 +592,7 @@ public class V3IntakeTest extends LinearOpMode {
         telemetry.addData("Angle To Goal Field", angleToTargetFieldDeg);
         telemetry.addData("Angle To Goal Robot", angleToTargetRobotDeg);
         telemetry.addData("Turret Target Deg", safeTurretDeg);
+        telemetry.addData("Turret Target Vel (deg/s)", desiredTurretVelDegPerSec);
     }
 
     private void initVelocityEstimator(Pose pose) {
@@ -509,7 +625,6 @@ public class V3IntakeTest extends LinearOpMode {
         double rawVx = (x - lastPoseX) / dt;
         double rawVy = (y - lastPoseY) / dt;
 
-        // Light low-pass filter to reduce aim jitter
         fieldVxInPerSec = VELOCITY_FILTER_ALPHA * rawVx + (1.0 - VELOCITY_FILTER_ALPHA) * fieldVxInPerSec;
         fieldVyInPerSec = VELOCITY_FILTER_ALPHA * rawVy + (1.0 - VELOCITY_FILTER_ALPHA) * fieldVyInPerSec;
 
@@ -525,10 +640,37 @@ public class V3IntakeTest extends LinearOpMode {
         return ((a + 180) % 360 + 360) % 360 - 180;
     }
 
-    /**
-     * Maps desiredDeg to an equivalent angle within [minDeg, maxDeg] by trying desired +/- 360*k.
-     * If multiple equivalents are valid, chooses the one closest to referenceDeg.
-     */
+    private void updateDesiredTurretVelocity(double desiredTurretDeg) {
+        if (!turretTargetVelInitialized) {
+            lastDesiredTurretDeg = desiredTurretDeg;
+            desiredTurretVelDegPerSec = 0.0;
+            turretTargetVelInitialized = true;
+            turretTargetVelTimer.reset();
+            return;
+        }
+
+        double dt = turretTargetVelTimer.seconds();
+        turretTargetVelTimer.reset();
+
+        if (dt <= 1e-4) {
+            lastDesiredTurretDeg = desiredTurretDeg;
+            return;
+        }
+
+        double deltaDeg = desiredTurretDeg - lastDesiredTurretDeg;
+
+        while (deltaDeg > 180.0) deltaDeg -= 360.0;
+        while (deltaDeg < -180.0) deltaDeg += 360.0;
+
+        double rawVelDegPerSec = deltaDeg / dt;
+
+        desiredTurretVelDegPerSec =
+                TURRET_TARGET_VEL_FILTER_ALPHA * rawVelDegPerSec
+                        + (1.0 - TURRET_TARGET_VEL_FILTER_ALPHA) * desiredTurretVelDegPerSec;
+
+        lastDesiredTurretDeg = desiredTurretDeg;
+    }
+
     private double wrapIntoTurretWindow(double desiredDeg, double referenceDeg, double minDeg, double maxDeg) {
         double best = Double.NaN;
 
@@ -588,25 +730,23 @@ public class V3IntakeTest extends LinearOpMode {
     }
 
     private void updateShotFromDistance(double distance) {
-        // [distance inches, hood angle deg, flywheel velocity rad/s]
         double[][] shotTable = {
                 {37.0, 30.0, 267.0},
                 {43.0, 30.0, 267.0},
-                {50.0, 37.0, 277.0+5},
-                {57.0, 37.0, 282.0+5},
-                {63.5, 37.0, 292.0+5},
-                {71.0, 39.0, 307.0+5},
-                {77.0, 40.0, 312.0+5},
-                {82.0, 42.0, 327.0+5},
-                {88.0, 43.0, 332.0+5},
-                {93.0, 44.0, 347.0+5},
-                {99.0, 46.0, 364.0+5},
-                {104.0, 47.0, 374.0+5},
-                {110.0, 48.0, 389.0+5},
-                {122.0, 53.0, 409.5+5}
+                {50.0, 37.0, 277.0 + 5},
+                {57.0, 37.0, 282.0 + 5},
+                {63.5, 37.0, 292.0 + 5},
+                {71.0, 39.0, 307.0 + 5},
+                {77.0, 40.0, 312.0 + 5},
+                {82.0, 42.0, 327.0 + 5},
+                {88.0, 43.0, 332.0 + 5},
+                {93.0, 44.0, 347.0 + 5},
+                {99.0, 46.0, 364.0 + 5},
+                {104.0, 47.0, 374.0 + 5},
+                {110.0, 48.0, 389.0 + 5},
+                {122.0, 53.0, 409.5 + 5}
         };
 
-        // Clamp below first point
         if (distance <= shotTable[0][0]) {
             hoodAngleDeg = shotTable[0][1];
             targetVelocityRad = shotTable[0][2];
@@ -614,7 +754,6 @@ public class V3IntakeTest extends LinearOpMode {
             return;
         }
 
-        // Clamp above last point
         int last = shotTable.length - 1;
         if (distance >= shotTable[last][0]) {
             hoodAngleDeg = shotTable[last][1];
@@ -623,7 +762,6 @@ public class V3IntakeTest extends LinearOpMode {
             return;
         }
 
-        // Interpolate between surrounding points
         for (int i = 0; i < shotTable.length - 1; i++) {
             double d1 = shotTable[i][0];
             double a1 = shotTable[i][1];
@@ -637,7 +775,7 @@ public class V3IntakeTest extends LinearOpMode {
                 double t = (distance - d1) / (d2 - d1);
 
                 hoodAngleDeg = a1 + t * (a2 - a1);
-                targetVelocityRad = (v1 + t * (v2 - v1));
+                targetVelocityRad = v1 + t * (v2 - v1);
 
                 setHoodAngle(hoodAngleDeg);
                 return;
@@ -654,11 +792,11 @@ public class V3IntakeTest extends LinearOpMode {
     }
 
     public void armBlock() {
-        armServo.setPosition(0.39);
+        armServo.setPosition(0.26);
     }
 
     public void armShoot() {
-        armServo.setPosition(0.54);
+        armServo.setPosition(0.395);
     }
 
     public void setHoodAngle(double angleDeg) {

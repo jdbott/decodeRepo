@@ -6,6 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
+@Disabled
 
 @TeleOp(name = "Flywheel Feedforward + kP Test", group = "Flywheel Testing")
 public class FlywheelASGTest extends LinearOpMode {
