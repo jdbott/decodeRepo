@@ -1,7 +1,9 @@
 package org.firstinspires.ftc.teamcode;
 
 import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
+import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
@@ -54,10 +56,6 @@ public class V3Tele extends LinearOpMode {
     // Feed sequence trigger
     private boolean lastB = false;
 
-    // Debounce for flywheel target adjustment
-    private boolean lastTriangle = false;
-    private boolean lastCross = false;
-
     // Debounce for hood adjustment
     private boolean lastDpadUp = false;
     private boolean lastDpadDown = false;
@@ -96,6 +94,16 @@ public class V3Tele extends LinearOpMode {
     private boolean lastDpadLeft = false;
     private boolean lastDpadRight = false;
 
+    // Debounce for zeroing coarse adjust buttons
+    private boolean lastSquareZero = false;
+    private boolean lastCircleZero = false;
+
+    private boolean lastSquareFlywheel = false;
+    private boolean lastCircleFlywheel = false;
+
+    // Debounce for auto park toggle
+    private boolean lastTrianglePark = false;
+
     // Manual turret trim in degrees
     private double turretAngleOffsetDeg = 3;
 
@@ -103,8 +111,15 @@ public class V3Tele extends LinearOpMode {
     private boolean turretZeroingMode = false;
     private double turretZeroingTargetDeg = 0.0;
     private boolean lastTurretZeroingToggle = false;
-    private static final double TURRET_ZERO_STEP_DEG = 2.0;
+    private static final double TURRET_ZERO_STEP_DEG = 4.0;
+    private static final double TURRET_ZERO_BIG_STEP_DEG = 10.0;
 
+    // Auto-park state
+    private boolean autoParkActive = false;
+    private boolean autoParkSettling = false;
+    private Path autoParkPath;
+    private final ElapsedTime autoParkSettleTimer = new ElapsedTime();
+    private static final double AUTO_PARK_SETTLE_TIME_SEC = 0.5;
     private enum FeedState {
         IDLE,
         WAIT_BEFORE_INTAKE,
@@ -137,6 +152,17 @@ public class V3Tele extends LinearOpMode {
     // This stays the same unless your turret's own mechanical frame needs changing
     private static final double TURRET_OFFSET_DEG = 180.0;
 
+    // Blue-native teleop zero poses based on which auto was run
+    private static final Pose CLOSE_AUTO_TELEOP_START_BLUE =
+            new Pose(57.8, 111.2, Math.toRadians(-90));
+
+    private static final Pose FAR_AUTO_TELEOP_START_BLUE =
+            new Pose(41.1, 12.25, Math.toRadians(180));
+
+    // Blue-native auto-park pose
+    private static final Pose AUTO_PARK_POSE_BLUE =
+            new Pose(105, 32.0, Math.toRadians(-90.0));
+
     @Override
     public void runOpMode() {
         intakeMotor = hardwareMap.get(DcMotorEx.class, "intake_motor");
@@ -150,12 +176,16 @@ public class V3Tele extends LinearOpMode {
         flywheel = new FlywheelASG(hardwareMap, battery);
 
         isRedAlliance = AllianceStore.isRed(hardwareMap.appContext);
+        boolean isCloseAuto = AutoStartStore.isClose(hardwareMap.appContext);
 
         follower = Constants.createFollower(hardwareMap);
-        Pose startPose = AllianceMirror.mirrorPose(
-                new Pose(57.8, 111.2, Math.toRadians(-90)),
-                isRedAlliance
-        );
+
+        Pose blueTeleopStartPose = isCloseAuto
+                ? CLOSE_AUTO_TELEOP_START_BLUE
+                : FAR_AUTO_TELEOP_START_BLUE;
+
+        Pose startPose = AllianceMirror.mirrorPose(blueTeleopStartPose, isRedAlliance);
+
         follower.setStartingPose(startPose);
         follower.updatePose();
         follower.setMaxPower(1);
@@ -171,6 +201,8 @@ public class V3Tele extends LinearOpMode {
         telemetry.addLine("Initialized");
         telemetry.addLine("Clutch out, arm blocked, intake off");
         telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
+        telemetry.addData("Auto Start Mode", isCloseAuto ? "CLOSE" : "FAR");
+        telemetry.addData("Teleop Start Pose", startPose);
         telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
         telemetry.addData("Shot On Move Compensation", ENABLE_SHOT_ON_MOVE_COMP);
         telemetry.update();
@@ -185,6 +217,8 @@ public class V3Tele extends LinearOpMode {
             }
 
             telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
+            telemetry.addData("Auto Start Mode", isCloseAuto ? "CLOSE" : "FAR");
+            telemetry.addData("Teleop Start Pose", startPose);
             telemetry.addData("One Driver", oneDriver);
             telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
             telemetry.update();
@@ -204,8 +238,12 @@ public class V3Tele extends LinearOpMode {
             fieldVyInPerSec = follower.getVelocity().getYComponent();
             double robotAngularVelRadPerSec = follower.getAngularVelocity();
 
-            double robotHeadingDeg = Math.toDegrees(pose.getHeading());
-            drive(robotHeadingDeg);
+            handleAutoPark(pose);
+
+            if (!autoParkActive) {
+                double robotHeadingDeg = Math.toDegrees(pose.getHeading());
+                drive(robotHeadingDeg);
+            }
 
             handleTurretZeroingMode();
 
@@ -229,12 +267,17 @@ public class V3Tele extends LinearOpMode {
             } else {
                 targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
                 hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
+//                handleHoodAdjustment();
+//                handleFlywheelAdjustment();
                 setHoodAngle(hoodAngleDeg);
                 baseTurretAngleOffsetDeg = 1;
             }
 
-            handleXToggle();
-            handleBSequence();
+            if (!turretZeroingMode) {
+                handleXToggle();
+                handleBSequence();
+            }
+
             updateFeedSequence();
 
             flywheel.setTargetVelocity(targetVelocityRad);
@@ -243,6 +286,8 @@ public class V3Tele extends LinearOpMode {
             telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
             telemetry.addData("Shot Mode", autoShotFromDistance ? "AUTO TRACKING" : "FIXED POWER SHOT");
             telemetry.addData("Turret Zeroing Mode", turretZeroingMode);
+            telemetry.addData("Auto Park Active", autoParkActive);
+            telemetry.addData("Auto Park Target", getAutoParkPose());
             telemetry.addData("Turret Offset (deg)", turretAngleOffsetDeg);
             telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
             telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
@@ -258,8 +303,119 @@ public class V3Tele extends LinearOpMode {
         return AllianceMirror.mirrorX(BLUE_TARGET_X, isRedAlliance);
     }
 
+    private Pose getAutoParkPose() {
+        return AllianceMirror.mirrorPose(AUTO_PARK_POSE_BLUE, isRedAlliance);
+    }
+
     private boolean getZeroingTogglePressed() {
         return oneDriver ? gamepad1.dpad_up : gamepad2.dpad_up;
+    }
+
+    private boolean getAutoParkTogglePressed() {
+        if (oneDriver) {
+            return gamepad1.triangle;
+        }
+        return gamepad1.triangle || gamepad1.triangle;
+    }
+
+    private void handleFlywheelAdjustment() {
+        // Example: operator uses square/circle on gamepad2
+        boolean flywheelUpPressed = gamepad1.options;
+        boolean flywheelDownPressed = gamepad1.share;
+
+        if (flywheelUpPressed && !lastSquareFlywheel) {
+            targetVelocityRad += 10.0;
+        }
+
+        if (flywheelDownPressed && !lastCircleFlywheel) {
+            targetVelocityRad -= 10.0;
+        }
+
+        targetVelocityRad = Range.clip(targetVelocityRad, 200.0, 1000);
+
+        lastSquareFlywheel = flywheelUpPressed;
+        lastCircleFlywheel = flywheelDownPressed;
+
+        telemetry.addData("Manual Flywheel Target", targetVelocityRad);
+    }
+
+    private void handleAutoPark(Pose currentPose) {
+        boolean parkTogglePressed = getAutoParkTogglePressed();
+
+        if (parkTogglePressed && !lastTrianglePark) {
+            if (!autoParkActive) {
+                startAutoPark(currentPose);
+            } else {
+                cancelAutoPark();
+            }
+        }
+
+        lastTrianglePark = parkTogglePressed;
+
+        if (!autoParkActive) {
+            return;
+        }
+
+        // Once the path first finishes, start a short settle timer.
+        if (!autoParkSettling && !follower.isBusy()) {
+            autoParkSettling = true;
+            autoParkSettleTimer.reset();
+        }
+
+        // Stay in auto-park for a bit longer so the robot can settle.
+        if (autoParkSettling) {
+            if (autoParkSettleTimer.seconds() >= AUTO_PARK_SETTLE_TIME_SEC) {
+                autoParkActive = false;
+                autoParkSettling = false;
+                follower.startTeleOpDrive();
+            }
+        }
+    }
+
+    private void startAutoPark(Pose currentPose) {
+        Pose parkPose = getAutoParkPose();
+
+        autoParkPath = new Path(
+                new BezierLine(
+                        currentPose,
+                        parkPose
+                )
+        );
+
+        autoParkPath.setLinearHeadingInterpolation(
+                currentPose.getHeading(),
+                parkPose.getHeading()
+        );
+        autoParkPath.setBrakingStrength(0.5);
+
+        autoParkActive = true;
+        autoParkSettling = false;
+        autoParkSettleTimer.reset();
+
+        follower.followPath(autoParkPath, true);
+
+        if (oneDriver) {
+            gamepad1.rumble(300);
+        } else {
+            gamepad1.rumble(300);
+            gamepad2.rumble(300);
+        }
+    }
+
+    private void cancelAutoPark() {
+        autoParkActive = false;
+        autoParkSettling = false;
+        autoParkSettleTimer.reset();
+
+        follower.startTeleOpDrive();
+        follower.setTeleOpDrive(0, 0, 0, false);
+
+        if (oneDriver) {
+            gamepad1.rumble(500);
+        } else {
+            gamepad1.rumble(500);
+            gamepad2.rumble(500);
+        }
     }
 
     private void drive(double robotHeadingDeg) {
@@ -291,7 +447,11 @@ public class V3Tele extends LinearOpMode {
             );
         }
 
-        if (gamepad1.circle) {
+        // Disable driver pose reset during zeroing only in one-driver mode.
+        // In two-driver mode, keep it available since zeroing is on gamepad2.
+        boolean allowDriverPoseReset = !oneDriver || !turretZeroingMode;
+
+        if (gamepad1.circle && allowDriverPoseReset) {
             Pose resetPose = AllianceMirror.mirrorPose(
                     new Pose(24, 125.2, Math.toRadians(141)),
                     isRedAlliance
@@ -330,6 +490,11 @@ public class V3Tele extends LinearOpMode {
                     turretZeroingMode = true;
                     turretZeroingTargetDeg = 0.0;
 
+                    lastDpadLeft = false;
+                    lastDpadRight = false;
+                    lastSquareZero = false;
+                    lastCircleZero = false;
+
                     if (oneDriver) {
                         gamepad1.rumble(250);
                     } else {
@@ -340,6 +505,11 @@ public class V3Tele extends LinearOpMode {
                 turret.zeroTurret();
                 turretZeroingMode = false;
                 turretZeroingTargetDeg = 0.0;
+
+                lastDpadLeft = false;
+                lastDpadRight = false;
+                lastSquareZero = false;
+                lastCircleZero = false;
 
                 if (oneDriver) {
                     gamepad1.rumble(500);
@@ -357,6 +527,8 @@ public class V3Tele extends LinearOpMode {
 
         boolean leftPressed = oneDriver ? gamepad1.dpad_left : gamepad2.dpad_left;
         boolean rightPressed = oneDriver ? gamepad1.dpad_right : gamepad2.dpad_right;
+        boolean squarePressed = oneDriver ? gamepad1.square : gamepad2.square;
+        boolean circlePressed = oneDriver ? gamepad1.circle : gamepad2.circle;
 
         if (leftPressed && !lastDpadLeft) {
             turretZeroingTargetDeg += TURRET_ZERO_STEP_DEG;
@@ -366,8 +538,18 @@ public class V3Tele extends LinearOpMode {
             turretZeroingTargetDeg -= TURRET_ZERO_STEP_DEG;
         }
 
+        if (squarePressed && !lastSquareZero) {
+            turretZeroingTargetDeg += TURRET_ZERO_BIG_STEP_DEG;
+        }
+
+        if (circlePressed && !lastCircleZero) {
+            turretZeroingTargetDeg -= TURRET_ZERO_BIG_STEP_DEG;
+        }
+
         lastDpadLeft = leftPressed;
         lastDpadRight = rightPressed;
+        lastSquareZero = squarePressed;
+        lastCircleZero = circlePressed;
 
         turretZeroingTargetDeg = Range.clip(
                 turretZeroingTargetDeg,
@@ -380,6 +562,10 @@ public class V3Tele extends LinearOpMode {
         telemetry.addLine("TURRET ZEROING MODE");
         telemetry.addData("Zeroing Target (deg)", turretZeroingTargetDeg);
         telemetry.addData("Current Turret Angle (deg)", turret.getCurrentAngle());
+        telemetry.addData("Small Step", TURRET_ZERO_STEP_DEG);
+        telemetry.addData("Big Step", TURRET_ZERO_BIG_STEP_DEG);
+        telemetry.addLine("D-pad left/right = small move");
+        telemetry.addLine("Square/circle = big move");
         telemetry.addLine("Press D-pad Up again to save zero and resume tracking");
     }
 
@@ -489,15 +675,12 @@ public class V3Tele extends LinearOpMode {
         double robotHeadingRad = pose.getHeading();
         double robotHeadingDeg = Math.toDegrees(robotHeadingRad);
 
-        // Actual shooter location in field coordinates
         double turretX = robotX - TURRET_CENTER_OFFSET_IN * Math.cos(robotHeadingRad);
         double turretY = robotY - TURRET_CENTER_OFFSET_IN * Math.sin(robotHeadingRad);
 
-        // Vector from robot center to shooter center in field coordinates
         double rx = turretX - robotX;
         double ry = turretY - robotY;
 
-        // Actual current geometry to goal
         double actualDx = targetX - turretX;
         double actualDy = TARGET_Y - turretY;
         double actualDistance = Math.hypot(actualDx, actualDy);
@@ -511,12 +694,9 @@ public class V3Tele extends LinearOpMode {
             uy = actualDy / actualDistance;
         }
 
-        // Tangential velocity of the shooter caused by robot rotation
-        // v_rot = omega x r
         double rotVx = -robotAngularVelRadPerSec * ry;
-        double rotVy =  robotAngularVelRadPerSec * rx;
+        double rotVy = robotAngularVelRadPerSec * rx;
 
-        // Total shooter velocity in field coordinates
         double shooterVx = fieldVxInPerSec + rotVx;
         double shooterVy = fieldVyInPerSec + rotVy;
 
@@ -548,7 +728,6 @@ public class V3Tele extends LinearOpMode {
                         + baseOffset
         );
 
-        // Radial velocity of the shooter toward the goal
         radialVelocityToGoal = shooterVx * ux + shooterVy * uy;
 
         predictedShotDistance = Math.hypot(dx, dy);
@@ -690,25 +869,6 @@ public class V3Tele extends LinearOpMode {
         return best;
     }
 
-    private void handleFlywheelAdjustment() {
-        boolean trianglePressed = gamepad1.triangle;
-        boolean crossPressed = gamepad1.cross;
-
-        if (trianglePressed && !lastTriangle) {
-            targetVelocityRad += 5.0;
-        }
-
-        if (crossPressed && !lastCross) {
-            targetVelocityRad -= 5.0;
-            targetVelocityRad = Math.max(0.0, targetVelocityRad);
-        }
-
-        lastTriangle = trianglePressed;
-        lastCross = crossPressed;
-
-        telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
-    }
-
     private void handleHoodAdjustment() {
         boolean dpadUpPressed = gamepad1.dpad_up;
         boolean dpadDownPressed = gamepad1.dpad_down;
@@ -747,6 +907,24 @@ public class V3Tele extends LinearOpMode {
                 {122.0, 53.0, 409.5 + 5}
         };
 
+//        double[][] shotTable = {
+//                {38.4, 30.0, 305.0},
+//                {46.0, 34.0, 305.0},
+//                {50.45, 35.0, 305.0},
+//                {56.5, 38.0, 325.0},
+//                {63.0, 39.0, 335.0},
+//                {69.3, 40.0, 345.0},
+//                {74.0, 41.0, 355.0},
+//                {79.0, 44.0, 375.0},
+//                {83.3, 44.0, 385.0},
+//                {92.0, 46.0, 400.0},
+//                {95.0, 47.0, 407.0},
+//                {100.0, 47.0, 415.0},
+//                {106.0, 49.0, 435.0},
+//                {114.0, 50.0, 465.0},
+//                {125.0, 51.0, 535.0}
+//        };
+
         if (distance <= shotTable[0][0]) {
             hoodAngleDeg = shotTable[0][1];
             targetVelocityRad = shotTable[0][2];
@@ -775,7 +953,7 @@ public class V3Tele extends LinearOpMode {
                 double t = (distance - d1) / (d2 - d1);
 
                 hoodAngleDeg = a1 + t * (a2 - a1);
-                targetVelocityRad = v1 + t * (v2 - v1);
+                targetVelocityRad = v1 + t * (v2 - v1) + 8;
 
                 setHoodAngle(hoodAngleDeg);
                 return;
@@ -803,8 +981,8 @@ public class V3Tele extends LinearOpMode {
         final double MIN_ANGLE = 30.0;
         final double MAX_ANGLE = 60.0;
 
-        final double MIN_POS = 0.395;
-        final double MAX_POS = 0.9;
+        final double MIN_POS = 0.42;
+        final double MAX_POS = 0.95;
 
         hoodAngleDeg = Math.max(MIN_ANGLE, Math.min(MAX_ANGLE, angleDeg));
 
