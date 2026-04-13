@@ -238,6 +238,10 @@ public class V3Auto extends LinearOpMode {
 
             Pose pose = follower.getPose();
 
+            if (follower.isRobotStuck()) {
+                follower.breakFollowing();
+            }
+
             boolean turretShouldTrackGoal = autoState != AutoState.DONE;
 
             if (turretShouldTrackGoal) {
@@ -442,10 +446,12 @@ public class V3Auto extends LinearOpMode {
                     armBlock();
                     clutchOut();
                     startThirdCycleToGate();
+                    intakeMotor.setPower(0);
                 }
                 break;
 
             case DRIVE_TO_GATE:
+                intakeMotor.setPower(0);
                 if (!follower.isBusy()) {
                     autoTimer.reset();
                     autoState = AutoState.WAIT_AT_GATE;
@@ -453,7 +459,7 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case WAIT_AT_GATE:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(0.0);   // keep intake off while tapping/opening gate
                 if (autoTimer.seconds() >= 0.1) {
                     follower.setMaxPower(1.0);
                     follower.followPath(toGateIntake, false);
@@ -463,7 +469,7 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case WAIT_FOR_GATE_INTAKE:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(follower.getCurrentTValue() >= 0.5 ? 1.0 : 0.0);
                 if (autoTimer.seconds() >= 1.5) {
                     startExtraGateIntakeMove();
                 }
@@ -471,7 +477,7 @@ public class V3Auto extends LinearOpMode {
 
             case DRIVE_EXTRA_INTAKE_AT_GATE:
                 intakeMotor.setPower(1.0);
-                if (!follower.isBusy()) {
+                if (!follower.isBusy() || autoTimer.seconds() >= 1) {
                     startReturnFromGateToShoot();
                 }
                 break;
@@ -511,10 +517,12 @@ public class V3Auto extends LinearOpMode {
                     armBlock();
                     clutchOut();
                     startGateCycleAgain();
+                    intakeMotor.setPower(0);
                 }
                 break;
 
             case DRIVE_TO_GATE_AGAIN:
+                intakeMotor.setPower(0);
                 if (!follower.isBusy()) {
                     autoTimer.reset();
                     autoState = AutoState.WAIT_AT_GATE_AGAIN;
@@ -522,7 +530,7 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case WAIT_AT_GATE_AGAIN:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(0.0);
                 if (autoTimer.seconds() >= 0.25) {
                     follower.setMaxPower(1.0);
                     follower.followPath(toGateIntake, true);
@@ -532,7 +540,7 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case WAIT_FOR_GATE_INTAKE_AGAIN:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(follower.getCurrentTValue() >= 0.5 ? 1.0 : 0.0);
                 if (autoTimer.seconds() >= 1.3) {
                     startExtraGateIntakeMoveAgain();
                 }
@@ -540,7 +548,7 @@ public class V3Auto extends LinearOpMode {
 
             case DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN:
                 intakeMotor.setPower(1.0);
-                if (!follower.isBusy()) {
+                if (!follower.isBusy() || autoTimer.seconds() >= 1) {
                     startReturnFromGateToShootAgain();
                 }
                 break;
@@ -956,11 +964,11 @@ public class V3Auto extends LinearOpMode {
     }
 
     public void armBlock() {
-        armServo.setPosition(0.26);
+        armServo.setPosition(0.28);
     }
 
     public void armShoot() {
-        armServo.setPosition(0.395);
+        armServo.setPosition(0.42);
     }
 
     public void setHoodAngle(double angleDeg) {

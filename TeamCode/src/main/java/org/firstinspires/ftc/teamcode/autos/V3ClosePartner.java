@@ -246,6 +246,10 @@ public class V3ClosePartner extends LinearOpMode {
 
             Pose pose = follower.getPose();
 
+            if (follower.isRobotStuck()) {
+                follower.breakFollowing();
+            }
+
             boolean turretShouldTrackGoal = autoState != AutoState.DONE;
 
             if (turretShouldTrackGoal) {
@@ -431,6 +435,7 @@ public class V3ClosePartner extends LinearOpMode {
 
             // GATE CYCLE #1
             case DRIVE_TO_GATE_1:
+                intakeMotor.setPower(0);
                 if (!follower.isBusy()) {
                     autoTimer.reset();
                     autoState = AutoState.WAIT_AT_GATE_1;
@@ -438,7 +443,7 @@ public class V3ClosePartner extends LinearOpMode {
                 break;
 
             case WAIT_AT_GATE_1:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(0.0);
                 if (autoTimer.seconds() >= 0.1) {
                     follower.setMaxPower(1.0);
                     follower.followPath(toGateIntake, false);
@@ -448,7 +453,7 @@ public class V3ClosePartner extends LinearOpMode {
                 break;
 
             case WAIT_FOR_GATE_INTAKE_1:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(follower.getCurrentTValue() >= 0.5 ? 1.0 : 0.0);
                 if (autoTimer.seconds() >= 1.5) {
                     startExtraGateIntakeMove1();
                 }
@@ -456,7 +461,7 @@ public class V3ClosePartner extends LinearOpMode {
 
             case DRIVE_EXTRA_INTAKE_AT_GATE_1:
                 intakeMotor.setPower(1.0);
-                if (!follower.isBusy()) {
+                if (!follower.isBusy() || autoTimer.seconds() >= 1) {
                     startReturnFromGateToShoot1();
                 }
                 break;
@@ -479,6 +484,7 @@ public class V3ClosePartner extends LinearOpMode {
 
             // GATE CYCLE #2
             case DRIVE_TO_GATE_2:
+                intakeMotor.setPower(0);
                 if (!follower.isBusy()) {
                     autoTimer.reset();
                     autoState = AutoState.WAIT_AT_GATE_2;
@@ -486,7 +492,7 @@ public class V3ClosePartner extends LinearOpMode {
                 break;
 
             case WAIT_AT_GATE_2:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(0.0);
                 if (autoTimer.seconds() >= 0.25) {
                     follower.setMaxPower(1.0);
                     follower.followPath(toGateIntake, true);
@@ -496,7 +502,7 @@ public class V3ClosePartner extends LinearOpMode {
                 break;
 
             case WAIT_FOR_GATE_INTAKE_2:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(follower.getCurrentTValue() >= 0.5 ? 1.0 : 0.0);
                 if (autoTimer.seconds() >= 1.3) {
                     startExtraGateIntakeMove2();
                 }
@@ -504,7 +510,7 @@ public class V3ClosePartner extends LinearOpMode {
 
             case DRIVE_EXTRA_INTAKE_AT_GATE_2:
                 intakeMotor.setPower(1.0);
-                if (!follower.isBusy()) {
+                if (!follower.isBusy() || autoTimer.seconds() >= 1) {
                     startReturnFromGateToShoot2();
                 }
                 break;
@@ -527,6 +533,7 @@ public class V3ClosePartner extends LinearOpMode {
 
             // GATE CYCLE #3
             case DRIVE_TO_GATE_3:
+                intakeMotor.setPower(0);
                 if (!follower.isBusy()) {
                     autoTimer.reset();
                     autoState = AutoState.WAIT_AT_GATE_3;
@@ -534,7 +541,7 @@ public class V3ClosePartner extends LinearOpMode {
                 break;
 
             case WAIT_AT_GATE_3:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(0.0);
                 if (autoTimer.seconds() >= 0.25) {
                     follower.setMaxPower(1.0);
                     follower.followPath(toGateIntake, true);
@@ -544,7 +551,7 @@ public class V3ClosePartner extends LinearOpMode {
                 break;
 
             case WAIT_FOR_GATE_INTAKE_3:
-                intakeMotor.setPower(1.0);
+                intakeMotor.setPower(follower.getCurrentTValue() >= 0.5 ? 1.0 : 0.0);
                 if (autoTimer.seconds() >= 1.3) {
                     startExtraGateIntakeMove3();
                 }
@@ -552,7 +559,7 @@ public class V3ClosePartner extends LinearOpMode {
 
             case DRIVE_EXTRA_INTAKE_AT_GATE_3:
                 intakeMotor.setPower(1.0);
-                if (!follower.isBusy()) {
+                if (!follower.isBusy() || autoTimer.seconds() >= 1) {
                     startReturnFromGateToShoot3();
                 }
                 break;
@@ -993,11 +1000,11 @@ public class V3ClosePartner extends LinearOpMode {
     }
 
     public void armBlock() {
-        armServo.setPosition(0.26);
+        armServo.setPosition(0.28);
     }
 
     public void armShoot() {
-        armServo.setPosition(0.395);
+        armServo.setPosition(0.42);
     }
 
     public void setHoodAngle(double angleDeg) {

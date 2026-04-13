@@ -36,8 +36,8 @@ public class V3FarAuto extends LinearOpMode {
     private boolean isRedAlliance = false;
 
     // ===== Fixed shot settings =====
-    private static final double FIXED_HOOD_DEG = 55;
-    private static final double FIXED_FLYWHEEL_RAD = 455;
+    private static final double FIXED_HOOD_DEG = 53.5;
+    private static final double FIXED_FLYWHEEL_RAD = 445;
 
     // ===== Field positions (BLUE-NATIVE) =====
     private static final double START_X = 64.1;
@@ -65,14 +65,14 @@ public class V3FarAuto extends LinearOpMode {
     private static final double TURRET_OFFSET_DEG = 180;
 
     // ===== Timing =====
-    private static final double FIRST_SHOT_DELAY_SEC = 2.8;
+    private static final double FIRST_SHOT_DELAY_SEC = 3;
     private static final double FEED_START_DELAY_SEC = 0.10;
     private static final double FEED_TOTAL_TIME_SEC = 1.00;
     private static final double REVERSE_TIME_SEC = 0.25;
 
     // ===== Fixed turret aim commands (BLUE-NATIVE) =====
-    private static final double INIT_TURRET_ANGLE_DEG = 112.0;
-    private static final double RUN_TURRET_ANGLE_DEG = 112.0;
+    private static final double INIT_TURRET_ANGLE_DEG = 113;
+    private static final double RUN_TURRET_ANGLE_DEG = 113.0;
 
     // ===== Poses =====
     private Pose startPose;
@@ -535,11 +535,11 @@ public class V3FarAuto extends LinearOpMode {
     }
 
     public void armBlock() {
-        armServo.setPosition(0.26);
+        armServo.setPosition(0.28);
     }
 
     public void armShoot() {
-        armServo.setPosition(0.395);
+        armServo.setPosition(0.42);
     }
 
     public void setHoodAngle(double angleDeg) {

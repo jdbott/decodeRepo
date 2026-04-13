@@ -33,14 +33,24 @@ public class V3Tele extends LinearOpMode {
     private boolean isRedAlliance = false;
 
     // Starts in auto shot tracking mode
-    private boolean autoShotFromDistance = true;
+    private enum ShotMode {
+        AUTO_SWITCH,
+        CLOSE,
+        FAR
+    }
+
+    // Start in automatic switching mode
+    private ShotMode shotMode = ShotMode.AUTO_SWITCH;
+
+    // Automatic FAR override based on pose + distance, only used in AUTO_SWITCH mode
+    private boolean autoFarOverride = false;
 
     // Toggle this to enable rudimentary shooting-on-the-move aim compensation
     private static final boolean ENABLE_SHOT_ON_MOVE_COMP = true;
 
     // Fixed override shot settings
     private static final double FIXED_POWER_SHOT_VELOCITY_RAD = 440;
-    private static final double FIXED_POWER_SHOT_HOOD_DEG = 55.0;
+    private static final double FIXED_POWER_SHOT_HOOD_DEG = 53.5;
 
     // Light filtering for velocity estimate
     private static final double VELOCITY_FILTER_ALPHA = 0.25;
@@ -203,7 +213,7 @@ public class V3Tele extends LinearOpMode {
         telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
         telemetry.addData("Auto Start Mode", isCloseAuto ? "CLOSE" : "FAR");
         telemetry.addData("Teleop Start Pose", startPose);
-        telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
+        telemetry.addData("Shot Mode", shotMode);
         telemetry.addData("Shot On Move Compensation", ENABLE_SHOT_ON_MOVE_COMP);
         telemetry.update();
 
@@ -220,7 +230,7 @@ public class V3Tele extends LinearOpMode {
             telemetry.addData("Auto Start Mode", isCloseAuto ? "CLOSE" : "FAR");
             telemetry.addData("Teleop Start Pose", startPose);
             telemetry.addData("One Driver", oneDriver);
-            telemetry.addData("Auto Shot From Distance", autoShotFromDistance);
+            telemetry.addData("Shot Mode", shotMode);
             telemetry.update();
         }
 
@@ -237,6 +247,8 @@ public class V3Tele extends LinearOpMode {
             fieldVxInPerSec = follower.getVelocity().getXComponent();
             fieldVyInPerSec = follower.getVelocity().getYComponent();
             double robotAngularVelRadPerSec = follower.getAngularVelocity();
+
+            updateAutoFarOverride(pose);
 
             handleAutoPark(pose);
 
@@ -258,18 +270,34 @@ public class V3Tele extends LinearOpMode {
                 handleShotModeToggle();
             }
 
-            if (autoShotFromDistance) {
+            boolean useFarShot;
+            switch (shotMode) {
+                case FAR:
+                    useFarShot = true;
+                    break;
+
+                case CLOSE:
+                    useFarShot = false;
+                    break;
+
+                case AUTO_SWITCH:
+                default:
+                    useFarShot = autoFarOverride;
+                    break;
+            }
+
+            if (useFarShot) {
+                targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
+                hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
+//    handleHoodAdjustment();
+//    handleFlywheelAdjustment();
+                setHoodAngle(hoodAngleDeg);
+                baseTurretAngleOffsetDeg = 1;
+            } else {
                 double lookupDistance = predictedDistanceInitialized
                         ? filteredPredictedShotDistance
                         : Math.hypot(getTargetX() - pose.getX(), TARGET_Y - pose.getY());
                 updateShotFromDistance(lookupDistance);
-                baseTurretAngleOffsetDeg = 1;
-            } else {
-                targetVelocityRad = FIXED_POWER_SHOT_VELOCITY_RAD;
-                hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
-//                handleHoodAdjustment();
-//                handleFlywheelAdjustment();
-                setHoodAngle(hoodAngleDeg);
                 baseTurretAngleOffsetDeg = 1;
             }
 
@@ -284,7 +312,11 @@ public class V3Tele extends LinearOpMode {
             flywheel.update();
 
             telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
-            telemetry.addData("Shot Mode", autoShotFromDistance ? "AUTO TRACKING" : "FIXED POWER SHOT");
+            telemetry.addData("Shot Mode", shotMode);
+            telemetry.addData("Auto FAR Override Active", autoFarOverride);
+            telemetry.addData("Effective Shot",
+                    (shotMode == ShotMode.FAR || (shotMode == ShotMode.AUTO_SWITCH && autoFarOverride))
+                            ? "FAR" : "CLOSE");
             telemetry.addData("Turret Zeroing Mode", turretZeroingMode);
             telemetry.addData("Auto Park Active", autoParkActive);
             telemetry.addData("Auto Park Target", getAutoParkPose());
@@ -305,6 +337,11 @@ public class V3Tele extends LinearOpMode {
 
     private Pose getAutoParkPose() {
         return AllianceMirror.mirrorPose(AUTO_PARK_POSE_BLUE, isRedAlliance);
+    }
+
+    private void updateAutoFarOverride(Pose pose) {
+        double distanceToGoal = Math.hypot(getTargetX() - pose.getX(), TARGET_Y - pose.getY());
+        autoFarOverride = distanceToGoal > 120.0 && pose.getY() < 48.0;
     }
 
     private boolean getZeroingTogglePressed() {
@@ -467,12 +504,12 @@ public class V3Tele extends LinearOpMode {
 
         if (oneDriver) {
             if (rb1Pressed && !lastRightBumper1) {
-                autoShotFromDistance = !autoShotFromDistance;
+                cycleShotMode();
                 gamepad1.rumble(400);
             }
         } else {
             if (rb2Pressed && !lastRightBumper2) {
-                autoShotFromDistance = !autoShotFromDistance;
+                cycleShotMode();
                 gamepad2.rumble(400);
             }
         }
@@ -480,13 +517,27 @@ public class V3Tele extends LinearOpMode {
         lastRightBumper1 = rb1Pressed;
         lastRightBumper2 = rb2Pressed;
     }
+    private void cycleShotMode() {
+        switch (shotMode) {
+            case AUTO_SWITCH:
+                shotMode = ShotMode.CLOSE;
+                break;
+
+            case CLOSE:
+                shotMode = ShotMode.FAR;
+                break;
+
+            case FAR:
+                shotMode = ShotMode.AUTO_SWITCH;
+                break;
+        }
+    }
 
     private void handleTurretZeroingMode() {
         boolean togglePressed = getZeroingTogglePressed();
 
         if (togglePressed && !lastTurretZeroingToggle) {
             if (!turretZeroingMode) {
-                if (autoShotFromDistance) {
                     turretZeroingMode = true;
                     turretZeroingTargetDeg = 0.0;
 
@@ -500,7 +551,6 @@ public class V3Tele extends LinearOpMode {
                     } else {
                         gamepad2.rumble(250);
                     }
-                }
             } else {
                 turret.zeroTurret();
                 turretZeroingMode = false;
@@ -970,11 +1020,11 @@ public class V3Tele extends LinearOpMode {
     }
 
     public void armBlock() {
-        armServo.setPosition(0.26);
+        armServo.setPosition(.28);
     }
 
     public void armShoot() {
-        armServo.setPosition(0.395);
+        armServo.setPosition(0.42);
     }
 
     public void setHoodAngle(double angleDeg) {
