@@ -43,7 +43,7 @@ public class V3Auto extends LinearOpMode {
     private static double FIRST_SHOT_HOOD_DEG = 37;
     private static double FIRST_SHOT_FLYWHEEL_RAD = 310;
 
-    // Goal position in field coordinates (blue-native)
+    // Goal psition in field coordinates (blue-native)
     private static final double BLUE_TARGET_X = 5.0;
     private static final double TARGET_Y = 139.0;
 
