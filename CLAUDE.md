@@ -31,6 +31,7 @@ Nothing here is treated as off-limits "scratch" — any file may be live. If you
 **Hardware classes (`hardwareClasses/`)**
 - For **new** hardware classes, use **constructor injection**: take `HardwareMap` (and any deps like `VoltageSensor`) in the constructor so the object is ready to use after construction — follow `FlywheelASG`, not `Turret`'s separate `init()` method.
 - **Device names are string literals** (e.g. `"shootTop"`, `"intakeMotor"`, `"hoodServo"`) passed to `hardwareMap.get(...)`. There is **no central config file** — reuse the exact names already used in existing opmodes (grep `V3Tele`/`V3Auto`). **Never invent a new device name**; if you need one that doesn't exist yet, ask.
+- **Naming new hardware classes**: use plain, simple subsystem names (`Hood`, `Feeder`, `Intake`) — don't append suffixes like `ASG` unless asked. If the name would collide with an existing class, ask Jason how he wants to disambiguate rather than picking a suffix yourself.
 
 **Units & control gains (enforce these)**
 - Flywheel/angular velocity: **rad/s**
