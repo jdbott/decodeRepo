@@ -21,7 +21,7 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
 
-@Autonomous(name = "V3 Far Auto Perfect: Yuvi Edition", group = "Autonomous")
+@Autonomous(name = "V3 Far Auto : Yuvi Edition", group = "Autonomous")
 public class V3FarAutoByYuvi extends OpMode {
 
     /* ===== Hardware Subsystems ===== */
