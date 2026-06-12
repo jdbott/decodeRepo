@@ -1,7 +1,7 @@
-package org.firstinspires.ftc.teamcode.pedroPathing.constants;
+package org.firstinspires.ftc.teamcode.pedroPathing;
 
 import static com.pedropathing.math.MathFunctions.quadraticFit;
-import static org.firstinspires.ftc.teamcode.pedroPathing.constants.Tuning.*;
+import static org.firstinspires.ftc.teamcode.pedroPathing.Tuning.*;
 
 import android.annotation.SuppressLint;
 import com.bylazar.configurables.PanelsConfigurables;

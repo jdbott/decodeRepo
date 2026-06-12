@@ -52,7 +52,7 @@ public class Turret {
     private ControlMode controlMode = ControlMode.LEGACY_POSITION;
 
     // Initialization
-    public void init(HardwareMap hardwareMap, String motorName, DcMotorSimple.Direction direction) {
+    public Turret(HardwareMap hardwareMap, String motorName, DcMotorSimple.Direction direction) {
         turretMotor = hardwareMap.get(DcMotorEx.class, motorName);
         turretMotor.setDirection(direction);
         turretMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);

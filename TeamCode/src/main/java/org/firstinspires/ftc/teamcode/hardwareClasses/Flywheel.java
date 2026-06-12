@@ -6,10 +6,12 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.Range;
 
-public class FlywheelASG {
+import org.firstinspires.ftc.teamcode.RobotConfig;
 
-    private final DcMotorEx flywheel1;   // no encoder (or ignored)
-    private final DcMotorEx flywheel2;   // encoder motor (USED logically by your current setup)
+public class Flywheel {
+
+    private final DcMotorEx flywheelTop;      // no encoder (or ignored)
+    private final DcMotorEx flywheelBottom;   // encoder motor (USED logically by your current setup)
     private final VoltageSensor battery;
 
     // Target velocity in rad/s
@@ -46,45 +48,45 @@ public class FlywheelASG {
 
     /**
      * Default ctor that matches your tuner naming:
-     *  - flywheel1 = "shootTop"
-     *  - flywheel2 = "shootBottom"
+     *  - flywheelTop = "shootTop"
+     *  - flywheelBottom = "shootBottom"
      *
      * Direction defaults:
      *  - shootTop REVERSE
      *  - shootBottom FORWARD
      */
-    public FlywheelASG(HardwareMap hardwareMap, VoltageSensor battery) {
-        this(hardwareMap, battery, "shootTop", "shootBottom", true, false);
+    public Flywheel(HardwareMap hardwareMap, VoltageSensor battery) {
+        this(hardwareMap, battery, RobotConfig.FLYWHEEL_TOP, RobotConfig.FLYWHEEL_BOTTOM, true, false);
     }
 
     /**
      * Fully configurable ctor.
      *
-     * @param motor1Name        hardware name for motor 1
-     * @param motor2Name        hardware name for motor 2
-     * @param motor1Reversed    direction for motor 1
-     * @param motor2Reversed    direction for motor 2
+     * @param topMotorName        hardware name for the top motor
+     * @param bottomMotorName     hardware name for the bottom motor
+     * @param topMotorReversed    direction for the top motor
+     * @param bottomMotorReversed direction for the bottom motor
      */
-    public FlywheelASG(HardwareMap hardwareMap,
-                       VoltageSensor battery,
-                       String motor1Name,
-                       String motor2Name,
-                       boolean motor1Reversed,
-                       boolean motor2Reversed) {
+    public Flywheel(HardwareMap hardwareMap,
+                    VoltageSensor battery,
+                    String topMotorName,
+                    String bottomMotorName,
+                    boolean topMotorReversed,
+                    boolean bottomMotorReversed) {
 
         this.battery = battery;
 
-        flywheel1 = hardwareMap.get(DcMotorEx.class, motor1Name);
-        flywheel2 = hardwareMap.get(DcMotorEx.class, motor2Name);
+        flywheelTop = hardwareMap.get(DcMotorEx.class, topMotorName);
+        flywheelBottom = hardwareMap.get(DcMotorEx.class, bottomMotorName);
 
-        flywheel1.setDirection(motor1Reversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
-        flywheel2.setDirection(motor2Reversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        flywheelTop.setDirection(topMotorReversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
+        flywheelBottom.setDirection(bottomMotorReversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
 
-        flywheel1.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.FLOAT);
-        flywheel2.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.FLOAT);
+        flywheelTop.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.FLOAT);
+        flywheelBottom.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.FLOAT);
 
-        flywheel1.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
-        flywheel2.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
+        flywheelTop.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
+        flywheelBottom.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
 
         smoothedVelocity = 0.0;
         firstVelocitySample = true;
@@ -158,8 +160,8 @@ public class FlywheelASG {
 
     /** Compute filtered velocity in rad/s. Call frequently. */
     public void updateVelocity() {
-        // Intentionally left using flywheel1 because you said the current behavior works
-        double velTicksPerSec = flywheel1.getVelocity();
+        // Intentionally left using flywheelTop because you said the current behavior works
+        double velTicksPerSec = flywheelTop.getVelocity();
         double velRadPerSec = Math.abs(velTicksPerSec) * RAD_PER_TICK;
 
         if (firstVelocitySample) {
@@ -181,9 +183,9 @@ public class FlywheelASG {
         return smoothedVelocity * 60.0 / (2.0 * Math.PI);
     }
 
-    /** Get last applied power from motor 2. */
+    /** Get last applied power from the bottom motor. */
     public double getPower() {
-        return flywheel2.getPower();
+        return flywheelBottom.getPower();
     }
 
     /**
@@ -198,8 +200,8 @@ public class FlywheelASG {
         updateVelocity();
 
         if (targetVelocity <= 0.0) {
-            flywheel1.setPower(0.0);
-            flywheel2.setPower(0.0);
+            flywheelTop.setPower(0.0);
+            flywheelBottom.setPower(0.0);
             return;
         }
 
@@ -207,15 +209,15 @@ public class FlywheelASG {
 
         // Aggressive spin-up
         if (useBangBang && smoothedVelocity < spinUpBangBangThreshold * targetVelocity) {
-            flywheel1.setPower(-1.0);
-            flywheel2.setPower(1.0);
+            flywheelTop.setPower(-1.0);
+            flywheelBottom.setPower(1.0);
             return;
         }
 
         // Aggressive spin-down
         if (useSpinDownCut && smoothedVelocity > targetVelocity + spinDownCutThresholdRad) {
-            flywheel1.setPower(0.0);
-            flywheel2.setPower(0.0);
+            flywheelTop.setPower(0.0);
+            flywheelBottom.setPower(0.0);
             return;
         }
 
@@ -226,14 +228,14 @@ public class FlywheelASG {
         double power = feedforwardPower + (kP * error);
         power = Range.clip(power, 0.0, 1.0);
 
-        flywheel1.setPower(-power);
-        flywheel2.setPower(power);
+        flywheelTop.setPower(-power);
+        flywheelBottom.setPower(power);
     }
 
     /** Immediately stop flywheel and reset filter state. */
     public void stop() {
-        flywheel1.setPower(0.0);
-        flywheel2.setPower(0.0);
+        flywheelTop.setPower(0.0);
+        flywheelBottom.setPower(0.0);
         smoothedVelocity = 0.0;
         firstVelocitySample = true;
     }
