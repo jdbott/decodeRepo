@@ -3,6 +3,8 @@ package org.firstinspires.ftc.teamcode.hardwareClasses;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
 public class Feeder {
 
     private static final double ARM_BLOCK_POS = 0.28;
@@ -14,8 +16,8 @@ public class Feeder {
     private final Servo clutchServo;
 
     public Feeder(HardwareMap hardwareMap) {
-        armServo = hardwareMap.get(Servo.class, "armServo");
-        clutchServo = hardwareMap.get(Servo.class, "clutchServo");
+        armServo = hardwareMap.get(Servo.class, RobotConfig.FEEDER_ARM_SERVO);
+        clutchServo = hardwareMap.get(Servo.class, RobotConfig.FEEDER_CLUTCH_SERVO);
     }
 
     public void armBlock() {

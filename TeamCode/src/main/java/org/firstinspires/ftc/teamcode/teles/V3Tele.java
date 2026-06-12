@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.teles;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
 import com.pedropathing.geometry.Pose;
@@ -15,7 +17,7 @@ import org.firstinspires.ftc.teamcode.AllianceMirror;
 import org.firstinspires.ftc.teamcode.AllianceStore;
 import org.firstinspires.ftc.teamcode.AutoStartStore;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
-import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
@@ -31,7 +33,7 @@ public class V3Tele extends LinearOpMode {
     private Turret turret;
 
     private Intake intake;
-    private FlywheelASG flywheel;
+    private Flywheel flywheel;
 
     private boolean isRedAlliance = false;
 
@@ -184,7 +186,7 @@ public class V3Tele extends LinearOpMode {
         feeder = new Feeder(hardwareMap);
 
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
-        flywheel = new FlywheelASG(hardwareMap, battery);
+        flywheel = new Flywheel(hardwareMap, battery);
 
         isRedAlliance = AllianceStore.isRed(hardwareMap.appContext);
         boolean isCloseAuto = AutoStartStore.isClose(hardwareMap.appContext);
@@ -202,8 +204,7 @@ public class V3Tele extends LinearOpMode {
         follower.setMaxPower(1);
         follower.startTeleOpDrive();
 
-        turret = new Turret();
-        turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.REVERSE);
+        turret = new Turret(hardwareMap, RobotConfig.TURRET_MOTOR, DcMotorSimple.Direction.REVERSE);
 
         feeder.clutchOut();
         feeder.armBlock();

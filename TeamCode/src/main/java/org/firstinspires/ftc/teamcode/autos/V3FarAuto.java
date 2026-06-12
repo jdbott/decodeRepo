@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.autos;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierCurve;
 import com.pedropathing.geometry.BezierLine;
@@ -16,7 +18,7 @@ import org.firstinspires.ftc.teamcode.AllianceMirror;
 import org.firstinspires.ftc.teamcode.AllianceStore;
 import org.firstinspires.ftc.teamcode.AutoStartStore;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
-import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
@@ -31,7 +33,7 @@ public class V3FarAuto extends LinearOpMode {
     private Follower follower;
     private Turret turret;
     private Intake intake;
-    private FlywheelASG flywheel;
+    private Flywheel flywheel;
 
     private boolean isRedAlliance = false;
 
@@ -143,15 +145,14 @@ public class V3FarAuto extends LinearOpMode {
         feeder = new Feeder(hardwareMap);
 
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
-        flywheel = new FlywheelASG(hardwareMap, battery);
+        flywheel = new Flywheel(hardwareMap, battery);
 
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
         follower.updatePose();
         follower.setMaxPower(1.0);
 
-        turret = new Turret();
-        turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.REVERSE);
+        turret = new Turret(hardwareMap, RobotConfig.TURRET_MOTOR, DcMotorSimple.Direction.REVERSE);
 
         buildBasePaths();
 

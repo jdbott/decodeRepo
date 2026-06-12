@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.tuners;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
 import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -22,13 +24,13 @@ public class FeedForwardTuner extends LinearOpMode {
 
     @Override
     public void runOpMode() {
-        DcMotorEx flywheel = hardwareMap.get(DcMotorEx.class, "shootTop");
-        flywheel.setDirection(DcMotorSimple.Direction.REVERSE);
-        DcMotorEx flywheel2 = hardwareMap.get(DcMotorEx.class, "shootBottom");
+        DcMotorEx flywheelTop = hardwareMap.get(DcMotorEx.class, RobotConfig.FLYWHEEL_TOP);
+        flywheelTop.setDirection(DcMotorSimple.Direction.REVERSE);
+        DcMotorEx flywheelBottom = hardwareMap.get(DcMotorEx.class, RobotConfig.FLYWHEEL_BOTTOM);
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
 
-        flywheel.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
-        flywheel.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.FLOAT);
+        flywheelTop.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
+        flywheelTop.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.FLOAT);
 
         telemetry.addLine("Feedforward Tuner Ready");
         telemetry.addLine("Ensure flywheel can spin safely");
@@ -43,11 +45,11 @@ public class FeedForwardTuner extends LinearOpMode {
 
         // Sweep through power stepse
         for (double power : POWER_STEPS) {
-            flywheel.setPower(-power);
-            flywheel2.setPower(power);
+            flywheelTop.setPower(-power);
+            flywheelBottom.setPower(power);
             sleep((long)(WAIT_TIME * 1000));
 
-            double velTicks = flywheel.getVelocity();
+            double velTicks = flywheelTop.getVelocity();
             double velRad = -velTicks * 2 * Math.PI / 28.0;
             double velRPM = -velRad * 60 / (2 * Math.PI);
 
@@ -62,8 +64,8 @@ public class FeedForwardTuner extends LinearOpMode {
             telemetry.update();
         }
 
-        flywheel.setPower(0);
-        flywheel2.setPower(0);
+        flywheelTop.setPower(0);
+        flywheelBottom.setPower(0);
         // Linear regression: power = kV*ω + kS
         double meanVel = velocitiesRad.stream().mapToDouble(Double::doubleValue).average().orElse(0);
         double meanPower = powers.stream().mapToDouble(Double::doubleValue).average().orElse(0);
