@@ -6,21 +6,21 @@ Guidance for Claude Code when working in this repository. This is an **FTC (FIRS
 
 - **All real code is in `TeamCode/`** — specifically `TeamCode/src/main/java/org/firstinspires/ftc/teamcode/`.
 - **Do not touch `FtcRobotController/`** unless explicitly asked. It is the stock FTC SDK app module — not our code.
-- `build.dependencies.gradle` holds dependencies (FTC SDK, `com.pedropathing:ftc`, bylazar panels). `pedroPathing/constants/` holds Pedro's `Constants`/`Tuning`.
+- `build.dependencies.gradle` holds dependencies (FTC SDK, `com.pedropathing:ftc`, bylazar panels). `pedroPathing/` holds Pedro's `Constants` and `Tuning` directly (no subpackages).
 
 ## Package layout (`.../teamcode/`)
 
 | Package | Contents |
 |---|---|
-| (root) | Primary teleops (`V3Tele`), alliance/start selectors & stores (`AllianceStore`, `AllianceMirror`, `AutoStartStore`), shared calc (`ShootingCalc`, `ShootOnMove`) |
+| (root) | Alliance/start selectors & stores (`AllianceStore`, `AllianceMirror`, `AutoStartStore`, `AllianceSelectorTeleOp`, `CloseFarSelectorTeleOp`) |
 | `hardwareClasses/` | Subsystem/hardware wrapper classes (see glossary) |
-| `autos/` | Autonomous opmodes (`V3Auto`, States autos); `autos/legacy/` older ones |
-| `teles/` | Additional teleops / scrimmage variants |
-| `tuners/` | Gain/feedforward tuning opmodes |
-| `modernTests/`, `randomTests/` | Test/bring-up opmodes |
-| `vision/limelight/`, `vision/opencv/` | Vision (Limelight, OpenCV ball detection) |
+| `autos/` | Autonomous opmodes (`V3Auto`, `V3FarAuto`, `V3ClosePartner`) |
+| `teles/` | Primary teleop (`V3Tele`) |
+| `tuners/` | Gain/feedforward tuning opmodes (`FeedForwardTuner`, `FlywheelKpTuner`, `ManualControl`) |
+| `modernTests/` | Bring-up/test opmodes (`FlywheelASGTest`) |
+| `pedroPathing/` | Pedro Pathing `Constants` and `Tuning` |
 
-Nothing here is treated as off-limits "scratch" — any file may be live. If you're unsure whether something is current, ask rather than assuming.
+The codebase was swept clean of prior-season and superseded files (old V2 teleops, legacy autos, OpenCV/older vision pipelines, duplicate subsystem classes, dead tuners/tests). A full snapshot of everything removed is preserved at git tag `season-2025-decode-archive` if old code is ever needed for reference. Nothing in the current tree is off-limits "scratch" — any file may be live. If you're unsure whether something is current, ask rather than assuming.
 
 ## Conventions
 
@@ -30,7 +30,8 @@ Nothing here is treated as off-limits "scratch" — any file may be live. If you
 
 **Hardware classes (`hardwareClasses/`)**
 - For **new** hardware classes, use **constructor injection**: take `HardwareMap` (and any deps like `VoltageSensor`) in the constructor so the object is ready to use after construction — follow `FlywheelASG`, not `Turret`'s separate `init()` method.
-- **Device names are string literals** (e.g. `"shootTop"`, `"intakeMotor"`, `"hoodServo"`) passed to `hardwareMap.get(...)`. There is **no central config file** — reuse the exact names already used in existing opmodes (grep `V3Tele`/`V3Auto`). **Never invent a new device name**; if you need one that doesn't exist yet, ask.
+- **Device names are string literals** (e.g. `"shootTop"`/`"shootBottom"`, `"intake_motor"`, `"hoodServo"`, `"armServo"`/`"clutchServo"`) passed to `hardwareMap.get(...)`. There is **no central config file** — reuse the exact names already used in existing opmodes (grep `V3Tele`/`V3Auto`). **Never invent a new device name**; if you need one that doesn't exist yet, ask.
+- **Naming new hardware classes**: use plain, simple subsystem names (`Hood`, `Feeder`, `Intake`) — don't append suffixes like `ASG` unless asked. If the name would collide with an existing class, ask Jason how he wants to disambiguate rather than picking a suffix yourself.
 
 **Units & control gains (enforce these)**
 - Flywheel/angular velocity: **rad/s**
@@ -49,18 +50,11 @@ Nothing here is treated as off-limits "scratch" — any file may be live. If you
 
 > The robot shoots game "artifacts" into a goal: an intake feeds a flywheel shooter aimed by a turret + adjustable hood. This list will go stale as new mechanisms/classes are added — update it when that happens.
 
-- **`FlywheelASG` / `Shooter` / `ShooterV2`** — shooter flywheel(s). `FlywheelASG` is the current velocity-controlled flywheel (rad/s, kP + kV/kS feedforward, bang-bang spin-up). `shootTop`/`shootBottom` motors.
+- **`FlywheelASG`** — shooter flywheel(s); velocity-controlled (rad/s, kP + kV/kS feedforward, bang-bang spin-up). `shootTop`/`shootBottom` motors.
 - **`Turret`** — rotates the shooter to aim at the goal (degrees, ±180).
-- **`HoodKinematics`** — adjustable hood angle (launch angle) via servo; maps hood angle → servo position.
-- **`Intake`** — intake motor that pulls in artifacts.
-- **`BasePlate` / `BasePlateFast`** — popper servos (`popperFront`/`popperMiddle`) that feed artifacts up into the shooter.
-- **`Gantry`** — preset-position mechanism (`gantry1`/`gantry2`).
-- **`Pivot`** — angled-position mechanism with position correction.
-- **`LinearSlide`** — extending slides (zeroing, max-extension in inches).
-- **`Diffy`** — differential (two-servo) mechanism mixing pitch/roll.
-- **`Linkage`** — linkage mechanism.
-- **`ServoController`** — closed-loop (kP/kD) controller for a servo with zeroing.
-- **`ColorV3`** — REV V3 color/proximity sensor (artifact detection/sorting).
+- **`Hood`** — adjustable hood angle (launch angle) via servo; maps hood angle → servo position (`hoodServo`).
+- **`Intake`** — intake motor that pulls in artifacts (`intake_motor`).
+- **`Feeder`** — arm/clutch mechanism (`armServo`/`clutchServo`) that feeds artifacts toward the shooter.
 
 ## Build & git
 

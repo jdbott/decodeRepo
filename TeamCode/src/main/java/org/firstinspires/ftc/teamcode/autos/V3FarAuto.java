@@ -7,9 +7,7 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
@@ -17,20 +15,22 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.teamcode.AllianceMirror;
 import org.firstinspires.ftc.teamcode.AllianceStore;
 import org.firstinspires.ftc.teamcode.AutoStartStore;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
-import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 @Autonomous(name = "Far Auto Simple")
 public class V3FarAuto extends LinearOpMode {
 
-    private Servo hoodServo;
-    private Servo armServo;
-    private Servo clutchServo;
+    private Hood hood;
+    private Feeder feeder;
 
     private Follower follower;
     private Turret turret;
-    private DcMotorEx intakeMotor;
+    private Intake intake;
     private FlywheelASG flywheel;
 
     private boolean isRedAlliance = false;
@@ -137,12 +137,10 @@ public class V3FarAuto extends LinearOpMode {
         lastLinePose = p(LAST_LINE_X, LAST_LINE_Y, 180.0);
 
         // ----- Hardware -----
-        intakeMotor = hardwareMap.get(DcMotorEx.class, "intake_motor");
-        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        intake = new Intake(hardwareMap);
 
-        hoodServo = hardwareMap.get(Servo.class, "hoodServo");
-        armServo = hardwareMap.get(Servo.class, "armServo");
-        clutchServo = hardwareMap.get(Servo.class, "clutchServo");
+        hood = new Hood(hardwareMap);
+        feeder = new Feeder(hardwareMap);
 
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
         flywheel = new FlywheelASG(hardwareMap, battery);
@@ -158,11 +156,11 @@ public class V3FarAuto extends LinearOpMode {
         buildBasePaths();
 
         // ----- Initial mechanism state -----
-        intakeMotor.setPower(0.0);
+        intake.setPower(0.0);
         flywheel.stop();
-        clutchIn();
-        armBlock();
-        setHoodAngle(FIXED_HOOD_DEG);
+        feeder.clutchIn();
+        feeder.armBlock();
+        hood.setAngle(FIXED_HOOD_DEG);
 
         telemetry.addLine("Far Auto Simple Initialized");
         telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
@@ -186,7 +184,7 @@ public class V3FarAuto extends LinearOpMode {
         if (isStopRequested()) return;
 
         // ----- On start -----
-        setHoodAngle(FIXED_HOOD_DEG);
+        hood.setAngle(FIXED_HOOD_DEG);
         flywheel.setTargetVelocity(FIXED_FLYWHEEL_RAD);
 
         stateTimer.reset();
@@ -223,7 +221,7 @@ public class V3FarAuto extends LinearOpMode {
         }
 
         flywheel.stop();
-        intakeMotor.setPower(0.0);
+        intake.setPower(0.0);
     }
 
     private double getTargetX() {
@@ -325,7 +323,7 @@ public class V3FarAuto extends LinearOpMode {
     private void updateAutoState() {
         switch (autoState) {
             case WAIT_INITIAL_DELAY:
-                intakeMotor.setPower(0.0);
+                intake.setPower(0.0);
                 if (stateTimer.seconds() >= FIRST_SHOT_DELAY_SEC) {
                     startFeedSequence();
                     autoState = AutoState.SHOOT_FIRST;
@@ -334,9 +332,9 @@ public class V3FarAuto extends LinearOpMode {
 
             case SHOOT_FIRST:
                 if (feedState == FeedState.DONE) {
-                    clutchOut();
-                    armBlock();
-                    intakeMotor.setPower(0.0);
+                    feeder.clutchOut();
+                    feeder.armBlock();
+                    intake.setPower(0.0);
 
                     follower.followPath(toLastLine, false);
                     autoState = AutoState.DRIVE_TO_LAST_LINE;
@@ -359,18 +357,18 @@ public class V3FarAuto extends LinearOpMode {
 
             case SHOOT_SECOND:
                 if (feedState == FeedState.DONE) {
-                    clutchOut();
-                    armBlock();
+                    feeder.clutchOut();
+                    feeder.armBlock();
 
                     buildCyclePathsForCurrentCycle();
                     follower.followPath(toIntake1, false);
-                    intakeMotor.setPower(1.0);
+                    intake.setPower(1.0);
                     autoState = AutoState.DRIVE_TO_INTAKE1;
                 }
                 break;
 
             case DRIVE_TO_INTAKE1:
-                intakeMotor.setPower(1.0);
+                intake.setPower(1.0);
                 if (!follower.isBusy()) {
                     follower.followPath(backupFromIntake1, true);
                     autoState = AutoState.BACK_UP_FROM_INTAKE1;
@@ -378,7 +376,7 @@ public class V3FarAuto extends LinearOpMode {
                 break;
 
             case BACK_UP_FROM_INTAKE1:
-                intakeMotor.setPower(1.0);
+                intake.setPower(1.0);
                 if (!follower.isBusy()) {
                     follower.followPath(backToShoot2, true);
                     autoState = AutoState.DRIVE_BACK_TO_SHOOT_AGAIN;
@@ -386,7 +384,7 @@ public class V3FarAuto extends LinearOpMode {
                 break;
 
             case DRIVE_BACK_TO_SHOOT_AGAIN:
-                intakeMotor.setPower(1.0);
+                intake.setPower(1.0);
                 if (!follower.isBusy()) {
                     startFeedSequence();
                     autoState = AutoState.SHOOT_REPEAT;
@@ -395,18 +393,18 @@ public class V3FarAuto extends LinearOpMode {
 
             case SHOOT_REPEAT:
                 if (feedState == FeedState.DONE) {
-                    clutchOut();
-                    armBlock();
+                    feeder.clutchOut();
+                    feeder.armBlock();
 
                     extraCycleCount++;
 
                     if (extraCycleCount < 4) {
                         buildCyclePathsForCurrentCycle();
                         follower.followPath(toIntake1, false);
-                        intakeMotor.setPower(1.0);
+                        intake.setPower(1.0);
                         autoState = AutoState.DRIVE_TO_INTAKE1;
                     } else {
-                        intakeMotor.setPower(0.0);
+                        intake.setPower(0.0);
                         autoState = AutoState.DONE;
 
                         Pose currentPose = follower.getPose();
@@ -426,15 +424,15 @@ public class V3FarAuto extends LinearOpMode {
                 break;
 
             case DONE:
-                intakeMotor.setPower(0.0);
+                intake.setPower(0.0);
                 turret.setAngle(0.0);
                 break;
         }
     }
 
     private void startFeedSequence() {
-        armShoot();
-        clutchIn();
+        feeder.armShoot();
+        feeder.clutchIn();
         feedTimer.reset();
         feedState = FeedState.WAIT_BEFORE_INTAKE;
     }
@@ -442,9 +440,9 @@ public class V3FarAuto extends LinearOpMode {
     private void updateFeedSequence() {
         if (reversingIntake) {
             if (reverseTimer.seconds() < REVERSE_TIME_SEC) {
-                intakeMotor.setPower(-1.0);
+                intake.setPower(-1.0);
             } else {
-                intakeMotor.setPower(1.0);
+                intake.setPower(1.0);
                 reversingIntake = false;
             }
         }
@@ -454,9 +452,9 @@ public class V3FarAuto extends LinearOpMode {
                 break;
 
             case WAIT_BEFORE_INTAKE:
-                intakeMotor.setPower(0.0);
+                intake.setPower(0.0);
                 if (feedTimer.seconds() >= FEED_START_DELAY_SEC) {
-                    intakeMotor.setPower(1.0);
+                    intake.setPower(1.0);
                     feedState = FeedState.RUN_INTAKE;
                 }
                 break;
@@ -466,8 +464,8 @@ public class V3FarAuto extends LinearOpMode {
                     reversingIntake = true;
                     reverseTimer.reset();
 
-                    intakeMotor.setPower(0.0);
-                    clutchOut();
+                    intake.setPower(0.0);
+                    feeder.clutchOut();
                     feedState = FeedState.DONE;
                 }
                 break;
@@ -524,36 +522,5 @@ public class V3FarAuto extends LinearOpMode {
         }
 
         return best;
-    }
-
-    public void clutchIn() {
-        clutchServo.setPosition(0.48);
-    }
-
-    public void clutchOut() {
-        clutchServo.setPosition(0.52);
-    }
-
-    public void armBlock() {
-        armServo.setPosition(0.28);
-    }
-
-    public void armShoot() {
-        armServo.setPosition(0.42);
-    }
-
-    public void setHoodAngle(double angleDeg) {
-        final double MIN_ANGLE = 30.0;
-        final double MAX_ANGLE = 60.0;
-
-        final double MIN_POS = 0.42;
-        final double MAX_POS = 0.95;
-
-        double clippedAngle = Math.max(MIN_ANGLE, Math.min(MAX_ANGLE, angleDeg));
-        double t = (clippedAngle - MIN_ANGLE) / (MAX_ANGLE - MIN_ANGLE);
-        double pos = MIN_POS + t * (MAX_POS - MIN_POS);
-        pos = Math.max(MIN_POS, Math.min(MAX_POS, pos));
-
-        hoodServo.setPosition(pos);
     }
 }

@@ -1,4 +1,4 @@
-package org.firstinspires.ftc.teamcode;
+package org.firstinspires.ftc.teamcode.teles;
 
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierLine;
@@ -6,28 +6,31 @@ import com.pedropathing.geometry.Pose;
 import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
+import org.firstinspires.ftc.teamcode.AllianceMirror;
+import org.firstinspires.ftc.teamcode.AllianceStore;
+import org.firstinspires.ftc.teamcode.AutoStartStore;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
-import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 @TeleOp(name = "A V3 Tele")
 public class V3Tele extends LinearOpMode {
 
-    private Servo hoodServo;
-    private Servo armServo;
-    private Servo clutchServo;
+    private Hood hood;
+    private Feeder feeder;
 
     private Follower follower;
     private Turret turret;
 
-    private DcMotorEx intakeMotor;
+    private Intake intake;
     private FlywheelASG flywheel;
 
     private boolean isRedAlliance = false;
@@ -175,12 +178,10 @@ public class V3Tele extends LinearOpMode {
 
     @Override
     public void runOpMode() {
-        intakeMotor = hardwareMap.get(DcMotorEx.class, "intake_motor");
-        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        intake = new Intake(hardwareMap);
 
-        hoodServo = hardwareMap.get(Servo.class, "hoodServo");
-        armServo = hardwareMap.get(Servo.class, "armServo");
-        clutchServo = hardwareMap.get(Servo.class, "clutchServo");
+        hood = new Hood(hardwareMap);
+        feeder = new Feeder(hardwareMap);
 
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
         flywheel = new FlywheelASG(hardwareMap, battery);
@@ -204,9 +205,9 @@ public class V3Tele extends LinearOpMode {
         turret = new Turret();
         turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.REVERSE);
 
-        clutchOut();
-        armBlock();
-        intakeMotor.setPower(0.0);
+        feeder.clutchOut();
+        feeder.armBlock();
+        intake.setPower(0.0);
 
         telemetry.addLine("Initialized");
         telemetry.addLine("Clutch out, arm blocked, intake off");
@@ -237,7 +238,7 @@ public class V3Tele extends LinearOpMode {
         waitForStart();
         if (isStopRequested()) return;
 
-        intakeMotor.setPower(1);
+        intake.setPower(1);
         flywheel.setTargetVelocity(targetVelocityRad);
 
         while (opModeIsActive()) {
@@ -291,7 +292,7 @@ public class V3Tele extends LinearOpMode {
                 hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
 //    handleHoodAdjustment();
 //    handleFlywheelAdjustment();
-                setHoodAngle(hoodAngleDeg);
+                hoodAngleDeg = hood.setAngle(hoodAngleDeg);
                 baseTurretAngleOffsetDeg = 1;
             } else {
                 double lookupDistance = predictedDistanceInitialized
@@ -328,7 +329,7 @@ public class V3Tele extends LinearOpMode {
         }
 
         flywheel.stop();
-        intakeMotor.setPower(0.0);
+        intake.setPower(0.0);
     }
 
     private double getTargetX() {
@@ -656,11 +657,11 @@ public class V3Tele extends LinearOpMode {
 
             if (feedState == FeedState.IDLE || feedState == FeedState.DONE) {
                 if (intakeToggleOn) {
-                    clutchOut();
-                    armBlock();
-                    intakeMotor.setPower(1.0);
+                    feeder.clutchOut();
+                    feeder.armBlock();
+                    intake.setPower(1.0);
                 } else {
-                    intakeMotor.setPower(0.0);
+                    intake.setPower(0.0);
                 }
             }
         }
@@ -678,10 +679,10 @@ public class V3Tele extends LinearOpMode {
 
         if (bPressed && !lastB) {
             intakeToggleOn = false;
-            intakeMotor.setPower(0.0);
+            intake.setPower(0.0);
 
-            armShoot();
-            clutchIn();
+            feeder.armShoot();
+            feeder.clutchIn();
 
             sequenceTimer.reset();
             feedState = FeedState.WAIT_BEFORE_INTAKE;
@@ -697,7 +698,7 @@ public class V3Tele extends LinearOpMode {
 
             case WAIT_BEFORE_INTAKE:
                 if (sequenceTimer.seconds() >= 0.1) {
-                    intakeMotor.setPower(1.0);
+                    intake.setPower(1.0);
                     sequenceTimer.reset();
                     feedState = FeedState.RUN_INTAKE;
                 }
@@ -705,9 +706,9 @@ public class V3Tele extends LinearOpMode {
 
             case RUN_INTAKE:
                 if (sequenceTimer.seconds() >= 0.9) {
-                    intakeMotor.setPower(1);
-                    clutchOut();
-                    armBlock();
+                    intake.setPower(1);
+                    feeder.clutchOut();
+                    feeder.armBlock();
                     feedState = FeedState.DONE;
                 }
                 break;
@@ -925,12 +926,12 @@ public class V3Tele extends LinearOpMode {
 
         if (dpadUpPressed && !lastDpadUp) {
             hoodAngleDeg += 1.0;
-            setHoodAngle(hoodAngleDeg);
+            hoodAngleDeg = hood.setAngle(hoodAngleDeg);
         }
 
         if (dpadDownPressed && !lastDpadDown) {
             hoodAngleDeg -= 1.0;
-            setHoodAngle(hoodAngleDeg);
+            hoodAngleDeg = hood.setAngle(hoodAngleDeg);
         }
 
         lastDpadUp = dpadUpPressed;
@@ -978,7 +979,7 @@ public class V3Tele extends LinearOpMode {
         if (distance <= shotTable[0][0]) {
             hoodAngleDeg = shotTable[0][1];
             targetVelocityRad = shotTable[0][2];
-            setHoodAngle(hoodAngleDeg);
+            hoodAngleDeg = hood.setAngle(hoodAngleDeg);
             return;
         }
 
@@ -986,7 +987,7 @@ public class V3Tele extends LinearOpMode {
         if (distance >= shotTable[last][0]) {
             hoodAngleDeg = shotTable[last][1];
             targetVelocityRad = shotTable[last][2];
-            setHoodAngle(hoodAngleDeg);
+            hoodAngleDeg = hood.setAngle(hoodAngleDeg);
             return;
         }
 
@@ -1005,42 +1006,9 @@ public class V3Tele extends LinearOpMode {
                 hoodAngleDeg = a1 + t * (a2 - a1);
                 targetVelocityRad = v1 + t * (v2 - v1) + 8;
 
-                setHoodAngle(hoodAngleDeg);
+                hoodAngleDeg = hood.setAngle(hoodAngleDeg);
                 return;
             }
         }
-    }
-
-    public void clutchIn() {
-        clutchServo.setPosition(0.48);
-    }
-
-    public void clutchOut() {
-        clutchServo.setPosition(0.52);
-    }
-
-    public void armBlock() {
-        armServo.setPosition(.28);
-    }
-
-    public void armShoot() {
-        armServo.setPosition(0.42);
-    }
-
-    public void setHoodAngle(double angleDeg) {
-        final double MIN_ANGLE = 30.0;
-        final double MAX_ANGLE = 60.0;
-
-        final double MIN_POS = 0.42;
-        final double MAX_POS = 0.95;
-
-        hoodAngleDeg = Math.max(MIN_ANGLE, Math.min(MAX_ANGLE, angleDeg));
-
-        double t = (hoodAngleDeg - MIN_ANGLE) / (MAX_ANGLE - MIN_ANGLE);
-        double pos = MIN_POS + t * (MAX_POS - MIN_POS);
-
-        pos = Math.max(MIN_POS, Math.min(MAX_POS, pos));
-
-        hoodServo.setPosition(pos);
     }
 }
