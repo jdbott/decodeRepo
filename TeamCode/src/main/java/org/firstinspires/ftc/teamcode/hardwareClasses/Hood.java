@@ -3,6 +3,8 @@ package org.firstinspires.ftc.teamcode.hardwareClasses;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.hardware.Servo;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
 public class Hood {
 
     private static final double MIN_ANGLE_DEG = 30.0;
@@ -14,7 +16,7 @@ public class Hood {
     private final Servo hoodServo;
 
     public Hood(HardwareMap hardwareMap) {
-        hoodServo = hardwareMap.get(Servo.class, "hoodServo");
+        hoodServo = hardwareMap.get(Servo.class, RobotConfig.HOOD_SERVO);
     }
 
     /** Sets the hood to the given launch angle (deg), clamped to range, and returns the clamped angle. */

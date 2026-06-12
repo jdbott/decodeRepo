@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.pedroPathing;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
 import com.pedropathing.control.FilteredPIDFCoefficients;
 import com.pedropathing.control.PIDFCoefficients;
 import com.pedropathing.follower.Follower;
@@ -33,10 +35,10 @@ public class Constants {
     //.predictiveBrakingCoefficients(new PredictiveBrakingCoefficients(0.15, 0.146551085, 0.000622545779));
 
     public static MecanumConstants driveConstants = new MecanumConstants()
-            .leftFrontMotorName("leftFront")
-            .leftRearMotorName("leftBack")
-            .rightFrontMotorName("rightFront")
-            .rightRearMotorName("rightBack")
+            .leftFrontMotorName(RobotConfig.DRIVE_LEFT_FRONT)
+            .leftRearMotorName(RobotConfig.DRIVE_LEFT_BACK)
+            .rightFrontMotorName(RobotConfig.DRIVE_RIGHT_FRONT)
+            .rightRearMotorName(RobotConfig.DRIVE_RIGHT_BACK)
             .leftFrontMotorDirection(DcMotorSimple.Direction.FORWARD)
             .leftRearMotorDirection(DcMotorSimple.Direction.FORWARD)
             .rightFrontMotorDirection(DcMotorSimple.Direction.REVERSE)
@@ -51,7 +53,7 @@ public class Constants {
             .forwardPodY(-3)
             .strafePodX(-5.46)
             .distanceUnit(DistanceUnit.INCH)
-            .hardwareMapName("pinpoint")
+            .hardwareMapName(RobotConfig.PINPOINT)
             .yawScalar(1.0)
             .encoderResolution(
                     GoBildaPinpointDriver.GoBildaOdometryPods.goBILDA_4_BAR_POD

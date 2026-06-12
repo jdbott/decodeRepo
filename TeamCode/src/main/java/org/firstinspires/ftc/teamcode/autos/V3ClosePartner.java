@@ -1,5 +1,7 @@
 package org.firstinspires.ftc.teamcode.autos;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
 import com.pedropathing.follower.Follower;
 import com.pedropathing.geometry.BezierCurve;
 import com.pedropathing.geometry.BezierLine;
@@ -17,7 +19,7 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.teamcode.AllianceMirror;
 import org.firstinspires.ftc.teamcode.AllianceStore;
 import org.firstinspires.ftc.teamcode.AutoStartStore;
-import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
@@ -31,7 +33,7 @@ public class V3ClosePartner extends LinearOpMode {
     private Follower follower;
     private Turret turret;
     private DcMotorEx intakeMotor;
-    private FlywheelASG flywheel;
+    private Flywheel flywheel;
 
     private boolean isRedAlliance = false;
 
@@ -172,23 +174,22 @@ public class V3ClosePartner extends LinearOpMode {
         );
         startPose = AllianceMirror.mirrorPose(blueStartPose, isRedAlliance);
 
-        intakeMotor = hardwareMap.get(DcMotorEx.class, "intake_motor");
+        intakeMotor = hardwareMap.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR);
         intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
-        hoodServo = hardwareMap.get(Servo.class, "hoodServo");
-        armServo = hardwareMap.get(Servo.class, "armServo");
-        clutchServo = hardwareMap.get(Servo.class, "clutchServo");
+        hoodServo = hardwareMap.get(Servo.class, RobotConfig.HOOD_SERVO);
+        armServo = hardwareMap.get(Servo.class, RobotConfig.FEEDER_ARM_SERVO);
+        clutchServo = hardwareMap.get(Servo.class, RobotConfig.FEEDER_CLUTCH_SERVO);
 
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
-        flywheel = new FlywheelASG(hardwareMap, battery);
+        flywheel = new Flywheel(hardwareMap, battery);
 
         follower = Constants.createFollower(hardwareMap);
         follower.setStartingPose(startPose);
         follower.updatePose();
         follower.setMaxPower(1.0);
 
-        turret = new Turret();
-        turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.REVERSE);
+        turret = new Turret(hardwareMap, RobotConfig.TURRET_MOTOR, DcMotorSimple.Direction.REVERSE);
 
         double blueFirstShotX = START_X + 35 * Math.cos(Math.toRadians(START_HEADING_DEG));
         double blueFirstShotY = START_Y + 55.0 * Math.sin(Math.toRadians(START_HEADING_DEG));

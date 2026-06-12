@@ -4,28 +4,30 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
 public class Intake {
 
-    private final DcMotorEx motor;
+    private final DcMotorEx intakeMotor;
 
     public Intake(HardwareMap hardwareMap) {
-        motor = hardwareMap.get(DcMotorEx.class, "intake_motor");
-        motor.setDirection(DcMotorSimple.Direction.REVERSE);
+        intakeMotor = hardwareMap.get(DcMotorEx.class, RobotConfig.INTAKE_MOTOR);
+        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
     }
 
     public void setPower(double power) {
-        motor.setPower(power);
+        intakeMotor.setPower(power);
     }
 
     public void in() {
-        motor.setPower(1.0);
+        intakeMotor.setPower(1.0);
     }
 
     public void out() {
-        motor.setPower(-1.0);
+        intakeMotor.setPower(-1.0);
     }
 
     public void stop() {
-        motor.setPower(0.0);
+        intakeMotor.setPower(0.0);
     }
 }

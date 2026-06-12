@@ -5,13 +5,13 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 
-import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 @Disabled
 
 @TeleOp(name = "Flywheel Feedforward + kP Test", group = "Flywheel Testing")
-public class FlywheelASGTest extends LinearOpMode {
+public class FlywheelTest extends LinearOpMode {
 
-    private FlywheelASG flywheel;
+    private Flywheel flywheel;
 
     // Example target velocity (rad/s)
     private double targetVelocityRad = 250;
@@ -19,7 +19,7 @@ public class FlywheelASGTest extends LinearOpMode {
     @Override
     public void runOpMode() {
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
-        flywheel = new FlywheelASG(hardwareMap, battery);
+        flywheel = new Flywheel(hardwareMap, battery);
 
         // Set feedforward and kP
         flywheel.setTargetVelocity(targetVelocityRad);
