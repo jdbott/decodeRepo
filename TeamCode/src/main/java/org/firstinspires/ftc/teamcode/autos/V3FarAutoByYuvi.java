@@ -46,8 +46,8 @@ public class V3FarAutoByYuvi extends OpMode {
 
     /* ===== Timing ===== */
     private static final double FIRST_SHOT_DELAY_SEC = 2.5;
-    private static final double SHOOT_PAUSE_MS = 1500.0;   // Standard shooting stops
-    private static final double GATE_WAIT_MS = 2500.0;     // Gate collection (no shot)
+    private static final double SHOOT_PAUSE_MS = 1600.0;   // Standard shooting stops
+    private static final double GATE_WAIT_MS = 2400.0;     // Gate collection (no shot)
     private static final double FLYWHEEL_TOLERANCE = 10.0;
 
     private static final double FEED_START_DELAY_SEC = 0.10;
