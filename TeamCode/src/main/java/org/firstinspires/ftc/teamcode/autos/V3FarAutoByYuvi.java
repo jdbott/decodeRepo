@@ -240,7 +240,8 @@ public class V3FarAutoByYuvi extends OpMode {
         // Seg 8 – final park line
         seg8 = follower.pathBuilder()
                 .addPath(new BezierLine(p(123.634, 34.352), p(70.553, 21.301)))
-                .setLinearHeadingInterpolation(h(0.0), h(0.0))
+                .setTangentHeadingInterpolation()
+                .setReversed()
                 .build();
     }
 
