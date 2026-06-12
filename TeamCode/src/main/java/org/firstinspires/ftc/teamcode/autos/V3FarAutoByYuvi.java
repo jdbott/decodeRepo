@@ -2,9 +2,7 @@ package org.firstinspires.ftc.teamcode.autos;
 
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
 import com.qualcomm.robotcore.eventloop.opmode.OpMode;
-import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
-import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
@@ -17,9 +15,13 @@ import com.pedropathing.paths.PathChain;
 import org.firstinspires.ftc.teamcode.AllianceMirror;
 import org.firstinspires.ftc.teamcode.AllianceStore;
 import org.firstinspires.ftc.teamcode.AutoStartStore;
-import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
+import org.firstinspires.ftc.teamcode.RobotConfig;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
-import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 @Autonomous(name = "V3 Far Auto : Yuvi Edition", group = "Autonomous")
 public class V3FarAutoByYuvi extends OpMode {
@@ -27,11 +29,10 @@ public class V3FarAutoByYuvi extends OpMode {
     /* ===== Hardware Subsystems ===== */
     private Follower follower;
     private Turret turret;
-    private FlywheelASG flywheel;
-    private DcMotorEx intakeMotor;
-    private Servo hoodServo;
-    private Servo armServo;
-    private Servo clutchServo;
+    private Flywheel flywheel;
+    private Intake intake;
+    private Hood hood;
+    private Feeder feeder;
 
     /* ===== Fixed Shot Settings ===== */
     private static final double FIXED_HOOD_DEG = 53.5;
@@ -106,28 +107,24 @@ public class V3FarAutoByYuvi extends OpMode {
         follower.updatePose();
         follower.setMaxPower(1.0);
 
-        /* -- Hardware (exact names from V3FarAuto) -- */
-        intakeMotor = hardwareMap.get(DcMotorEx.class, "intake_motor");
-        intakeMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-
-        hoodServo = hardwareMap.get(Servo.class, "hoodServo");
-        armServo = hardwareMap.get(Servo.class, "armServo");
-        clutchServo = hardwareMap.get(Servo.class, "clutchServo");
+        /* -- Hardware -- */
+        intake = new Intake(hardwareMap);
+        hood = new Hood(hardwareMap);
+        feeder = new Feeder(hardwareMap);
 
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
-        flywheel = new FlywheelASG(hardwareMap, battery);
+        flywheel = new Flywheel(hardwareMap, battery);
 
-        turret = new Turret();
-        turret.init(hardwareMap, "turretMotor", DcMotorSimple.Direction.REVERSE);
+        turret = new Turret(hardwareMap, RobotConfig.TURRET_MOTOR, DcMotorSimple.Direction.REVERSE);
 
         buildPaths();
 
         /* -- Safe defaults (exact from V3FarAuto) -- */
-        intakeMotor.setPower(0.0);
+        intake.setPower(0.0);
         flywheel.stop();
-        clutchIn();
-        armBlock();
-        setHoodAngle(FIXED_HOOD_DEG);
+        feeder.clutchIn();
+        feeder.armBlock();
+        hood.setAngle(FIXED_HOOD_DEG);
 
         telemetry.addLine("Far Auto Perfect Initialized");
         telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
@@ -151,7 +148,7 @@ public class V3FarAutoByYuvi extends OpMode {
         stateTimer.reset();
         autoState = AutoState.WAIT_INITIAL_DELAY;
 
-        setHoodAngle(FIXED_HOOD_DEG);
+        hood.setAngle(FIXED_HOOD_DEG);
         flywheel.setTargetVelocity(FIXED_FLYWHEEL_RAD);
     }
 
@@ -255,7 +252,7 @@ public class V3FarAutoByYuvi extends OpMode {
         switch (autoState) {
 
             case WAIT_INITIAL_DELAY:
-                intakeMotor.setPower(0.0);
+                intake.setPower(0.0);
                 if (stateTimer.seconds() >= FIRST_SHOT_DELAY_SEC
                         && Math.abs(flywheel.getVelocityRadPerSec() - FIXED_FLYWHEEL_RAD) < FLYWHEEL_TOLERANCE) {
                     startFeedSequence();
@@ -287,9 +284,9 @@ public class V3FarAutoByYuvi extends OpMode {
 
             /* ===== DRIVE_SEG3: Deep field push — INTAKE ON to collect balls ===== */
             case DRIVE_SEG3:
-                intakeMotor.setPower(1.0); // collect balls while pushing through field
+                intake.setPower(1.0); // collect balls while pushing through field
                 if (!follower.isBusy()) {
-                    intakeMotor.setPower(0.0);
+                    intake.setPower(0.0);
                     stateTimer.reset();
                     autoState = AutoState.PAUSE_SEG3;
                 }
@@ -310,7 +307,7 @@ public class V3FarAutoByYuvi extends OpMode {
                 double dxGate = GATE_X - follower.getPose().getX();
                 double dyGate = GATE_Y - follower.getPose().getY();
                 if (Math.hypot(dxGate, dyGate) < GATE_INTAKE_THRESHOLD) {
-                    intakeMotor.setPower(1.0);
+                    intake.setPower(1.0);
                 }
                 if (!follower.isBusy()) {
                     stateTimer.reset();
@@ -320,9 +317,9 @@ public class V3FarAutoByYuvi extends OpMode {
 
             /* ===== PAUSE_SEG5: Gate wait — 2.5s collection, NO shooting ===== */
             case PAUSE_SEG5:
-                intakeMotor.setPower(1.0); // stay on to collect from gate
+                intake.setPower(1.0); // stay on to collect from gate
                 if (stateTimer.milliseconds() >= GATE_WAIT_MS) {
-                    intakeMotor.setPower(0.0);
+                    intake.setPower(0.0);
                     resetMechanisms();
                     follower.followPath(seg6, true);
                     autoState = AutoState.DRIVE_SEG6;
@@ -338,9 +335,9 @@ public class V3FarAutoByYuvi extends OpMode {
 
             /* ===== DRIVE_SEG7: Clearance curve — INTAKE ON to collect balls ===== */
             case DRIVE_SEG7:
-                intakeMotor.setPower(1.0); // collect balls on clearance sweep
+                intake.setPower(1.0); // collect balls on clearance sweep
                 if (!follower.isBusy()) {
-                    intakeMotor.setPower(0.0);
+                    intake.setPower(0.0);
                     stateTimer.reset();
                     autoState = AutoState.PAUSE_SEG7;
                 }
@@ -361,7 +358,7 @@ public class V3FarAutoByYuvi extends OpMode {
                 break;
 
             case DONE:
-                intakeMotor.setPower(0.0);
+                intake.setPower(0.0);
                 flywheel.stop();
                 turret.setAngle(0.0);
                 break;
@@ -393,8 +390,8 @@ public class V3FarAutoByYuvi extends OpMode {
     /* ===================================================================== */
 
     private void startFeedSequence() {
-        armShoot();
-        clutchIn();
+        feeder.armShoot();
+        feeder.clutchIn();
         feedTimer.reset();
         feedState = FeedState.WAIT_BEFORE_INTAKE;
     }
@@ -402,9 +399,9 @@ public class V3FarAutoByYuvi extends OpMode {
     private void updateFeedSequence() {
         if (reversingIntake) {
             if (reverseTimer.seconds() < REVERSE_TIME_SEC) {
-                intakeMotor.setPower(-1.0);
+                intake.setPower(-1.0);
             } else {
-                intakeMotor.setPower(1.0);
+                intake.setPower(1.0);
                 reversingIntake = false;
             }
         }
@@ -415,9 +412,9 @@ public class V3FarAutoByYuvi extends OpMode {
                 break;
 
             case WAIT_BEFORE_INTAKE:
-                intakeMotor.setPower(0.0);
+                intake.setPower(0.0);
                 if (feedTimer.seconds() >= FEED_START_DELAY_SEC) {
-                    intakeMotor.setPower(1.0);
+                    intake.setPower(1.0);
                     feedState = FeedState.RUN_INTAKE;
                 }
                 break;
@@ -427,8 +424,8 @@ public class V3FarAutoByYuvi extends OpMode {
                     reversingIntake = true;
                     reverseTimer.reset();
 
-                    intakeMotor.setPower(0.0);
-                    clutchOut();
+                    intake.setPower(0.0);
+                    feeder.clutchOut();
                     feedState = FeedState.DONE;
                 }
                 break;
@@ -436,32 +433,10 @@ public class V3FarAutoByYuvi extends OpMode {
     }
 
     private void resetMechanisms() {
-        clutchOut();
-        armBlock();
-        intakeMotor.setPower(0.0);
+        feeder.clutchOut();
+        feeder.armBlock();
+        intake.setPower(0.0);
         feedState = FeedState.IDLE;
-    }
-
-    /* ===================================================================== */
-    /*  SUBSYSTEM HELPERS  (exact from V3FarAuto)                            */
-    /* ===================================================================== */
-
-    private void clutchIn()  { if (clutchServo != null) clutchServo.setPosition(0.48); }
-    private void clutchOut() { if (clutchServo != null) clutchServo.setPosition(0.52); }
-    private void armBlock()  { if (armServo != null)    armServo.setPosition(0.28); }
-    private void armShoot()  { if (armServo != null)    armServo.setPosition(0.42); }
-
-    private void setHoodAngle(double angleDeg) {
-        if (hoodServo == null) return;
-        final double MIN_ANGLE = 30.0;
-        final double MAX_ANGLE = 60.0;
-        final double MIN_POS = 0.42;
-        final double MAX_POS = 0.95;
-
-        double clipped = Math.max(MIN_ANGLE, Math.min(MAX_ANGLE, angleDeg));
-        double t = (clipped - MIN_ANGLE) / (MAX_ANGLE - MIN_ANGLE);
-        double pos = MIN_POS + t * (MAX_POS - MIN_POS);
-        hoodServo.setPosition(Math.max(MIN_POS, Math.min(MAX_POS, pos)));
     }
 
     /* ===================================================================== */
