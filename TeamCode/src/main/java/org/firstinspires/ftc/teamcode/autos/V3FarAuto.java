@@ -18,9 +18,9 @@ import org.firstinspires.ftc.teamcode.AutoStartStore;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
-import org.firstinspires.ftc.teamcode.hardwareClasses.IntakeASG;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
-import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 @Autonomous(name = "Far Auto Simple")
 public class V3FarAuto extends LinearOpMode {
@@ -30,7 +30,7 @@ public class V3FarAuto extends LinearOpMode {
 
     private Follower follower;
     private Turret turret;
-    private IntakeASG intake;
+    private Intake intake;
     private FlywheelASG flywheel;
 
     private boolean isRedAlliance = false;
@@ -137,7 +137,7 @@ public class V3FarAuto extends LinearOpMode {
         lastLinePose = p(LAST_LINE_X, LAST_LINE_Y, 180.0);
 
         // ----- Hardware -----
-        intake = new IntakeASG(hardwareMap);
+        intake = new Intake(hardwareMap);
 
         hood = new Hood(hardwareMap);
         feeder = new Feeder(hardwareMap);

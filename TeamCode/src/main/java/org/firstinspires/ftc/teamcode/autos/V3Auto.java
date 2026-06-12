@@ -16,9 +16,9 @@ import org.firstinspires.ftc.teamcode.AutoStartStore;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
-import org.firstinspires.ftc.teamcode.hardwareClasses.IntakeASG;
+import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
-import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 import org.firstinspires.ftc.teamcode.AllianceMirror;
 import org.firstinspires.ftc.teamcode.AllianceStore;
 
@@ -30,7 +30,7 @@ public class V3Auto extends LinearOpMode {
 
     private Follower follower;
     private Turret turret;
-    private IntakeASG intake;
+    private Intake intake;
     private FlywheelASG flywheel;
 
     private boolean isRedAlliance = false;
@@ -164,7 +164,7 @@ public class V3Auto extends LinearOpMode {
         );
         startPose = AllianceMirror.mirrorPose(blueStartPose, isRedAlliance);
 
-        intake = new IntakeASG(hardwareMap);
+        intake = new Intake(hardwareMap);
 
         hood = new Hood(hardwareMap);
         feeder = new Feeder(hardwareMap);

@@ -19,7 +19,7 @@ import org.firstinspires.ftc.teamcode.AllianceStore;
 import org.firstinspires.ftc.teamcode.AutoStartStore;
 import org.firstinspires.ftc.teamcode.hardwareClasses.FlywheelASG;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
-import org.firstinspires.ftc.teamcode.pedroPathing.constants.Constants;
+import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
 @Autonomous(name = "V3 Auto FSM Triple Gate Corrected")
 public class V3ClosePartner extends LinearOpMode {
