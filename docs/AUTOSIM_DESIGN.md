@@ -563,8 +563,43 @@ A few implementation choices refined the plan (all reversible, none touch the ro
   [`dist/autosim-V3FarAuto.html`](../autosim/dist/autosim-V3FarAuto.html). Verified headless
   with the Android Studio JBR: 9 paths, 57 sampled points, bbox x[12.5..64.1] y[6.8..38.0],
   all inside the 144″ field; placeholders fully substituted and the field image inlined.
-- **Deferred to later phases (unchanged):** the `SimClock`/`SimFollower`/two-FSM playback
-  (Phase 2) and the data-driven action overlays with real durations (Phase 3). The effect
-  profile, alliance mirror, field-image upload, and opacity controls are already wired in
-  the viewer so those phases only add data.
+- **Deferred to later phases:** Phase 2 (playback) is now built — see §13. Phase 3
+  (data-driven action overlays with real durations) is still pending; the effect profile,
+  alliance mirror, field-image upload, and opacity controls are already wired in the viewer
+  so it only adds event data.
+
+---
+
+## 13. Phase 2 — as built (2026-06-13)
+
+Kinematic playback is implemented. The whole auto now runs headless on a virtual clock and
+the viewer animates it.
+
+- **Virtual time:** [`SimClock`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/sim/SimClock.java)
+  advances a fixed **20 ms** tick; [`SimStopwatch`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/sim/SimStopwatch.java)
+  replaces `ElapsedTime` (reads the clock), so the 3 s delay / 1 s feed / 0.25 s reverse are
+  *simulated*, not slept.
+- **Kinematic follower:** [`SimFollower`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/sim/SimFollower.java)
+  — coarse point-mass with a trapezoidal accel/cruise/decel profile over the path arc length;
+  `isBusy()` true until arrival; pose interpolated along the polyline. **Tuning (the one
+  judgment call): `CRUISE = 55 in/s`, `ACCEL = 80 in/s²`** — chosen for plausible total time,
+  seeded near Pedro's measured caps, and isolated in this one swappable class. They set the
+  drive durations; nudge them if you want the sim to match a stopwatch of the real robot.
+- **Recording stubs:** `SimIntake/SimFlywheel/SimTurret/SimHood/SimFeeder` mirror the real
+  hardware surfaces; the flywheel has a coarse first-order spin-up for a believable actual rad/s.
+- **Full two-FSM copy:** [`V3FarAutoSim`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/autos/V3FarAutoSim.java)
+  now reproduces both FSMs (`AutoState` + `FeedState`), the timing constants, the path
+  builders, and the loop body from V3FarAuto, driven by the seams above. It emits the path
+  sequence (with `tStartMs`/`tEndMs`) and a dense frame per tick.
+- **Verified headless:** 15 paths, **1445 frames, 28.88 s, ends `DONE`**; 6 shots, 4 intake
+  cycles (#0–#3 alternating low/high), 1.00 s feed windows, the intake reverse pulse, and
+  monotonic path timing — all confirmed from the trace. Original V3FarAuto untouched.
+- **Viewer playback:** play/pause, scrub, **0.25×–4× speed**, a **state-band timeline**
+  (colored by `AutoState`, with second ticks and a draggable playhead), the robot animated
+  along the path (frame-interpolated) with a live state chip + pose/turret/hood/flywheel/intake
+  readouts, and traversed / active / upcoming path styling. Keyboard: space = play, ←/→ = step.
+- **Note:** the dense frames make the standalone HTML ~0.5 MB (still a single self-contained
+  file that opens instantly). If that ever matters, the frame stride is one constant to raise.
+- **Deferred to Phase 3:** sparse `events[]` with FSM-sourced `durationMs` and the on-field
+  effect overlays (shoot ring/flash, intake chevrons, …) rendered through the effect profile.
 ```

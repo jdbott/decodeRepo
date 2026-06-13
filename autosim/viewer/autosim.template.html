@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>AutoSim — field preview</title>
+<title>AutoSim — playback</title>
 <style>
   :root {
     --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --line:#2b3340;
@@ -22,35 +22,41 @@
   header .spacer { flex:1 1 auto; }
   .ctl { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
   .seg { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
-  .seg button { background:var(--panel2); color:var(--muted); border:0; padding:5px 12px;
-    font-size:12px; cursor:pointer; }
+  .seg button { background:var(--panel2); color:var(--muted); border:0; padding:5px 12px; font-size:12px; cursor:pointer; }
   .seg button.on[data-team="BLUE"] { background:var(--blue); color:#fff; }
   .seg button.on[data-team="RED"]  { background:var(--red);  color:#fff; }
   input[type=range] { accent-color:var(--accent); width:96px; }
-  .btn { background:var(--panel2); color:var(--text); border:1px solid var(--line);
-    border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer; }
+  select { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:4px 6px; font-size:12px; }
+  .btn { background:var(--panel2); color:var(--text); border:1px solid var(--line); border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer; }
   .btn:hover { border-color:var(--accent); }
 
   main { flex:1 1 auto; display:flex; min-height:0; }
-  aside { width:190px; flex:0 0 auto; background:var(--panel); border-right:1px solid var(--line);
-    padding:12px; overflow:auto; font-size:12px; }
-  aside h4 { margin:0 0 8px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
-  .legend { display:flex; flex-direction:column; gap:6px; margin-bottom:18px; }
+  aside { width:200px; flex:0 0 auto; background:var(--panel); border-right:1px solid var(--line); padding:12px; overflow:auto; font-size:12px; }
+  aside h4 { margin:14px 0 8px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  aside h4:first-child { margin-top:0; }
+  .chip { display:inline-block; padding:5px 10px; border-radius:6px; font-weight:600; font-size:13px; background:var(--panel2); border:1px solid var(--line); }
+  .sub { color:var(--muted); margin-top:5px; }
+  .legend { display:flex; flex-direction:column; gap:6px; }
   .legend .row { display:flex; align-items:center; gap:8px; }
   .legend .sw { width:12px; height:12px; border-radius:3px; flex:0 0 auto; }
   .kv { display:flex; justify-content:space-between; gap:8px; padding:2px 0; color:var(--muted); }
-  .kv b { color:var(--text); font-weight:500; }
+  .kv b { color:var(--text); font-weight:500; font-variant-numeric:tabular-nums; }
+  .plist { display:flex; flex-direction:column; gap:4px; }
+  .plist .row { display:flex; align-items:center; gap:8px; }
+  .plist .sw { width:10px; height:10px; border-radius:2px; flex:0 0 auto; }
 
-  .canvas-wrap { flex:1 1 auto; position:relative; display:flex; align-items:center;
-    justify-content:center; min-width:0; min-height:0; padding:14px; }
-  canvas { background:#000; border-radius:8px; box-shadow:0 0 0 1px var(--line); }
-  .drop-hint { position:absolute; inset:14px; border:2px dashed var(--accent); border-radius:10px;
-    display:none; align-items:center; justify-content:center; color:var(--accent);
-    background:rgba(88,166,255,.08); font-size:14px; pointer-events:none; }
+  .canvas-wrap { flex:1 1 auto; position:relative; display:flex; align-items:center; justify-content:center; min-width:0; min-height:0; padding:14px; }
+  canvas#field { background:#000; border-radius:8px; box-shadow:0 0 0 1px var(--line); }
+  .drop-hint { position:absolute; inset:14px; border:2px dashed var(--accent); border-radius:10px; display:none; align-items:center; justify-content:center; color:var(--accent); background:rgba(88,166,255,.08); font-size:14px; pointer-events:none; }
   .canvas-wrap.drag .drop-hint { display:flex; }
 
-  footer { flex:0 0 auto; padding:6px 14px; background:var(--panel); border-top:1px solid var(--line);
-    color:var(--muted); font-size:11.5px; display:flex; gap:14px; align-items:center; }
+  .transport { flex:0 0 auto; display:flex; align-items:center; gap:12px; padding:8px 14px; background:var(--panel); border-top:1px solid var(--line); }
+  .play { width:38px; height:32px; font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .time { font-size:12px; color:var(--muted); font-variant-numeric:tabular-nums; white-space:nowrap; }
+  .time b { color:var(--text); }
+  #timeline { flex:1 1 auto; height:46px; cursor:pointer; min-width:0; }
+
+  footer { flex:0 0 auto; padding:6px 14px; background:var(--panel); border-top:1px solid var(--line); color:var(--muted); font-size:11.5px; display:flex; gap:14px; align-items:center; }
   footer .gen { margin-left:auto; opacity:.7; }
   .phase { color:var(--accent); }
 </style>
@@ -66,9 +72,7 @@
         <button data-team="RED">Red</button>
       </span>
     </div>
-    <div class="ctl">field
-      <input type="range" id="opacity" min="0" max="100" value="65" title="field image opacity">
-    </div>
+    <div class="ctl">field <input type="range" id="opacity" min="0" max="100" value="65" title="field image opacity"></div>
     <button class="btn" id="uploadBtn">Upload field image</button>
     <button class="btn" id="resetBtn" title="restore bundled field image">Reset</button>
     <input type="file" id="fileInput" accept="image/*" hidden>
@@ -76,16 +80,22 @@
 
   <main>
     <aside>
+      <h4>Now</h4>
+      <span class="chip" id="stateChip">—</span>
+      <div class="sub" id="feedSub">feed: —</div>
+      <div class="kv" style="margin-top:8px"><span>time</span><b id="kTime">—</b></div>
+      <div class="kv"><span>pose x / y</span><b id="kPose">—</b></div>
+      <div class="kv"><span>heading</span><b id="kHead">—</b></div>
+      <div class="kv"><span>turret</span><b id="kTurret">—</b></div>
+      <div class="kv"><span>hood</span><b id="kHood">—</b></div>
+      <div class="kv"><span>flywheel</span><b id="kFly">—</b></div>
+      <div class="kv"><span>intake</span><b id="kIntake">—</b></div>
+
       <h4>Legend</h4>
       <div class="legend" id="legend"></div>
-      <h4>Start</h4>
-      <div class="kv"><span>pose x</span><b id="sx">—</b></div>
-      <div class="kv"><span>pose y</span><b id="sy">—</b></div>
-      <div class="kv"><span>heading</span><b id="sh">—</b></div>
-      <div class="kv"><span>turret</span><b id="st">—</b></div>
-      <div class="kv"><span>hood</span><b id="shood">—</b></div>
-      <h4 style="margin-top:18px">Paths</h4>
-      <div id="pathList" style="display:flex;flex-direction:column;gap:5px"></div>
+
+      <h4>Paths</h4>
+      <div class="plist" id="pathList"></div>
     </aside>
 
     <div class="canvas-wrap" id="wrap">
@@ -94,8 +104,21 @@
     </div>
   </main>
 
+  <div class="transport">
+    <button class="btn play" id="play" title="play / pause (space)">▶</button>
+    <select id="speed" title="playback speed">
+      <option value="0.25">0.25×</option>
+      <option value="0.5">0.5×</option>
+      <option value="1" selected>1×</option>
+      <option value="2">2×</option>
+      <option value="4">4×</option>
+    </select>
+    <span class="time"><b id="tNow">0.0</b> / <span id="tTotal">0.0</span> s</span>
+    <canvas id="timeline"></canvas>
+  </div>
+
   <footer>
-    <span><span class="phase">Phase 1</span> — static path preview. Playback (Phase 2) &amp; action overlays (Phase 3) coming.</span>
+    <span><span class="phase">Phase 2</span> — kinematic playback. Action overlays (Phase 3) coming.</span>
     <span class="gen">generated __GENERATED_AT__</span>
   </footer>
 </div>
@@ -103,11 +126,9 @@
 <script>
 "use strict";
 
-// ---- Injected by the generator (standalone, no fetch) ----
 const TRACE = __TRACE_JSON__;
 const FIELD_IMAGE_DATAURI = "__FIELD_IMAGE_DATAURI__";
 
-// ---- Effect profiles: category -> visual mapping (data, not code) ----
 const EFFECT_PROFILES = {
   decode: {
     DRIVE:  { color:"#7a8aa0", glyph:"→", label:"drive"  },
@@ -120,265 +141,258 @@ const EFFECT_PROFILES = {
   }
 };
 const PROFILE = EFFECT_PROFILES[(TRACE.meta && TRACE.meta.effectProfile) || "decode"] || EFFECT_PROFILES.decode;
-const PATH_PALETTE = ["#58a6ff","#56d364","#e3b341","#bc8cff","#ff7b72","#39c5cf","#ffa657","#7ee787"];
+const PALETTE = ["#58a6ff","#56d364","#e3b341","#bc8cff","#ff7b72","#39c5cf","#ffa657","#7ee787"];
 
 const FIELD = TRACE.field || { widthIn:144, heightIn:144 };
 const W = FIELD.widthIn || 144;
+const FRAMES = TRACE.frames || [];
+const TOTAL = (TRACE.meta && TRACE.meta.totalMillis) || (FRAMES.length ? FRAMES[FRAMES.length-1].tMs : 0);
 
-const state = { alliance:"BLUE", bgOpacity:0.65, S:0, scale:1, img:null };
+const state = { alliance:"BLUE", bgOpacity:0.65, img:null };
+const play = { on:false, t:0, speed:1, scrubbing:false };
 
-// ---- Field background image ----
-function loadImage(src) {
-  if (!src) { state.img = null; draw(); return; }
-  const im = new Image();
-  im.onload = () => { state.img = im; draw(); };
-  im.onerror = () => { state.img = null; draw(); };
-  im.src = src;
-}
-
-// ---- Coordinate transform (field inches -> canvas px, Y-up, x mirrored for red) ----
-function mx(x){ return state.alliance === "RED" ? W - x : x; }
-function mh(h){ return state.alliance === "RED" ? -h : h; }
-function px(x){ return mx(x) * state.scale; }
-function py(y){ return state.S - y * state.scale; }
-
+// ---------- field canvas ----------
 const canvas = document.getElementById("field");
 const ctx = canvas.getContext("2d");
+const view = { S:0, scale:1, dpr:1 };
 
-function fit() {
+function mx(x){ return state.alliance === "RED" ? W - x : x; }
+function mh(h){ return state.alliance === "RED" ? -h : h; }
+function px(x){ return mx(x) * view.scale; }
+function py(y){ return view.S - y * view.scale; }
+
+function fitField(){
   const wrap = document.getElementById("wrap");
   const pad = 28;
   const cssSize = Math.max(280, Math.min(wrap.clientWidth - pad, wrap.clientHeight - pad));
   const dpr = window.devicePixelRatio || 1;
-  canvas.style.width = cssSize + "px";
-  canvas.style.height = cssSize + "px";
-  canvas.width = Math.round(cssSize * dpr);
-  canvas.height = Math.round(cssSize * dpr);
-  state.S = cssSize;
-  state.scale = cssSize / W;
-  state.dpr = dpr;
-  draw();
+  canvas.style.width = cssSize + "px"; canvas.style.height = cssSize + "px";
+  canvas.width = Math.round(cssSize*dpr); canvas.height = Math.round(cssSize*dpr);
+  view.S = cssSize; view.scale = cssSize / W; view.dpr = dpr;
 }
 
-function draw() {
-  if (!state.S) return;
-  ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
-  ctx.clearRect(0, 0, state.S, state.S);
-
+function drawField(){
+  if (!view.S) return;
+  ctx.setTransform(view.dpr,0,0,view.dpr,0,0);
+  ctx.clearRect(0,0,view.S,view.S);
   drawFieldImage();
   drawGrid();
   drawGoal();
-  drawPaths();
-  drawStartRobot();
+  drawPaths(play.t);
+  drawRobot(poseAt(play.t));
 }
 
-function drawFieldImage() {
-  if (state.img) {
-    ctx.save();
-    ctx.globalAlpha = state.bgOpacity;
-    // image is full-field, screen-oriented; never mirrored (it already contains both sides)
-    ctx.drawImage(state.img, 0, 0, state.S, state.S);
-    ctx.restore();
-  } else {
-    ctx.fillStyle = "#0b0f14";
-    ctx.fillRect(0, 0, state.S, state.S);
-  }
+function drawFieldImage(){
+  if (state.img){ ctx.save(); ctx.globalAlpha = state.bgOpacity; ctx.drawImage(state.img,0,0,view.S,view.S); ctx.restore(); }
+  else { ctx.fillStyle = "#0b0f14"; ctx.fillRect(0,0,view.S,view.S); }
 }
-
-function drawGrid() {
-  ctx.save();
-  ctx.lineWidth = 1;
-  for (let i = 0; i <= W; i += 12) {
-    const p = i * state.scale;
-    ctx.strokeStyle = (i % 24 === 0) ? "rgba(120,135,160,.22)" : "rgba(120,135,160,.10)";
-    ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, state.S); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(state.S, p); ctx.stroke();
-  }
-  ctx.strokeStyle = "rgba(160,175,200,.45)";
-  ctx.strokeRect(0.5, 0.5, state.S - 1, state.S - 1);
+function drawGrid(){
+  ctx.save(); ctx.lineWidth = 1;
+  for (let i=0;i<=W;i+=12){ const p=i*view.scale;
+    ctx.strokeStyle = (i%24===0)?"rgba(120,135,160,.22)":"rgba(120,135,160,.10)";
+    ctx.beginPath(); ctx.moveTo(p,0); ctx.lineTo(p,view.S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0,p); ctx.lineTo(view.S,p); ctx.stroke(); }
+  ctx.strokeStyle = "rgba(160,175,200,.45)"; ctx.strokeRect(0.5,0.5,view.S-1,view.S-1);
   ctx.restore();
 }
-
-function drawGoal() {
+function drawGoal(){
   const g = FIELD.goal; if (!g) return;
-  const x = px(g.x), y = py(g.y);
-  ctx.save();
-  ctx.strokeStyle = state.alliance === "RED" ? "#ff7b72" : "#58a6ff";
-  ctx.fillStyle = ctx.strokeStyle;
-  ctx.lineWidth = 2;
-  for (const r of [11, 6.5]) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.stroke(); }
-  ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI*2); ctx.fill();
+  const x=px(g.x), y=py(g.y);
+  ctx.save(); ctx.strokeStyle = state.alliance==="RED"?"#ff7b72":"#58a6ff"; ctx.fillStyle = ctx.strokeStyle; ctx.lineWidth = 2;
+  for (const r of [11,6.5]){ ctx.beginPath(); ctx.arc(x,y,r,0,Math.PI*2); ctx.stroke(); }
+  ctx.beginPath(); ctx.arc(x,y,2.2,0,Math.PI*2); ctx.fill();
   ctx.beginPath(); ctx.moveTo(x-14,y); ctx.lineTo(x+14,y); ctx.moveTo(x,y-14); ctx.lineTo(x,y+14); ctx.stroke();
-  ctx.font = "11px monospace";
-  ctx.fillText("goal", x + 14, y - 8);
   ctx.restore();
 }
-
-function drawPaths() {
-  const paths = TRACE.paths || [];
-  paths.forEach((p, i) => {
-    const poly = p.polyline || [];
-    if (poly.length < 2) return;
-    const color = PATH_PALETTE[i % PATH_PALETTE.length];
-    ctx.save();
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2.5;
-    ctx.lineJoin = "round";
-    ctx.lineCap = "round";
-    ctx.beginPath();
-    ctx.moveTo(px(poly[0].x), py(poly[0].y));
-    for (let k = 1; k < poly.length; k++) ctx.lineTo(px(poly[k].x), py(poly[k].y));
-    ctx.stroke();
-    // direction arrow at the segment's end
-    const a = poly[poly.length - 2], b = poly[poly.length - 1];
-    arrowHead(px(a.x), py(a.y), px(b.x), py(b.y), color);
-    ctx.restore();
+function drawPaths(now){
+  (TRACE.paths||[]).forEach((p,i)=>{
+    const poly=p.polyline||[]; if (poly.length<2) return;
+    const color = PALETTE[i % PALETTE.length];
+    let alpha, width, dash;
+    if (p.tStartMs<0 || now>=p.tEndMs){ alpha=0.75; width=2.5; dash=[]; }      // traversed
+    else if (now>=p.tStartMs){ alpha=1; width=4; dash=[]; }                    // active
+    else { alpha=0.22; width=2; dash=[5,5]; }                                  // upcoming
+    ctx.save(); ctx.globalAlpha=alpha; ctx.strokeStyle=color; ctx.lineWidth=width;
+    ctx.lineJoin="round"; ctx.lineCap="round"; ctx.setLineDash(dash);
+    ctx.beginPath(); ctx.moveTo(px(poly[0].x),py(poly[0].y));
+    for (let k=1;k<poly.length;k++) ctx.lineTo(px(poly[k].x),py(poly[k].y));
+    ctx.stroke(); ctx.restore();
   });
 }
-
-function arrowHead(x1, y1, x2, y2, color) {
-  const ang = Math.atan2(y2 - y1, x2 - x1);
-  const len = 9;
-  ctx.save();
-  ctx.fillStyle = color;
-  ctx.translate(x2, y2);
-  ctx.rotate(ang);
-  ctx.beginPath();
-  ctx.moveTo(0, 0);
-  ctx.lineTo(-len, -len * 0.5);
-  ctx.lineTo(-len, len * 0.5);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawStartRobot() {
-  const f = (TRACE.frames && TRACE.frames[0]) || null;
-  const pose = f ? f.pose : (TRACE.meta && TRACE.meta.startPose);
+function drawRobot(pose){
   if (!pose) return;
-  const cx = px(pose.x), cy = py(pose.y);
-  const hRad = mh(pose.headingDeg) * Math.PI / 180;
-  const sz = 18 * state.scale;
-
-  ctx.save();
-  ctx.translate(cx, cy);
-  ctx.rotate(-hRad);                       // field heading is CCW; screen Y is down
-  ctx.fillStyle = "rgba(88,166,255,.16)";
-  ctx.strokeStyle = "#58a6ff";
-  ctx.lineWidth = 2;
-  roundRect(-sz/2, -sz/2, sz, sz, 3);
-  ctx.fill(); ctx.stroke();
-  // heading nose at +X (forward)
-  ctx.fillStyle = "#58a6ff";
-  ctx.beginPath();
-  ctx.moveTo(sz/2, 0); ctx.lineTo(sz/2 - 6, -5); ctx.lineTo(sz/2 - 6, 5); ctx.closePath();
-  ctx.fill();
+  const cx=px(pose.x), cy=py(pose.y);
+  const hRad = mh(pose.headingDeg)*Math.PI/180;
+  const sz = 18*view.scale;
+  // aim line robot -> goal
+  if (FIELD.goal){ ctx.save(); ctx.strokeStyle="rgba(255,122,24,.7)"; ctx.setLineDash([5,4]); ctx.lineWidth=1.5;
+    ctx.beginPath(); ctx.moveTo(cx,cy); ctx.lineTo(px(FIELD.goal.x),py(FIELD.goal.y)); ctx.stroke(); ctx.restore(); }
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(-hRad);
+  ctx.fillStyle="rgba(88,166,255,.18)"; ctx.strokeStyle="#58a6ff"; ctx.lineWidth=2;
+  roundRect(-sz/2,-sz/2,sz,sz,3); ctx.fill(); ctx.stroke();
+  ctx.fillStyle="#58a6ff"; ctx.beginPath(); ctx.moveTo(sz/2,0); ctx.lineTo(sz/2-6,-5); ctx.lineTo(sz/2-6,5); ctx.closePath(); ctx.fill();
   ctx.restore();
+  ctx.save(); ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(cx,cy,2.5,0,Math.PI*2); ctx.fill(); ctx.restore();
+}
+function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
 
-  // aim line robot -> goal (turret convention rendered properly in Phase 3)
-  if (FIELD.goal) {
-    ctx.save();
-    ctx.strokeStyle = "rgba(255,122,24,.7)";
-    ctx.setLineDash([5, 4]);
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(cx, cy);
-    ctx.lineTo(px(FIELD.goal.x), py(FIELD.goal.y));
-    ctx.stroke();
-    ctx.restore();
+// ---------- frame lookup + interpolation ----------
+function frameIndexAt(t){
+  if (!FRAMES.length) return -1;
+  let lo=0, hi=FRAMES.length-1;
+  if (t<=FRAMES[0].tMs) return 0;
+  if (t>=FRAMES[hi].tMs) return hi;
+  while (lo<=hi){ const m=(lo+hi)>>1; if (FRAMES[m].tMs<=t) lo=m+1; else hi=m-1; }
+  return hi;
+}
+function poseAt(t){
+  const i = frameIndexAt(t); if (i<0) return null;
+  const a = FRAMES[i], b = FRAMES[Math.min(i+1, FRAMES.length-1)];
+  if (a===b || b.tMs===a.tMs) return a.pose;
+  const f = (t - a.tMs)/(b.tMs - a.tMs);
+  return { x:a.pose.x+(b.pose.x-a.pose.x)*f, y:a.pose.y+(b.pose.y-a.pose.y)*f,
+           headingDeg:a.pose.headingDeg+(b.pose.headingDeg-a.pose.headingDeg)*f };
+}
+function frameAt(t){ const i=frameIndexAt(t); return i<0?null:FRAMES[i]; }
+
+// ---------- timeline ----------
+const tl = document.getElementById("timeline");
+const tlx = tl.getContext("2d");
+const tlview = { w:0, h:0, dpr:1 };
+
+let STATE_RUNS = [];
+function computeRuns(){
+  STATE_RUNS = [];
+  let cur=null;
+  for (const f of FRAMES){
+    if (!cur || f.autoState!==cur.state){ cur={ state:f.autoState, start:f.tMs, end:f.tMs }; STATE_RUNS.push(cur); }
+    else cur.end = f.tMs;
   }
+  if (STATE_RUNS.length) STATE_RUNS[STATE_RUNS.length-1].end = TOTAL;
+}
+function stateColor(s){
+  if (s.startsWith("WAIT")) return PROFILE.WAIT.color;
+  if (s.startsWith("SHOOT")) return PROFILE.SHOOT.color;
+  if (s.includes("INTAKE")) return PROFILE.INTAKE.color;
+  if (s.startsWith("DRIVE") || s.startsWith("BACK")) return PROFILE.DRIVE.color;
+  if (s==="DONE") return "#3a4452";
+  return "#566";
+}
+function shortState(s){
+  return ({WAIT_INITIAL_DELAY:"wait",SHOOT_FIRST:"shoot",SHOOT_SECOND:"shoot",SHOOT_REPEAT:"shoot",
+    DRIVE_TO_LAST_LINE:"drive",DRIVE_BACK_TO_SHOOT2:"drive",DRIVE_TO_INTAKE1:"intake",
+    BACK_UP_FROM_INTAKE1:"back",DRIVE_BACK_TO_SHOOT_AGAIN:"drive",DONE:"done"})[s] || s.toLowerCase();
+}
+function fitTimeline(){
+  const dpr = window.devicePixelRatio||1;
+  const w = tl.clientWidth, h = tl.clientHeight;
+  tl.width = Math.round(w*dpr); tl.height = Math.round(h*dpr);
+  tlview.w=w; tlview.h=h; tlview.dpr=dpr;
+}
+function tx(ms){ return TOTAL? (ms/TOTAL)*tlview.w : 0; }
+function drawTimeline(){
+  if (!tlview.w) return;
+  tlx.setTransform(tlview.dpr,0,0,tlview.dpr,0,0);
+  tlx.clearRect(0,0,tlview.w,tlview.h);
+  const bandTop=4, bandH=tlview.h-22;
+  // state bands
+  for (const r of STATE_RUNS){
+    const x0=tx(r.start), x1=tx(r.end);
+    tlx.fillStyle = stateColor(r.state); tlx.globalAlpha=0.85;
+    tlx.fillRect(x0, bandTop, Math.max(1,x1-x0), bandH);
+    tlx.globalAlpha=1;
+    const label = shortState(r.state);
+    if (x1-x0 > 34){ tlx.fillStyle="rgba(13,17,23,.85)"; tlx.font="10px monospace";
+      tlx.fillText(label, x0+4, bandTop+bandH-5); }
+  }
+  // second ticks
+  tlx.fillStyle="rgba(160,175,200,.55)"; tlx.font="10px monospace";
+  for (let s=0; s<=TOTAL/1000; s+=5){ const x=tx(s*1000);
+    tlx.fillRect(x,bandTop+bandH+2,1,4); tlx.fillText(s+"s", x+2, tlview.h-2); }
+  // playhead
+  const xh = tx(play.t);
+  tlx.strokeStyle="#fff"; tlx.lineWidth=2; tlx.beginPath(); tlx.moveTo(xh,0); tlx.lineTo(xh,bandTop+bandH+2); tlx.stroke();
+  tlx.fillStyle="#fff"; tlx.beginPath(); tlx.moveTo(xh-4,0); tlx.lineTo(xh+4,0); tlx.lineTo(xh,5); tlx.closePath(); tlx.fill();
+}
+function scrubTo(clientX){
+  const rect = tl.getBoundingClientRect();
+  const x = Math.max(0, Math.min(tlview.w, clientX-rect.left));
+  play.t = TOTAL ? (x/tlview.w)*TOTAL : 0;
+}
+tl.addEventListener("pointerdown", e=>{ play.scrubbing=true; setPlaying(false); scrubTo(e.clientX); tl.setPointerCapture(e.pointerId); });
+tl.addEventListener("pointermove", e=>{ if (play.scrubbing) scrubTo(e.clientX); });
+tl.addEventListener("pointerup",   e=>{ play.scrubbing=false; });
 
-  // start dot
-  ctx.save();
-  ctx.fillStyle = "#fff";
-  ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI*2); ctx.fill();
-  ctx.restore();
+// ---------- side panel ----------
+function buildLegend(){
+  const el=document.getElementById("legend"); el.innerHTML="";
+  Object.keys(PROFILE).forEach(cat=>{ const e=PROFILE[cat]; const row=document.createElement("div"); row.className="row";
+    row.innerHTML='<span class="sw" style="background:'+e.color+'"></span><span>'+e.glyph+' '+e.label+'</span>'; el.appendChild(row); });
+}
+function buildPathList(){
+  const list=document.getElementById("pathList"); list.innerHTML="";
+  (TRACE.paths||[]).forEach((p,i)=>{ const row=document.createElement("div"); row.className="row";
+    row.innerHTML='<span class="sw" style="background:'+PALETTE[i%PALETTE.length]+'"></span><span style="color:var(--muted)">'+p.id+'</span>'; list.appendChild(row); });
+}
+function fmt(v,d){ return v==null?"—":(typeof d==="number"?v.toFixed(d):Math.round(v).toString()); }
+function updatePanel(){
+  document.getElementById("autoName").textContent = (TRACE.meta&&TRACE.meta.autoName)||"";
+  const f = frameAt(play.t); if (!f) return;
+  document.getElementById("stateChip").textContent = f.autoState;
+  document.getElementById("stateChip").style.borderColor = stateColor(f.autoState);
+  document.getElementById("feedSub").textContent = "feed: " + f.feedState + (f.followerBusy?" · driving":"");
+  const set=(id,v)=>document.getElementById(id).textContent=v;
+  set("kTime", (play.t/1000).toFixed(2)+" s");
+  set("kPose", fmt(f.pose.x,1)+" , "+fmt(f.pose.y,1));
+  set("kHead", fmt(f.pose.headingDeg,0)+"°");
+  set("kTurret", fmt(f.turretDeg,0)+"°");
+  set("kHood", fmt(f.hoodDeg,1)+"°");
+  set("kFly", fmt(f.flywheelActualRadS,0)+" / "+fmt(f.flywheelTargetRadS,0));
+  set("kIntake", fmt(f.intakePower,2));
+  document.getElementById("tNow").textContent = (play.t/1000).toFixed(1);
 }
 
-function roundRect(x, y, w, h, r) {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
+// ---------- transport ----------
+function setPlaying(on){ play.on=on; document.getElementById("play").textContent = on?"⏸":"▶"; }
+document.getElementById("play").addEventListener("click", ()=>{ if (play.t>=TOTAL) play.t=0; setPlaying(!play.on); });
+document.getElementById("speed").addEventListener("change", e=>{ play.speed=parseFloat(e.target.value); });
+window.addEventListener("keydown", e=>{
+  if (e.code==="Space"){ e.preventDefault(); if (play.t>=TOTAL) play.t=0; setPlaying(!play.on); }
+  else if (e.code==="ArrowRight"){ setPlaying(false); play.t=Math.min(TOTAL, play.t+100); }
+  else if (e.code==="ArrowLeft"){ setPlaying(false); play.t=Math.max(0, play.t-100); }
+});
+
+// ---------- field image ----------
+function loadImage(src){ if (!src){ state.img=null; return; } const im=new Image(); im.onload=()=>state.img=im; im.onerror=()=>state.img=null; im.src=src; }
+document.getElementById("alliance").addEventListener("click", e=>{ const b=e.target.closest("button"); if (!b) return;
+  state.alliance=b.dataset.team; [...e.currentTarget.children].forEach(c=>c.classList.toggle("on", c===b)); });
+document.getElementById("opacity").addEventListener("input", e=>{ state.bgOpacity=e.target.value/100; });
+const fileInput=document.getElementById("fileInput");
+document.getElementById("uploadBtn").addEventListener("click", ()=>fileInput.click());
+fileInput.addEventListener("change", e=>{ const file=e.target.files&&e.target.files[0]; if (!file) return; const rd=new FileReader(); rd.onload=()=>loadImage(rd.result); rd.readAsDataURL(file); });
+document.getElementById("resetBtn").addEventListener("click", ()=>loadImage(FIELD_IMAGE_DATAURI||null));
+const wrap=document.getElementById("wrap");
+["dragenter","dragover"].forEach(t=>wrap.addEventListener(t,e=>{ e.preventDefault(); wrap.classList.add("drag"); }));
+["dragleave","drop"].forEach(t=>wrap.addEventListener(t,e=>{ e.preventDefault(); wrap.classList.remove("drag"); }));
+wrap.addEventListener("drop", e=>{ const file=e.dataTransfer.files&&e.dataTransfer.files[0]; if (!file) return; const rd=new FileReader(); rd.onload=()=>loadImage(rd.result); rd.readAsDataURL(file); });
+
+// ---------- loop ----------
+let lastReal = performance.now();
+function tick(now){
+  const dr = now - lastReal; lastReal = now;
+  if (play.on && !play.scrubbing){ play.t += dr*play.speed; if (play.t>=TOTAL){ play.t=TOTAL; setPlaying(false); } }
+  drawField(); drawTimeline(); updatePanel();
+  requestAnimationFrame(tick);
 }
+function onResize(){ fitField(); fitTimeline(); }
+window.addEventListener("resize", onResize);
 
-// ---- Side panel ----
-function buildLegend() {
-  const el = document.getElementById("legend");
-  el.innerHTML = "";
-  Object.keys(PROFILE).forEach(cat => {
-    const e = PROFILE[cat];
-    const row = document.createElement("div");
-    row.className = "row";
-    row.innerHTML = '<span class="sw" style="background:' + e.color + '"></span>' +
-                    '<span>' + e.glyph + ' ' + e.label + '</span>';
-    el.appendChild(row);
-  });
-}
-
-function fillInfo() {
-  document.getElementById("autoName").textContent = (TRACE.meta && TRACE.meta.autoName) || "";
-  const f = (TRACE.frames && TRACE.frames[0]) || {};
-  const pose = f.pose || (TRACE.meta && TRACE.meta.startPose) || {};
-  const set = (id, v) => document.getElementById(id).textContent = v;
-  set("sx", fmt(pose.x)); set("sy", fmt(pose.y));
-  set("sh", fmt(pose.headingDeg) + "°");
-  set("st", (f.turretDeg != null ? fmt(f.turretDeg) : "—") + "°");
-  set("shood", (f.hoodDeg != null ? fmt(f.hoodDeg) : "—") + "°");
-
-  const list = document.getElementById("pathList");
-  list.innerHTML = "";
-  (TRACE.paths || []).forEach((p, i) => {
-    const row = document.createElement("div");
-    row.className = "row legend";
-    row.style.flexDirection = "row";
-    row.innerHTML = '<span class="sw" style="background:' + PATH_PALETTE[i % PATH_PALETTE.length] + '"></span>' +
-                    '<span style="color:var(--muted)">' + p.id + '</span>';
-    list.appendChild(row);
-  });
-}
-function fmt(v){ return (v == null) ? "—" : (Math.round(v * 10) / 10).toString(); }
-
-// ---- Controls ----
-document.getElementById("alliance").addEventListener("click", e => {
-  const b = e.target.closest("button"); if (!b) return;
-  state.alliance = b.dataset.team;
-  [...e.currentTarget.children].forEach(c => c.classList.toggle("on", c === b));
-  draw();
-});
-document.getElementById("opacity").addEventListener("input", e => {
-  state.bgOpacity = e.target.value / 100; draw();
-});
-const fileInput = document.getElementById("fileInput");
-document.getElementById("uploadBtn").addEventListener("click", () => fileInput.click());
-fileInput.addEventListener("change", e => {
-  const file = e.target.files && e.target.files[0]; if (!file) return;
-  const rd = new FileReader();
-  rd.onload = () => loadImage(rd.result);
-  rd.readAsDataURL(file);
-});
-document.getElementById("resetBtn").addEventListener("click", () => loadImage(FIELD_IMAGE_DATAURI || null));
-
-const wrap = document.getElementById("wrap");
-["dragenter","dragover"].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.add("drag"); }));
-["dragleave","drop"].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.remove("drag"); }));
-wrap.addEventListener("drop", e => {
-  const file = e.dataTransfer.files && e.dataTransfer.files[0]; if (!file) return;
-  const rd = new FileReader();
-  rd.onload = () => loadImage(rd.result);
-  rd.readAsDataURL(file);
-});
-
-window.addEventListener("resize", fit);
-
-// ---- Boot ----
-buildLegend();
-fillInfo();
-loadImage(FIELD_IMAGE_DATAURI || null);
-fit();
+// ---------- boot ----------
+document.getElementById("tTotal").textContent = (TOTAL/1000).toFixed(1);
+buildLegend(); buildPathList(); computeRuns();
+loadImage(FIELD_IMAGE_DATAURI||null);
+fitField(); fitTimeline();
+requestAnimationFrame(tick);
 </script>
 </body>
 </html>

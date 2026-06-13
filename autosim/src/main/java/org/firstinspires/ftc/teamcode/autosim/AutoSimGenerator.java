@@ -60,11 +60,13 @@ public final class AutoSimGenerator {
             }
         }
         boolean inBounds = minX >= 0 && minY >= 0 && maxX <= trace.field.widthIn && maxY <= trace.field.heightIn;
+        String lastState = trace.frames.isEmpty() ? "-" : trace.frames.get(trace.frames.size() - 1).autoState;
         System.out.println("AutoSim: wrote " + outPath);
         System.out.printf(Locale.US, "  paths=%d  polylinePts=%d%n", trace.paths.size(), pts);
-        System.out.printf(Locale.US, "  bbox x[%.1f..%.1f] y[%.1f..%.1f]  (field 0..%.0f)%n",
-                minX, maxX, minY, maxY, trace.field.widthIn);
-        System.out.println("  inBounds=" + inBounds);
+        System.out.printf(Locale.US, "  bbox x[%.1f..%.1f] y[%.1f..%.1f]  (field 0..%.0f)  inBounds=%b%n",
+                minX, maxX, minY, maxY, trace.field.widthIn, inBounds);
+        System.out.printf(Locale.US, "  frames=%d  totalMillis=%d  endState=%s%n",
+                trace.frames.size(), trace.meta.totalMillis, lastState);
         System.out.println("  open the file above in any browser.");
     }
 
