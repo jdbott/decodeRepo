@@ -108,6 +108,16 @@ All vision (`vision/limelight/`, `vision/opencv/`) was removed in the original p
 
 ---
 
+## Future Task Ideas (not yet ranked into the main list)
+
+These were raised in a review session and are tracked here for later triage:
+
+- **XML/Android-Studio-defined hardware configuration** — explore whether robot configuration (motor/servo names, ports) can be defined ahead of time in Android Studio/source instead of relying entirely on manual Driver Hub configuration. Likely low payoff given `RobotConfig.java` already centralizes device-name constants and the FTC SDK doesn't have a clean way to push a config to the Driver Hub from source — but worth a quick feasibility look if config drift becomes a recurring pain point.
+- **Reusable boilerplate/base structure for future TeleOp and autonomous programs** — this is effectively the same as open item #1 above (shared autonomous FSM/base) for autos. If a similar base/template is wanted for *future TeleOps* too (beyond just `V3Tele`), that would be a separate, smaller follow-up once #1 lands and the pattern is established.
+- **Broader naming-convention review** — beyond the control-gain naming already covered in item #3 and the folder-naming questions in item #4, do a pass over variable/method/class/package/file names across the whole `teamcode/` tree for consistency (e.g. capitalization, abbreviations, plural vs singular package names). Low risk, low urgency — good candidate for a quiet/cleanup session.
+
+---
+
 ## Notes for the next session
 
 - The codebase currently **compiles cleanly** (`./gradlew :TeamCode:compileDebugJavaWithJavac` → BUILD SUCCESSFUL on `master` @ `77ca7de`) — only pre-existing `source/target value 8 is obsolete` deprecation warnings remain.
