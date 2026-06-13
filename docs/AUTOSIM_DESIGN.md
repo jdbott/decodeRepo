@@ -14,13 +14,32 @@ events (shoot / intake / feed / hood / turret) surfaced on a scrubable timeline.
   a second engine. It also dovetails with the eventual auto-base refactor in
   [AUTO_BASE_DESIGN.md](AUTO_BASE_DESIGN.md) (see "Future convergence" below).
 
-> **Status: design only.** No code is written yet. The end of this doc lists the
-> decisions that need the captain's input before Phase 0 begins.
+> **Status: design only.** No implementation code is written yet. §11 records every
+> design decision; all are now resolved, so Phase 0 is ready to build on instruction.
 >
 > **Decisions locked (2026-06-12):** front-end = **Web (HTML5 Canvas)**; build order =
 > **predictive sim first** (the `SimFollower` kinematic model, so a run can be watched
 > with no robot; replay drops to the Phase 4 stretch); git = **commit + push current
-> changes to `master`**. Q3–Q6, Q8, Q9 still open below.
+> changes to `master`**.
+>
+> **Refined per captain (2026-06-13) — all remaining questions resolved:**
+> - **Configurable field-background image** behind the 144″ grid — a per-season bundled
+>   default *plus* an in-viewer upload/drag-drop, so field elements are visible across
+>   seasons (see §2). Goal reticle and all markers still drawn on top.
+> - **Action effects are a data-driven, season-generic "effect profile"** (§3) — the
+>   render core knows only generic effect *primitives* (ring, chevrons, flash, arc,
+>   band); each season maps its categories onto them in config. DECODE's expanding-orange-
+>   ring + muzzle-flash is just the current profile. Supports seasons with **no** shooting/
+>   feeding/intaking at all (claws, slides, extensions).
+> - **Event durations are derived from the auto's own timing constants** (§3, §8) — e.g.
+>   the feed/shoot window is the real ~1.0 s (`FEED_TOTAL_TIME_SEC`), never a guessed value.
+> - Follower fidelity = coarse point-mass (Q3 ✓); coordinate convention as written (Q4 ✓);
+>   polylines sampled **from the source**, single source of truth (Q5 ✓).
+> - **Self-contained in Android Studio, lowest-friction launch** (Q6 ✓): a Gradle task
+>   emits **one standalone HTML with the trace + field image inlined**, openable on any
+>   device with no server and no extra steps.
+> - Category enum **season-generic now** (Q8 ✓); **one shared sim core** with headless
+>   AutoSim #1 (Q9 ✓).
 
 ---
 
@@ -60,23 +79,24 @@ follows from it.
 **Not** a Driver Station menu item. The Driver Station runs on the robot; a developer
 sim belongs on the laptop, on demand, off the field.
 
-- **Primary (simulate):** a Gradle task, e.g. `./gradlew autosim -Pauto=V3FarAutoSim`,
-  that (a) runs the chosen sim copy, (b) writes `docs/autosim/trace.json`, and (c) opens
-  the viewer (browser tab or window). An Android Studio **run configuration** wrapping
-  the same entry point gives a one-click "▶ Run AutoSim" for students who never touch a
-  terminal.
-- **Per-auto, global viewer:** the *viewer* is one tool; *which auto* it shows is chosen
-  at sim time. Simulatable copies register themselves in a small `AutoRegistry`, so the
-  launcher (and later a dropdown in the viewer) can list every auto that has a `…Sim`
-  copy. Today that registry has one entry (`V3FarAutoSim`); each future auto that opts in
-  adds one line.
-- **Replay path:** the on-robot logging copy writes a `trace.json` to the robot's
-  storage during a real run; you pull it (adb / file transfer) and open it in the *same*
-  viewer. No separate tool.
+**Blessed path (lowest-friction, self-contained in Android Studio):** a single Gradle
+task, e.g. `./gradlew autosim -Pauto=V3FarAutoSim`, that (a) runs the chosen sim copy,
+(b) builds **one standalone `autosim-V3FarAuto.html`** with the trace **and** the field
+image **inlined** (base64), and (c) opens it in the default browser. The task shows up in
+Android Studio's **Gradle tool window** and is wrapped as a one-click **"▶ Run AutoSim"
+run configuration** for students who never touch a terminal.
 
-**Decision flagged:** Gradle task vs. run config vs. double-click HTML as the canonical
-launch — not blocking for the design, but pick one "blessed" path so the onboarding doc
-can name it. (See Open Questions.)
+- **Why standalone-inline, not `fetch`:** a self-contained HTML opens straight off
+  `file://` on **any** device — no local server, no CORS, no "serve this folder" step.
+  Sharing the run = sharing that one HTML file (drop it in a PR, AirDrop it, open it on a
+  phone). That is the "few steps, various devices" bar the captain set.
+- **Per-auto, global viewer:** the *viewer template* is one tool; *which auto* it shows is
+  chosen at sim time. Simulatable copies register in a small `AutoRegistry`, so the task
+  (and later a dropdown in the viewer) can list every auto that has a `…Sim` copy. Today
+  that's one entry (`V3FarAutoSim`); each future auto that opts in adds one line.
+- **Replay path (Phase 4):** an on-robot logging copy writes the same-schema trace to the
+  robot's storage during a real run; pull it (adb / file transfer) and feed it through the
+  same task to get a standalone HTML. No separate tool.
 
 ---
 
@@ -88,12 +108,33 @@ the auto's own pose literals — `START (64.1, 6.75, 180°)` bottom-center facin
 near `(5, 139)` top-left. Screen mapping is a single affine transform:
 `px = x * (canvasPx / 144)`, and **flip Y** (screen Y grows downward). All rendering
 works in field units and converts once at draw time, so the same trace renders at any
-canvas size. *(Origin/orientation is an assumption to confirm — Open Question Q4.)*
+canvas size. *(Confirmed by the captain.)*
 
 **Alliance.** Traces are stored **blue-native**; the viewer has a Blue/Red toggle that
 applies the same mirror `AllianceMirror` uses (`x → 144 − x`, heading negated), so one
 trace shows both alliances without re-simulating. This mirrors how the auto itself
 treats poses.
+
+**Field-background image (configurable).** Behind the 144″ grid the viewer renders an
+optional **square field image**, so real field elements (goal, gates, launch zones,
+next-season obstacles) are visible under the path instead of an abstract grid. The image
+is mapped corner-to-corner onto the 0–144″ square via the *same* transform as everything
+else, so a path drawn at `(64.1, 6.75)` lands on the right spot of the picture. Two ways
+to set it, no rebuild needed for the second:
+
+- **Per-season default (bundled):** a square PNG checked into the repo (e.g.
+  `autosim/fields/decode.png`) named in the trace `meta`/`field` (`backgroundImage`). The
+  launcher inlines it (base64) into the standalone HTML so the artifact stays
+  self-contained. Swapping seasons = swapping which image the profile points at.
+- **In-viewer upload / drag-drop:** a file-picker + drag-drop target lets anyone drop a
+  square image at runtime (client-side `FileReader` → `drawImage`); it overrides the
+  bundled one for that session. Zero build, works on any device — the lowest-friction way
+  to try a new field photo.
+
+The image is purely a backdrop layer. The goal reticle, start marker, path, robot, and
+all overlays draw **on top**, and an opacity slider lets you dim the photo so the path
+stays legible. Non-square images are letterboxed (centered, with a one-line warning)
+rather than stretched, so geometry never distorts.
 
 **Path data source — emit from the sim, don't re-declare.** The path polylines come
 from the **sim copy**, which builds the exact same Pedro `BezierLine`/`BezierCurve`
@@ -104,10 +145,10 @@ geometry — the viewer never hand-copies coordinates, so a path edit in the cop
 in the picture automatically. Each emitted path carries its control points too, so the
 viewer can optionally draw the Bezier handles for debugging.
 
-**On the canvas:**
+**On the canvas (back to front):**
 
-- **Field backdrop:** 144″ grid, alliance-tinted, a goal reticle at the (mirrored)
-  target, and start-pose marker.
+- **Field backdrop:** the optional square field image (above), then the 144″ grid
+  (alliance-tinted), a goal reticle at the (mirrored) target, and the start-pose marker.
 - **Path:** full route as a polyline. **Traversed** portion solid/bright, **upcoming**
   portion dimmed/dashed, with sparse direction arrows. Each FSM drive segment is its own
   styled sub-path so you can see where one `followPath` ends and the next begins.
@@ -136,9 +177,17 @@ designed so a future season drops new members in without touching the viewer's c
 | `TURRET` | cyan   | ⟲   | commanded turret slew | `turret.setAngle(...)` (debounced) |
 | `WAIT`   | grey   | ⏱   | dwell / delay state | timer-gated states |
 
-Generic spares (`SLIDE`, `CLAW`, `ARM`, …) live in the enum unused, so next season's
-mechanisms map onto existing rendering with zero viewer changes — directly serving the
-future-season-generality goal.
+Categories are **data, not hard-coded branches.** The viewer never `switch`es on
+"`SHOOT`"; it reads an **effect profile** — a small config object mapping each category to
+`{ color, glyph, label, effect-primitive, params }` — and the render core only knows a
+handful of season-agnostic **primitives**: `RING` (expanding pulse), `CHEVRONS`
+(converging arrows), `FLASH`, `ARC`/`GAUGE-TICK`, and the timeline `BAND`. DECODE ships
+one profile (`SHOOT → RING+FLASH orange`, `INTAKE → CHEVRONS green`, …); a future season
+ships its own (`CLAW → FLASH`, `SLIDE → GAUGE arc`, `EXTEND → CHEVRONS`) without touching
+render code. A season that **never shoots, feeds, or intakes** just omits those categories
+and defines its own — the tool has no DECODE assumptions baked into the engine. Spare
+members (`SLIDE`, `CLAW`, `ARM`, `EXTEND`, …) already exist in the enum so next year is a
+config edit, not a code change.
 
 **(b) Timeline (bottom rail) — the "when".**
 - The track background is segmented into **color bands by `AutoState`**, so the macro
@@ -147,16 +196,23 @@ future-season-generality goal.
   category. Clicking a pin scrubs to it.
 - A draggable **playhead** marks current time.
 
-**(c) On-field pulses — the "where + what", at the moment it fires.**
-- `SHOOT`: an expanding orange ring + brief muzzle flash at the turret, fading over
-  ~400 ms of sim-time.
-- `INTAKE`: green converging chevrons at the intake side while active (steady, not a
-  one-shot, since intake runs over a span).
-- `FEED`: a small amber flash at the feeder.
-- `HOOD`/`TURRET`: a thin arc/gauge tick near the robot.
+**(c) On-field pulses — the "where + what", at the moment it fires.** This is the current
+**DECODE effect profile** (the §3a primitives instantiated for this season):
+- `SHOOT`/`FEED`: an expanding orange `RING` + brief muzzle `FLASH` at the turret. The
+  feed-and-shoot action in this auto is a **real ~1.0 s window**, so the on-field effect
+  *persists for the event's full duration* (a held/pulsing ring) rather than a 400 ms
+  blip — the ring's lifetime is the event's `durationMs`, not a cosmetic constant.
+- `INTAKE`: green converging `CHEVRONS` at the intake side, shown for as long as intake is
+  actually commanded on (a span, often overlapping a drive).
+- `HOOD`/`TURRET`: a thin `GAUGE` arc/tick near the robot.
 
-Events carry a `durationMs`, so one-shot pulses (shoot) and spans (intake-while-driving)
-are both representable. A **legend** in the left rail keys color/glyph → category.
+**Durations are sourced from the auto, not guessed.** Every event's `durationMs` is
+computed from the same timing the FSM uses — the feed/shoot window is
+`FEED_START_DELAY_SEC + FEED_TOTAL_TIME_SEC` (≈ 1.10 s here), a drive segment's duration is
+its `SimFollower` traversal time, an intake span runs from `intake.setPower(>0)` until it's
+zeroed. So what you see lasting "about a second" on screen is what the robot actually does
+for about a second. A **legend** in the left rail keys color/glyph → category, driven off
+the same effect profile so it auto-updates when the profile changes.
 
 ---
 
@@ -235,9 +291,13 @@ FSM duplication, at the cost of needing the robot to generate data.)*
 
 - **Sim core:** plain Java on the desktop JVM, in a new source set / small Gradle module
   (sibling to the headless AutoSim of #1). No Android dependency — it imports only the
-  Pedro geometry types (for Bezier sampling) and the copied FSM. Emits `trace.json`.
-- **Visualizer:** a single static `autosim.html` + a small JS file using Canvas. No npm,
-  no build step, no framework — open the file, it `fetch`es the adjacent `trace.json`.
+  Pedro geometry types (for Bezier sampling) and the copied FSM. Emits a `SimTrace`.
+- **Visualizer:** an HTML+Canvas template (one HTML file, inline `<style>`/`<script>`, no
+  npm, no framework). The Gradle task **injects the trace JSON and the field image
+  (base64) directly into a copy of the template**, producing one **standalone
+  `autosim-<auto>.html`**. Opening that file — on a laptop, a Chromebook, a phone — needs
+  no server and no extra steps, which is the self-contained, low-friction bar the captain
+  set. The template lives in the repo; the build only fills in the data.
 
 Why web over the alternatives, for *this* team:
 
@@ -246,16 +306,16 @@ Why web over the alternatives, for *this* team:
 - **Maintainability under turnover** — every student can edit HTML/CSS/JS; far fewer can
   wrangle Swing `paintComponent`. Lower ramp = better fit for a 9-person, high-turnover
   team.
-- **Trivially shareable** — a `trace.json` + the HTML is a self-contained artifact you
-  can drop in a PR, open on any laptop, or host as a static page.
+- **Trivially shareable** — the standalone HTML is one self-contained file (trace + field
+  image inlined) you can drop in a PR, AirDrop, or open on any device.
 - **Clean decoupling** — the viewer can't accidentally depend on robot code; the Android
   build never has to know the viewer exists.
 
 **Alternatives considered (and why not, for v1):**
 
-- **Swing/JavaFX desktop window** — single-language (all Java), no browser. Viable
-  fallback if the captain wants zero web tech; driven by the *same* sim core. Costs more
-  UI effort and is harder for students to extend. *(Captain decision — Q1.)*
+- **Swing/JavaFX desktop window** — single-language (all Java), no browser. Driven by the
+  *same* sim core, so it stays a viable fallback, but costs more UI effort and is harder
+  for students to extend. *(Decided against in favor of web.)*
 - **Piggyback FtcDashboard / bylazar Panels field overlay** — already dependencies, draw
   a field canvas, and are great for **live on-robot** telemetry. But they're oriented to
   a running opmode, not off-robot scrub/replay of a pre-computed trace, and bend awkwardly
@@ -316,9 +376,14 @@ so the viewer can evolve.
     "totalMillis": 12000,
     "source": "SIM",              // or "REPLAY" for a real-robot log
     "generatedAt": "2026-06-12T...",
+    "effectProfile": "decode",    // which category→effect mapping the viewer applies
     "follower": { "model": "pointmass-v1", "xVel": 73.8, "yVel": 60.8 }
   },
-  "field": { "widthIn": 144, "heightIn": 144, "goal": { "x": 5, "y": 139 } },
+  "field": {
+    "widthIn": 144, "heightIn": 144,
+    "goal": { "x": 5, "y": 139 },
+    "backgroundImage": "autosim/fields/decode.png"   // square; inlined as base64 by the launcher; user upload overrides
+  },
 
   "paths": [
     {
@@ -340,11 +405,12 @@ so the viewer can evolve.
     // … ~600 frames for a 12 s run at 20 ms …
   ],
 
-  "events": [                                // sparse, at transitions
-    { "tMs": 3000, "category": "SHOOT",  "label": "first shot",  "durationMs": 400,
+  "events": [                                // sparse, at transitions; durationMs from the FSM's own timing
+    { "tMs": 3000, "category": "SHOOT",  "label": "first shot",  "durationMs": 1100,
+      // ≈ FEED_START_DELAY_SEC(0.10) + FEED_TOTAL_TIME_SEC(1.00); not a guessed blip
       "pose": {"x":64.1,"y":6.75,"headingDeg":180} },
-    { "tMs": 3600, "category": "DRIVE",  "label": "toLastLine",  "durationMs": 1600 },
-    { "tMs": 6800, "category": "INTAKE", "label": "intake cycle 0","durationMs": 1500 }
+    { "tMs": 3600, "category": "DRIVE",  "label": "toLastLine",  "durationMs": 1600 },  // SimFollower traversal time
+    { "tMs": 6800, "category": "INTAKE", "label": "intake cycle 0","durationMs": 1500 } // span intake is powered on
     // …
   ]
 }
@@ -353,13 +419,16 @@ so the viewer can evolve.
 Java-side mirror (sim core), sketched:
 
 - `SimTrace { Meta meta; Field field; List<PathSpec> paths; List<Frame> frames; List<ActionEvent> events; }`
+- `Field { double widthIn, heightIn; Pt goal; String backgroundImage; }`
 - `Frame { long tMs; Pose2d pose; String autoState; String feedState; boolean followerBusy; double flywheelTargetRadS, flywheelActualRadS, turretDeg, hoodDeg, intakePower; }`
-- `ActionEvent { long tMs; Category category; String label; long durationMs; Pose2d pose; }`
+- `ActionEvent { long tMs; Category category; String label; long durationMs; Pose2d pose; }` — `durationMs` always set from the source's timing, never a literal.
 - `PathSpec { String id; PathKind kind; List<Pt> controlPoints, polyline; double headingDeg; long tStartMs, tEndMs; }`
-- `enum Category { DRIVE, SHOOT, FEED, INTAKE, HOOD, TURRET, WAIT, /* generic spares */ SLIDE, CLAW, ARM }`
+- `enum Category { DRIVE, SHOOT, FEED, INTAKE, HOOD, TURRET, WAIT, /* generic, unused this season */ SLIDE, CLAW, ARM, EXTEND }`
 
-`Pose2d`/`Pt` are sim-local value types (not Pedro's `Pose`) so the schema layer carries
-no Android/Pedro coupling.
+The category→visual mapping is **not** in Java — it lives in the viewer's effect profile
+(`meta.effectProfile` selects it), so reskinning for a new season is a config edit, not a
+schema or sim-core change. `Pose2d`/`Pt` are sim-local value types (not Pedro's `Pose`) so
+the schema layer carries no Android/Pedro coupling.
 
 ---
 
@@ -379,9 +448,11 @@ no Android/Pedro coupling.
    `setTargetVelocity`, …); each call appends to the event/state buffers. A simple
    first-order flywheel spin-up model gives a believable `flywheelActualRadS`.
 4. **`SimRunner`** — owns the `SimClock`; loops `flywheel.update → turret → feed → auto`
-   at `dt`, samples a `Frame` each tick, stops at `DONE` (or a 30 s cap); serializes
-   `SimTrace` → `docs/autosim/trace.json`.
-5. **Viewer** — `autosim.html` loads that trace.
+   at `dt`, samples a `Frame` each tick, stops at `DONE` (or a 30 s cap). Closes out each
+   `ActionEvent`'s `durationMs` from the virtual clock (feed span, intake span, drive
+   traversal), so durations mirror the FSM, then serializes the `SimTrace`.
+5. **Launcher + viewer** — the Gradle task injects that trace and the field image into the
+   HTML template, emitting one standalone `autosim-V3FarAuto.html`, and opens it.
 
 The original `V3FarAuto.java` is never imported, never edited.
 
@@ -393,22 +464,31 @@ Until then, keep the copy honest with a small checklist note in the file header.
 
 ## 10. Phased build plan
 
-- **Phase 0 — Prereqs & scaffold.** Commit/push the current uncommitted changes
-  (`HANDOFF.md` + `docs/`) per the workflow rule (master vs. PR — Q7). Resolve Q1
-  (stack) and Q2 (sim-vs-replay). Create the `autosim` source set/module, the trace
-  schema types, and an empty `autosim.html` that draws a 144″ field grid. *No behavior.*
+- **Phase 0 — Scaffold (decisions all resolved; this is the re-executed Phase 0).**
+  Create the `autosim` source set/module; the trace **schema types** (incl. `Field`
+  with `backgroundImage`, `Category` with generic spares, `meta.effectProfile`); the
+  **Gradle `autosim` task** that injects trace + base64 field image into the HTML
+  template and opens the result (+ the wrapping run config); the **HTML template** with an
+  inline **effect-profile** config block and an empty Canvas that draws the 144″ grid over
+  a configurable square **field-background image** (with the upload/drag-drop control and
+  opacity slider stubbed); and check in a placeholder `autosim/fields/decode.png`. *No
+  simulation behavior yet — the harness, the launcher, and the field backdrop only.*
 - **Phase 1 — Render the path (static).** `V3FarAutoSim` builds + samples the paths and
-  emits a minimal trace (paths + start pose, no time). Viewer draws field + full path +
-  robot at start + goal reticle. **Exit:** the route looks right vs. the field; proves
-  coordinate mapping and the file seam end-to-end.
+  emits a minimal trace (paths + start pose, no time). Viewer draws the field image +
+  grid + full path + robot at start + goal reticle. **Exit:** the route overlays correctly
+  on the field image; uploading a different square image re-backs it without a rebuild;
+  proves coordinate mapping and the file seam end-to-end.
 - **Phase 2 — Play back states (kinematic).** Add `SimClock` + `SimFollower` + the
   `SimRunner` loop; emit dense `frames`. Viewer gains play/pause/scrub/speed; the robot
   drives the path; state chip + timeline state-bands update. **Exit:** a full run plays
   start→DONE with plausible timing (3 s delay, feed windows, cycle count = 4).
-- **Phase 3 — Action overlays.** Recording stubs emit `events`; viewer renders category
-  color bands, event pins, on-field pulses (shoot ring, intake chevrons, feed/hood/turret
-  ticks), turret wedge + shot ray, and the legend. **Exit:** every shoot/intake/feed is
-  visible at the right time and place; the visual language reads clearly.
+- **Phase 3 — Action overlays (data-driven).** Recording stubs emit `events` with
+  `durationMs` taken from the FSM timing; the viewer renders them **through the effect
+  profile** — timeline bands/pins, on-field primitives (the DECODE profile's shoot
+  ring+flash held for the real feed window, intake chevrons, hood/turret gauge ticks),
+  turret wedge + shot ray, and the profile-driven legend. **Exit:** every action is
+  visible at the right time, place, **and for its true duration**; swapping the effect
+  profile reskins the overlays with no engine change.
 - **Phase 4 (optional/stretch).** (a) **Replay** mode — a logging copy writes the same
   schema on-robot; pull + open in the viewer for real-run fidelity. (b) **Multi-auto** —
   registry-driven dropdown. (c) **Assertion overlay** — surface #1's invariants
@@ -417,33 +497,42 @@ Until then, keep the copy honest with a small checklist note in the file header.
 
 ---
 
-## 11. Open questions / decisions for the captain (before Phase 0)
+## 11. Decisions (all resolved)
 
-1. **Tech stack (gating). — DECIDED: Web visualizer (HTML5 Canvas).** Pure-Java sim core
-   emits `trace.json`; a static HTML+Canvas page renders it.
-2. **Simulate vs. replay first. — DECIDED: predictive sim first.** Build the
-   `SimFollower` kinematic model up front so a run can be watched *before* driving, no
-   robot required. Replay of real-robot logs moves to the Phase 4 stretch (it reuses the
-   same viewer + schema, so nothing is lost).
-3. **Follower fidelity for v1.** Is the coarse point-mass / arc-length-timing model
-   acceptable for v1 — i.e. v1 validates **logic, ordering, and timing**, not exact pose
-   error? (Matches #1's pragmatism.)
-4. **Coordinate convention.** Confirm field 144″×144″, origin bottom-left, +X right, +Y
-   up, heading CCW degrees, and that we render blue-native + mirror for red (matching
-   `AllianceMirror`).
-5. **Path source.** Emit sampled polylines from the sim copy (single source of truth —
-   *recommended*) vs. re-declaring paths in the viewer.
-6. **Where it lives & launch ergonomics.** New Gradle subproject vs. a `src/test/java`
-   harness sharing #1's home; canonical launch = Gradle task vs. Android Studio run
-   config vs. double-click HTML.
-7. **Git handling now (blocks Phase 0). — DECIDED: commit + push current changes to
-   `master`** (matches the repo's master-first rule for small changes). Done before any
-   AutoSim code. Note: a stale `Limelight` branch sits 19 commits behind `origin` —
-   unrelated, left alone.
-8. **Action categories.** Confirm the DECODE set (DRIVE/SHOOT/FEED/INTAKE/HOOD/TURRET/
-   WAIT) and that the category enum should be designed season-generic now (slides/claw/
-   arm spares) to serve future-season reuse.
-9. **One engine or two.** Confirm this should be the **visual front-end of #1's headless
-   `AutoSim`** sharing one sim core (strongly recommended) rather than a standalone
-   engine.
+Every gating question is answered; nothing blocks Phase 0 but the captain's go-ahead.
+
+1. **Tech stack — Web visualizer (HTML5 Canvas).** Pure-Java sim core emits a trace; an
+   HTML+Canvas page renders it.
+2. **Build order — predictive sim first.** Build the `SimFollower` kinematic model up
+   front so a run can be watched *before* driving, no robot required. Real-log replay is
+   the Phase 4 stretch (reuses the same viewer + schema).
+3. **Follower fidelity — coarse point-mass for v1.** v1 validates **logic, ordering, and
+   timing**, not exact pose error. `SimFollower` is one swappable class for later.
+4. **Coordinates — confirmed.** 144″×144″, origin bottom-left, +X right, +Y up, heading
+   CCW degrees; render blue-native + mirror for red (matching `AllianceMirror`).
+5. **Path source — sampled from the sim copy.** Single source of truth; the viewer never
+   re-declares geometry.
+6. **Home & launch — self-contained in Android Studio, lowest friction.** A Gradle task
+   (in the AS Gradle window, wrapped as a run config) emits **one standalone HTML** with
+   the trace + field image inlined, openable on any device with no server or extra steps.
+7. **Git — committed + pushed to `master`.** Done. (A stale `Limelight` branch sits behind
+   `origin` — unrelated, left alone.)
+8. **Action categories — DECODE set confirmed, enum season-generic now.** DRIVE/SHOOT/
+   FEED/INTAKE/HOOD/TURRET/WAIT plus unused generic spares (SLIDE/CLAW/ARM/EXTEND);
+   category→visual mapping is a swappable effect profile (§3).
+9. **One shared sim core.** This is the visual front-end of #1's headless `AutoSim`; they
+   share one engine, not two.
+
+**Added per captain (2026-06-13):**
+
+10. **Configurable field-background image (§2).** Per-season bundled square image + an
+    in-viewer upload/drag-drop, behind the grid, with an opacity slider; goal/markers
+    drawn on top; non-square images letterboxed, not stretched.
+11. **Season-generic, modular effect profiles (§3).** The render core knows only generic
+    primitives (ring/chevrons/flash/arc/band); each season maps its categories onto them
+    in config. DECODE's orange-ring + muzzle-flash is the current profile; seasons that
+    don't shoot/feed/intake define their own with zero engine changes.
+12. **Event durations sourced from the auto (§3, §8, §9).** Every `durationMs` is computed
+    from the FSM's real timing (feed window ≈ 1.10 s, drive = traversal time, intake =
+    powered span), never a guessed constant.
 ```
