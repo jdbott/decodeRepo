@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 144 144" width="720" height="720">
+  <!--
+    PLACEHOLDER full-field schematic (DECODE), 144x144 inches, screen-oriented (y-down:
+    top of image = high field Y). Replace with a real square field render by swapping this
+    file or using the viewer's "upload field image" control. Blue alliance = left, red = right.
+  -->
+  <defs>
+    <pattern id="grid" width="12" height="12" patternUnits="userSpaceOnUse">
+      <path d="M12 0H0V12" fill="none" stroke="#2b3340" stroke-width="0.25"/>
+    </pattern>
+  </defs>
+
+  <rect x="0" y="0" width="144" height="144" fill="#161b22"/>
+  <rect x="0" y="0" width="72" height="144" fill="#1d3a5f" opacity="0.18"/>
+  <rect x="72" y="0" width="72" height="144" fill="#5f1d22" opacity="0.18"/>
+  <rect x="0" y="0" width="144" height="144" fill="url(#grid)"/>
+
+  <!-- perimeter -->
+  <rect x="0.5" y="0.5" width="143" height="143" fill="none" stroke="#3a4452" stroke-width="0.75"/>
+  <!-- center line -->
+  <line x1="72" y1="0" x2="72" y2="144" stroke="#3a4452" stroke-width="0.5" stroke-dasharray="2 2"/>
+
+  <!-- BLUE goal (field top-left, ~x=5 y=139) -->
+  <g transform="translate(5,5)">
+    <rect x="-3.5" y="-3.5" width="18" height="9" rx="1.5" fill="#1f6feb" opacity="0.35" stroke="#1f6feb" stroke-width="0.5"/>
+    <circle cx="3" cy="1" r="2" fill="none" stroke="#58a6ff" stroke-width="0.6"/>
+  </g>
+  <!-- RED goal (field top-right, mirrored) -->
+  <g transform="translate(139,5)">
+    <rect x="-14.5" y="-3.5" width="18" height="9" rx="1.5" fill="#da3633" opacity="0.35" stroke="#da3633" stroke-width="0.5"/>
+    <circle cx="-3" cy="1" r="2" fill="none" stroke="#ff7b72" stroke-width="0.6"/>
+  </g>
+
+  <text x="72" y="78" fill="#3a4452" font-family="monospace" font-size="6"
+        text-anchor="middle" opacity="0.8">PLACEHOLDER FIELD</text>
+  <text x="72" y="86" fill="#2b3340" font-family="monospace" font-size="3.2"
+        text-anchor="middle">upload a square field image to replace</text>
+</svg>

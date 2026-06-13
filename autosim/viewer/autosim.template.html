@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoSim — field preview</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --line:#2b3340;
+    --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff;
+    --blue:#1f6feb; --red:#da3633;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #app { display:flex; flex-direction:column; height:100vh; }
+
+  header { display:flex; align-items:center; gap:14px; padding:8px 14px;
+    background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto; flex-wrap:wrap; }
+  header .title { font-weight:600; font-size:15px; }
+  header .title small { color:var(--muted); font-weight:400; margin-left:6px; }
+  header .spacer { flex:1 1 auto; }
+  .ctl { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .seg button { background:var(--panel2); color:var(--muted); border:0; padding:5px 12px;
+    font-size:12px; cursor:pointer; }
+  .seg button.on[data-team="BLUE"] { background:var(--blue); color:#fff; }
+  .seg button.on[data-team="RED"]  { background:var(--red);  color:#fff; }
+  input[type=range] { accent-color:var(--accent); width:96px; }
+  .btn { background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer; }
+  .btn:hover { border-color:var(--accent); }
+
+  main { flex:1 1 auto; display:flex; min-height:0; }
+  aside { width:190px; flex:0 0 auto; background:var(--panel); border-right:1px solid var(--line);
+    padding:12px; overflow:auto; font-size:12px; }
+  aside h4 { margin:0 0 8px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .legend { display:flex; flex-direction:column; gap:6px; margin-bottom:18px; }
+  .legend .row { display:flex; align-items:center; gap:8px; }
+  .legend .sw { width:12px; height:12px; border-radius:3px; flex:0 0 auto; }
+  .kv { display:flex; justify-content:space-between; gap:8px; padding:2px 0; color:var(--muted); }
+  .kv b { color:var(--text); font-weight:500; }
+
+  .canvas-wrap { flex:1 1 auto; position:relative; display:flex; align-items:center;
+    justify-content:center; min-width:0; min-height:0; padding:14px; }
+  canvas { background:#000; border-radius:8px; box-shadow:0 0 0 1px var(--line); }
+  .drop-hint { position:absolute; inset:14px; border:2px dashed var(--accent); border-radius:10px;
+    display:none; align-items:center; justify-content:center; color:var(--accent);
+    background:rgba(88,166,255,.08); font-size:14px; pointer-events:none; }
+  .canvas-wrap.drag .drop-hint { display:flex; }
+
+  footer { flex:0 0 auto; padding:6px 14px; background:var(--panel); border-top:1px solid var(--line);
+    color:var(--muted); font-size:11.5px; display:flex; gap:14px; align-items:center; }
+  footer .gen { margin-left:auto; opacity:.7; }
+  .phase { color:var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">AutoSim <small id="autoName">—</small></div>
+    <div class="spacer"></div>
+    <div class="ctl">alliance
+      <span class="seg" id="alliance">
+        <button data-team="BLUE" class="on">Blue</button>
+        <button data-team="RED">Red</button>
+      </span>
+    </div>
+    <div class="ctl">field
+      <input type="range" id="opacity" min="0" max="100" value="65" title="field image opacity">
+    </div>
+    <button class="btn" id="uploadBtn">Upload field image</button>
+    <button class="btn" id="resetBtn" title="restore bundled field image">Reset</button>
+    <input type="file" id="fileInput" accept="image/*" hidden>
+  </header>
+
+  <main>
+    <aside>
+      <h4>Legend</h4>
+      <div class="legend" id="legend"></div>
+      <h4>Start</h4>
+      <div class="kv"><span>pose x</span><b id="sx">—</b></div>
+      <div class="kv"><span>pose y</span><b id="sy">—</b></div>
+      <div class="kv"><span>heading</span><b id="sh">—</b></div>
+      <div class="kv"><span>turret</span><b id="st">—</b></div>
+      <div class="kv"><span>hood</span><b id="shood">—</b></div>
+      <h4 style="margin-top:18px">Paths</h4>
+      <div id="pathList" style="display:flex;flex-direction:column;gap:5px"></div>
+    </aside>
+
+    <div class="canvas-wrap" id="wrap">
+      <canvas id="field"></canvas>
+      <div class="drop-hint">drop a square field image</div>
+    </div>
+  </main>
+
+  <footer>
+    <span><span class="phase">Phase 1</span> — static path preview. Playback (Phase 2) &amp; action overlays (Phase 3) coming.</span>
+    <span class="gen">generated __GENERATED_AT__</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+// ---- Injected by the generator (standalone, no fetch) ----
+const TRACE = __TRACE_JSON__;
+const FIELD_IMAGE_DATAURI = "__FIELD_IMAGE_DATAURI__";
+
+// ---- Effect profiles: category -> visual mapping (data, not code) ----
+const EFFECT_PROFILES = {
+  decode: {
+    DRIVE:  { color:"#7a8aa0", glyph:"→", label:"drive"  },
+    SHOOT:  { color:"#ff7a18", glyph:"▲", label:"shoot"  },
+    FEED:   { color:"#ffb020", glyph:"⯈", label:"feed"   },
+    INTAKE: { color:"#37c871", glyph:"⟳", label:"intake" },
+    HOOD:   { color:"#9b6cff", glyph:"◠", label:"hood"   },
+    TURRET: { color:"#28c1d6", glyph:"⟲", label:"turret" },
+    WAIT:   { color:"#8a8f98", glyph:"⏱", label:"wait"   }
+  }
+};
+const PROFILE = EFFECT_PROFILES[(TRACE.meta && TRACE.meta.effectProfile) || "decode"] || EFFECT_PROFILES.decode;
+const PATH_PALETTE = ["#58a6ff","#56d364","#e3b341","#bc8cff","#ff7b72","#39c5cf","#ffa657","#7ee787"];
+
+const FIELD = TRACE.field || { widthIn:144, heightIn:144 };
+const W = FIELD.widthIn || 144;
+
+const state = { alliance:"BLUE", bgOpacity:0.65, S:0, scale:1, img:null };
+
+// ---- Field background image ----
+function loadImage(src) {
+  if (!src) { state.img = null; draw(); return; }
+  const im = new Image();
+  im.onload = () => { state.img = im; draw(); };
+  im.onerror = () => { state.img = null; draw(); };
+  im.src = src;
+}
+
+// ---- Coordinate transform (field inches -> canvas px, Y-up, x mirrored for red) ----
+function mx(x){ return state.alliance === "RED" ? W - x : x; }
+function mh(h){ return state.alliance === "RED" ? -h : h; }
+function px(x){ return mx(x) * state.scale; }
+function py(y){ return state.S - y * state.scale; }
+
+const canvas = document.getElementById("field");
+const ctx = canvas.getContext("2d");
+
+function fit() {
+  const wrap = document.getElementById("wrap");
+  const pad = 28;
+  const cssSize = Math.max(280, Math.min(wrap.clientWidth - pad, wrap.clientHeight - pad));
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = cssSize + "px";
+  canvas.style.height = cssSize + "px";
+  canvas.width = Math.round(cssSize * dpr);
+  canvas.height = Math.round(cssSize * dpr);
+  state.S = cssSize;
+  state.scale = cssSize / W;
+  state.dpr = dpr;
+  draw();
+}
+
+function draw() {
+  if (!state.S) return;
+  ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  ctx.clearRect(0, 0, state.S, state.S);
+
+  drawFieldImage();
+  drawGrid();
+  drawGoal();
+  drawPaths();
+  drawStartRobot();
+}
+
+function drawFieldImage() {
+  if (state.img) {
+    ctx.save();
+    ctx.globalAlpha = state.bgOpacity;
+    // image is full-field, screen-oriented; never mirrored (it already contains both sides)
+    ctx.drawImage(state.img, 0, 0, state.S, state.S);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = "#0b0f14";
+    ctx.fillRect(0, 0, state.S, state.S);
+  }
+}
+
+function drawGrid() {
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= W; i += 12) {
+    const p = i * state.scale;
+    ctx.strokeStyle = (i % 24 === 0) ? "rgba(120,135,160,.22)" : "rgba(120,135,160,.10)";
+    ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, state.S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(state.S, p); ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(160,175,200,.45)";
+  ctx.strokeRect(0.5, 0.5, state.S - 1, state.S - 1);
+  ctx.restore();
+}
+
+function drawGoal() {
+  const g = FIELD.goal; if (!g) return;
+  const x = px(g.x), y = py(g.y);
+  ctx.save();
+  ctx.strokeStyle = state.alliance === "RED" ? "#ff7b72" : "#58a6ff";
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.lineWidth = 2;
+  for (const r of [11, 6.5]) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.stroke(); }
+  ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x-14,y); ctx.lineTo(x+14,y); ctx.moveTo(x,y-14); ctx.lineTo(x,y+14); ctx.stroke();
+  ctx.font = "11px monospace";
+  ctx.fillText("goal", x + 14, y - 8);
+  ctx.restore();
+}
+
+function drawPaths() {
+  const paths = TRACE.paths || [];
+  paths.forEach((p, i) => {
+    const poly = p.polyline || [];
+    if (poly.length < 2) return;
+    const color = PATH_PALETTE[i % PATH_PALETTE.length];
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(px(poly[0].x), py(poly[0].y));
+    for (let k = 1; k < poly.length; k++) ctx.lineTo(px(poly[k].x), py(poly[k].y));
+    ctx.stroke();
+    // direction arrow at the segment's end
+    const a = poly[poly.length - 2], b = poly[poly.length - 1];
+    arrowHead(px(a.x), py(a.y), px(b.x), py(b.y), color);
+    ctx.restore();
+  });
+}
+
+function arrowHead(x1, y1, x2, y2, color) {
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  const len = 9;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.translate(x2, y2);
+  ctx.rotate(ang);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-len, -len * 0.5);
+  ctx.lineTo(-len, len * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawStartRobot() {
+  const f = (TRACE.frames && TRACE.frames[0]) || null;
+  const pose = f ? f.pose : (TRACE.meta && TRACE.meta.startPose);
+  if (!pose) return;
+  const cx = px(pose.x), cy = py(pose.y);
+  const hRad = mh(pose.headingDeg) * Math.PI / 180;
+  const sz = 18 * state.scale;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-hRad);                       // field heading is CCW; screen Y is down
+  ctx.fillStyle = "rgba(88,166,255,.16)";
+  ctx.strokeStyle = "#58a6ff";
+  ctx.lineWidth = 2;
+  roundRect(-sz/2, -sz/2, sz, sz, 3);
+  ctx.fill(); ctx.stroke();
+  // heading nose at +X (forward)
+  ctx.fillStyle = "#58a6ff";
+  ctx.beginPath();
+  ctx.moveTo(sz/2, 0); ctx.lineTo(sz/2 - 6, -5); ctx.lineTo(sz/2 - 6, 5); ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // aim line robot -> goal (turret convention rendered properly in Phase 3)
+  if (FIELD.goal) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,122,24,.7)";
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(px(FIELD.goal.x), py(FIELD.goal.y));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // start dot
+  ctx.save();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// ---- Side panel ----
+function buildLegend() {
+  const el = document.getElementById("legend");
+  el.innerHTML = "";
+  Object.keys(PROFILE).forEach(cat => {
+    const e = PROFILE[cat];
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = '<span class="sw" style="background:' + e.color + '"></span>' +
+                    '<span>' + e.glyph + ' ' + e.label + '</span>';
+    el.appendChild(row);
+  });
+}
+
+function fillInfo() {
+  document.getElementById("autoName").textContent = (TRACE.meta && TRACE.meta.autoName) || "";
+  const f = (TRACE.frames && TRACE.frames[0]) || {};
+  const pose = f.pose || (TRACE.meta && TRACE.meta.startPose) || {};
+  const set = (id, v) => document.getElementById(id).textContent = v;
+  set("sx", fmt(pose.x)); set("sy", fmt(pose.y));
+  set("sh", fmt(pose.headingDeg) + "°");
+  set("st", (f.turretDeg != null ? fmt(f.turretDeg) : "—") + "°");
+  set("shood", (f.hoodDeg != null ? fmt(f.hoodDeg) : "—") + "°");
+
+  const list = document.getElementById("pathList");
+  list.innerHTML = "";
+  (TRACE.paths || []).forEach((p, i) => {
+    const row = document.createElement("div");
+    row.className = "row legend";
+    row.style.flexDirection = "row";
+    row.innerHTML = '<span class="sw" style="background:' + PATH_PALETTE[i % PATH_PALETTE.length] + '"></span>' +
+                    '<span style="color:var(--muted)">' + p.id + '</span>';
+    list.appendChild(row);
+  });
+}
+function fmt(v){ return (v == null) ? "—" : (Math.round(v * 10) / 10).toString(); }
+
+// ---- Controls ----
+document.getElementById("alliance").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.alliance = b.dataset.team;
+  [...e.currentTarget.children].forEach(c => c.classList.toggle("on", c === b));
+  draw();
+});
+document.getElementById("opacity").addEventListener("input", e => {
+  state.bgOpacity = e.target.value / 100; draw();
+});
+const fileInput = document.getElementById("fileInput");
+document.getElementById("uploadBtn").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", e => {
+  const file = e.target.files && e.target.files[0]; if (!file) return;
+  const rd = new FileReader();
+  rd.onload = () => loadImage(rd.result);
+  rd.readAsDataURL(file);
+});
+document.getElementById("resetBtn").addEventListener("click", () => loadImage(FIELD_IMAGE_DATAURI || null));
+
+const wrap = document.getElementById("wrap");
+["dragenter","dragover"].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.add("drag"); }));
+["dragleave","drop"].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.remove("drag"); }));
+wrap.addEventListener("drop", e => {
+  const file = e.dataTransfer.files && e.dataTransfer.files[0]; if (!file) return;
+  const rd = new FileReader();
+  rd.onload = () => loadImage(rd.result);
+  rd.readAsDataURL(file);
+});
+
+window.addEventListener("resize", fit);
+
+// ---- Boot ----
+buildLegend();
+fillInfo();
+loadImage(FIELD_IMAGE_DATAURI || null);
+fit();
+</script>
+</body>
+</html>

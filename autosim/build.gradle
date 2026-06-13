@@ -1,0 +1,36 @@
+// Plain-Java desktop module for the AutoSim visualizer generator.
+// Deliberately has NO Android or Pedro dependency, so it runs on any JVM (and in CI).
+// It does not affect the robot (TeamCode / FtcRobotController) build in any way.
+
+plugins {
+    id 'java'
+    id 'application'
+}
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
+}
+
+application {
+    mainClass = 'org.firstinspires.ftc.teamcode.autosim.AutoSimGenerator'
+}
+
+// Run the generator with the module dir as the base so it finds viewer/ and fields/.
+tasks.named('run', JavaExec) {
+    workingDir = projectDir
+    systemProperty 'autosim.base', projectDir.absolutePath
+}
+
+// Friendlier alias: `./gradlew :autosim:autosim` (optionally -Pauto=<AutoName>).
+tasks.register('autosim', JavaExec) {
+    group = 'autosim'
+    description = 'Generate the standalone AutoSim viewer HTML (default V3FarAuto).'
+    mainClass = 'org.firstinspires.ftc.teamcode.autosim.AutoSimGenerator'
+    classpath = sourceSets.main.runtimeClasspath
+    workingDir = projectDir
+    systemProperty 'autosim.base', projectDir.absolutePath
+    if (project.hasProperty('auto')) {
+        args(project.getProperty('auto'))
+    }
+}

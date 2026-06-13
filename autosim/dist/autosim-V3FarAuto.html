@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AutoSim — field preview</title>
+<style>
+  :root {
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2230; --line:#2b3340;
+    --text:#e6edf3; --muted:#8b949e; --accent:#58a6ff;
+    --blue:#1f6feb; --red:#da3633;
+  }
+  * { box-sizing:border-box; }
+  html,body { margin:0; height:100%; background:var(--bg); color:var(--text);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif; }
+  #app { display:flex; flex-direction:column; height:100vh; }
+
+  header { display:flex; align-items:center; gap:14px; padding:8px 14px;
+    background:var(--panel); border-bottom:1px solid var(--line); flex:0 0 auto; flex-wrap:wrap; }
+  header .title { font-weight:600; font-size:15px; }
+  header .title small { color:var(--muted); font-weight:400; margin-left:6px; }
+  header .spacer { flex:1 1 auto; }
+  .ctl { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted); }
+  .seg { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+  .seg button { background:var(--panel2); color:var(--muted); border:0; padding:5px 12px;
+    font-size:12px; cursor:pointer; }
+  .seg button.on[data-team="BLUE"] { background:var(--blue); color:#fff; }
+  .seg button.on[data-team="RED"]  { background:var(--red);  color:#fff; }
+  input[type=range] { accent-color:var(--accent); width:96px; }
+  .btn { background:var(--panel2); color:var(--text); border:1px solid var(--line);
+    border-radius:6px; padding:5px 10px; font-size:12px; cursor:pointer; }
+  .btn:hover { border-color:var(--accent); }
+
+  main { flex:1 1 auto; display:flex; min-height:0; }
+  aside { width:190px; flex:0 0 auto; background:var(--panel); border-right:1px solid var(--line);
+    padding:12px; overflow:auto; font-size:12px; }
+  aside h4 { margin:0 0 8px; font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+  .legend { display:flex; flex-direction:column; gap:6px; margin-bottom:18px; }
+  .legend .row { display:flex; align-items:center; gap:8px; }
+  .legend .sw { width:12px; height:12px; border-radius:3px; flex:0 0 auto; }
+  .kv { display:flex; justify-content:space-between; gap:8px; padding:2px 0; color:var(--muted); }
+  .kv b { color:var(--text); font-weight:500; }
+
+  .canvas-wrap { flex:1 1 auto; position:relative; display:flex; align-items:center;
+    justify-content:center; min-width:0; min-height:0; padding:14px; }
+  canvas { background:#000; border-radius:8px; box-shadow:0 0 0 1px var(--line); }
+  .drop-hint { position:absolute; inset:14px; border:2px dashed var(--accent); border-radius:10px;
+    display:none; align-items:center; justify-content:center; color:var(--accent);
+    background:rgba(88,166,255,.08); font-size:14px; pointer-events:none; }
+  .canvas-wrap.drag .drop-hint { display:flex; }
+
+  footer { flex:0 0 auto; padding:6px 14px; background:var(--panel); border-top:1px solid var(--line);
+    color:var(--muted); font-size:11.5px; display:flex; gap:14px; align-items:center; }
+  footer .gen { margin-left:auto; opacity:.7; }
+  .phase { color:var(--accent); }
+</style>
+</head>
+<body>
+<div id="app">
+  <header>
+    <div class="title">AutoSim <small id="autoName">—</small></div>
+    <div class="spacer"></div>
+    <div class="ctl">alliance
+      <span class="seg" id="alliance">
+        <button data-team="BLUE" class="on">Blue</button>
+        <button data-team="RED">Red</button>
+      </span>
+    </div>
+    <div class="ctl">field
+      <input type="range" id="opacity" min="0" max="100" value="65" title="field image opacity">
+    </div>
+    <button class="btn" id="uploadBtn">Upload field image</button>
+    <button class="btn" id="resetBtn" title="restore bundled field image">Reset</button>
+    <input type="file" id="fileInput" accept="image/*" hidden>
+  </header>
+
+  <main>
+    <aside>
+      <h4>Legend</h4>
+      <div class="legend" id="legend"></div>
+      <h4>Start</h4>
+      <div class="kv"><span>pose x</span><b id="sx">—</b></div>
+      <div class="kv"><span>pose y</span><b id="sy">—</b></div>
+      <div class="kv"><span>heading</span><b id="sh">—</b></div>
+      <div class="kv"><span>turret</span><b id="st">—</b></div>
+      <div class="kv"><span>hood</span><b id="shood">—</b></div>
+      <h4 style="margin-top:18px">Paths</h4>
+      <div id="pathList" style="display:flex;flex-direction:column;gap:5px"></div>
+    </aside>
+
+    <div class="canvas-wrap" id="wrap">
+      <canvas id="field"></canvas>
+      <div class="drop-hint">drop a square field image</div>
+    </div>
+  </main>
+
+  <footer>
+    <span><span class="phase">Phase 1</span> — static path preview. Playback (Phase 2) &amp; action overlays (Phase 3) coming.</span>
+    <span class="gen">generated 2026-06-13T19:49:52.246016Z</span>
+  </footer>
+</div>
+
+<script>
+"use strict";
+
+// ---- Injected by the generator (standalone, no fetch) ----
+const TRACE = {
+  "schemaVersion": 1,
+  "meta": {
+    "autoName": "V3FarAuto",
+    "alliance": "BLUE",
+    "simDtMillis": 20,
+    "totalMillis": 0,
+    "source": "SIM",
+    "generatedAt": "2026-06-13T19:49:52.246016Z",
+    "effectProfile": "decode",
+    "startPose": { "x": 64.1, "y": 6.75, "headingDeg": 180 },
+    "follower": { "model": "pointmass-v1", "xVel": 73.8, "yVel": 60.8 }
+  },
+  "field": { "widthIn": 144, "heightIn": 144, "goal": { "x": 5, "y": 139 }, "backgroundImage": "fields/decode.svg" },
+  "paths": [
+    { "id": "toLastLine", "kind": "CURVE", "headingDeg": 180, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 64.1, "y": 6.75 }, { "x": 45, "y": 38 }, { "x": 12.5, "y": 38 }], "polyline": [{ "x": 64.1, "y": 6.75 }, { "x": 63.137, "y": 8.293 }, { "x": 62.156, "y": 9.797 }, { "x": 61.16, "y": 11.262 }, { "x": 60.146, "y": 12.688 }, { "x": 59.116, "y": 14.074 }, { "x": 58.068, "y": 15.422 }, { "x": 57.005, "y": 16.73 }, { "x": 55.924, "y": 18 }, { "x": 54.827, "y": 19.23 }, { "x": 53.713, "y": 20.422 }, { "x": 52.582, "y": 21.574 }, { "x": 51.434, "y": 22.688 }, { "x": 50.27, "y": 23.762 }, { "x": 49.088, "y": 24.797 }, { "x": 47.891, "y": 25.793 }, { "x": 46.676, "y": 26.75 }, { "x": 45.445, "y": 27.668 }, { "x": 44.197, "y": 28.547 }, { "x": 42.932, "y": 29.387 }, { "x": 41.65, "y": 30.188 }, { "x": 40.352, "y": 30.949 }, { "x": 39.037, "y": 31.672 }, { "x": 37.705, "y": 32.355 }, { "x": 36.356, "y": 33 }, { "x": 34.991, "y": 33.605 }, { "x": 33.609, "y": 34.172 }, { "x": 32.21, "y": 34.699 }, { "x": 30.794, "y": 35.188 }, { "x": 29.362, "y": 35.637 }, { "x": 27.913, "y": 36.047 }, { "x": 26.447, "y": 36.418 }, { "x": 24.964, "y": 36.75 }, { "x": 23.465, "y": 37.043 }, { "x": 21.949, "y": 37.297 }, { "x": 20.416, "y": 37.512 }, { "x": 18.866, "y": 37.688 }, { "x": 17.3, "y": 37.824 }, { "x": 15.717, "y": 37.922 }, { "x": 14.117, "y": 37.98 }, { "x": 12.5, "y": 38 }] },
+    { "id": "fromLastLineToShoot2", "kind": "LINE", "headingDeg": 180, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 12.5, "y": 38 }, { "x": 64.1, "y": 12.25 }], "polyline": [{ "x": 12.5, "y": 38 }, { "x": 64.1, "y": 12.25 }] },
+    { "id": "toIntake1 (low)", "kind": "LINE", "headingDeg": 200, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 64.1, "y": 12.25 }, { "x": 15, "y": 9.5 }], "polyline": [{ "x": 64.1, "y": 12.25 }, { "x": 15, "y": 9.5 }] },
+    { "id": "backup (low)", "kind": "LINE", "headingDeg": 180, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 15, "y": 9.5 }, { "x": 25, "y": 9.5 }], "polyline": [{ "x": 15, "y": 9.5 }, { "x": 25, "y": 9.5 }] },
+    { "id": "backToShoot2 (low)", "kind": "LINE", "headingDeg": 180, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 25, "y": 9.5 }, { "x": 64.1, "y": 12.25 }], "polyline": [{ "x": 25, "y": 9.5 }, { "x": 64.1, "y": 12.25 }] },
+    { "id": "toIntake1 (high)", "kind": "LINE", "headingDeg": 200, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 64.1, "y": 12.25 }, { "x": 15, "y": 28.5 }], "polyline": [{ "x": 64.1, "y": 12.25 }, { "x": 15, "y": 28.5 }] },
+    { "id": "backup (high)", "kind": "LINE", "headingDeg": 180, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 15, "y": 28.5 }, { "x": 25, "y": 28.5 }], "polyline": [{ "x": 15, "y": 28.5 }, { "x": 25, "y": 28.5 }] },
+    { "id": "backToShoot2 (high)", "kind": "LINE", "headingDeg": 180, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 25, "y": 28.5 }, { "x": 64.1, "y": 12.25 }], "polyline": [{ "x": 25, "y": 28.5 }, { "x": 64.1, "y": 12.25 }] },
+    { "id": "retreat", "kind": "LINE", "headingDeg": 180, "tStartMs": -1, "tEndMs": -1, "controlPoints": [{ "x": 64.1, "y": 12.25 }, { "x": 41.1, "y": 12.25 }], "polyline": [{ "x": 64.1, "y": 12.25 }, { "x": 41.1, "y": 12.25 }] }
+  ],
+  "frames": [
+    { "tMs": 0, "pose": { "x": 64.1, "y": 6.75, "headingDeg": 180 }, "autoState": "WAIT_INITIAL_DELAY", "feedState": "IDLE", "followerBusy": false, "flywheelTargetRadS": 445, "flywheelActualRadS": 0, "turretDeg": 113, "hoodDeg": 53.5, "intakePower": 0 }
+  ],
+  "events": [
+  ]
+}
+;
+const FIELD_IMAGE_DATAURI = "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAxNDQgMTQ0IiB3aWR0aD0iNzIwIiBoZWlnaHQ9IjcyMCI+CiAgPCEtLQogICAgUExBQ0VIT0xERVIgZnVsbC1maWVsZCBzY2hlbWF0aWMgKERFQ09ERSksIDE0NHgxNDQgaW5jaGVzLCBzY3JlZW4tb3JpZW50ZWQgKHktZG93bjoKICAgIHRvcCBvZiBpbWFnZSA9IGhpZ2ggZmllbGQgWSkuIFJlcGxhY2Ugd2l0aCBhIHJlYWwgc3F1YXJlIGZpZWxkIHJlbmRlciBieSBzd2FwcGluZyB0aGlzCiAgICBmaWxlIG9yIHVzaW5nIHRoZSB2aWV3ZXIncyAidXBsb2FkIGZpZWxkIGltYWdlIiBjb250cm9sLiBCbHVlIGFsbGlhbmNlID0gbGVmdCwgcmVkID0gcmlnaHQuCiAgLS0+CiAgPGRlZnM+CiAgICA8cGF0dGVybiBpZD0iZ3JpZCIgd2lkdGg9IjEyIiBoZWlnaHQ9IjEyIiBwYXR0ZXJuVW5pdHM9InVzZXJTcGFjZU9uVXNlIj4KICAgICAgPHBhdGggZD0iTTEyIDBIMFYxMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjMmIzMzQwIiBzdHJva2Utd2lkdGg9IjAuMjUiLz4KICAgIDwvcGF0dGVybj4KICA8L2RlZnM+CgogIDxyZWN0IHg9IjAiIHk9IjAiIHdpZHRoPSIxNDQiIGhlaWdodD0iMTQ0IiBmaWxsPSIjMTYxYjIyIi8+CiAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjcyIiBoZWlnaHQ9IjE0NCIgZmlsbD0iIzFkM2E1ZiIgb3BhY2l0eT0iMC4xOCIvPgogIDxyZWN0IHg9IjcyIiB5PSIwIiB3aWR0aD0iNzIiIGhlaWdodD0iMTQ0IiBmaWxsPSIjNWYxZDIyIiBvcGFjaXR5PSIwLjE4Ii8+CiAgPHJlY3QgeD0iMCIgeT0iMCIgd2lkdGg9IjE0NCIgaGVpZ2h0PSIxNDQiIGZpbGw9InVybCgjZ3JpZCkiLz4KCiAgPCEtLSBwZXJpbWV0ZXIgLS0+CiAgPHJlY3QgeD0iMC41IiB5PSIwLjUiIHdpZHRoPSIxNDMiIGhlaWdodD0iMTQzIiBmaWxsPSJub25lIiBzdHJva2U9IiMzYTQ0NTIiIHN0cm9rZS13aWR0aD0iMC43NSIvPgogIDwhLS0gY2VudGVyIGxpbmUgLS0+CiAgPGxpbmUgeDE9IjcyIiB5MT0iMCIgeDI9IjcyIiB5Mj0iMTQ0IiBzdHJva2U9IiMzYTQ0NTIiIHN0cm9rZS13aWR0aD0iMC41IiBzdHJva2UtZGFzaGFycmF5PSIyIDIiLz4KCiAgPCEtLSBCTFVFIGdvYWwgKGZpZWxkIHRvcC1sZWZ0LCB+eD01IHk9MTM5KSAtLT4KICA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSg1LDUpIj4KICAgIDxyZWN0IHg9Ii0zLjUiIHk9Ii0zLjUiIHdpZHRoPSIxOCIgaGVpZ2h0PSI5IiByeD0iMS41IiBmaWxsPSIjMWY2ZmViIiBvcGFjaXR5PSIwLjM1IiBzdHJva2U9IiMxZjZmZWIiIHN0cm9rZS13aWR0aD0iMC41Ii8+CiAgICA8Y2lyY2xlIGN4PSIzIiBjeT0iMSIgcj0iMiIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjNThhNmZmIiBzdHJva2Utd2lkdGg9IjAuNiIvPgogIDwvZz4KICA8IS0tIFJFRCBnb2FsIChmaWVsZCB0b3AtcmlnaHQsIG1pcnJvcmVkKSAtLT4KICA8ZyB0cmFuc2Zvcm09InRyYW5zbGF0ZSgxMzksNSkiPgogICAgPHJlY3QgeD0iLTE0LjUiIHk9Ii0zLjUiIHdpZHRoPSIxOCIgaGVpZ2h0PSI5IiByeD0iMS41IiBmaWxsPSIjZGEzNjMzIiBvcGFjaXR5PSIwLjM1IiBzdHJva2U9IiNkYTM2MzMiIHN0cm9rZS13aWR0aD0iMC41Ii8+CiAgICA8Y2lyY2xlIGN4PSItMyIgY3k9IjEiIHI9IjIiIGZpbGw9Im5vbmUiIHN0cm9rZT0iI2ZmN2I3MiIgc3Ryb2tlLXdpZHRoPSIwLjYiLz4KICA8L2c+CgogIDx0ZXh0IHg9IjcyIiB5PSI3OCIgZmlsbD0iIzNhNDQ1MiIgZm9udC1mYW1pbHk9Im1vbm9zcGFjZSIgZm9udC1zaXplPSI2IgogICAgICAgIHRleHQtYW5jaG9yPSJtaWRkbGUiIG9wYWNpdHk9IjAuOCI+UExBQ0VIT0xERVIgRklFTEQ8L3RleHQ+CiAgPHRleHQgeD0iNzIiIHk9Ijg2IiBmaWxsPSIjMmIzMzQwIiBmb250LWZhbWlseT0ibW9ub3NwYWNlIiBmb250LXNpemU9IjMuMiIKICAgICAgICB0ZXh0LWFuY2hvcj0ibWlkZGxlIj51cGxvYWQgYSBzcXVhcmUgZmllbGQgaW1hZ2UgdG8gcmVwbGFjZTwvdGV4dD4KPC9zdmc+Cg==";
+
+// ---- Effect profiles: category -> visual mapping (data, not code) ----
+const EFFECT_PROFILES = {
+  decode: {
+    DRIVE:  { color:"#7a8aa0", glyph:"→", label:"drive"  },
+    SHOOT:  { color:"#ff7a18", glyph:"▲", label:"shoot"  },
+    FEED:   { color:"#ffb020", glyph:"⯈", label:"feed"   },
+    INTAKE: { color:"#37c871", glyph:"⟳", label:"intake" },
+    HOOD:   { color:"#9b6cff", glyph:"◠", label:"hood"   },
+    TURRET: { color:"#28c1d6", glyph:"⟲", label:"turret" },
+    WAIT:   { color:"#8a8f98", glyph:"⏱", label:"wait"   }
+  }
+};
+const PROFILE = EFFECT_PROFILES[(TRACE.meta && TRACE.meta.effectProfile) || "decode"] || EFFECT_PROFILES.decode;
+const PATH_PALETTE = ["#58a6ff","#56d364","#e3b341","#bc8cff","#ff7b72","#39c5cf","#ffa657","#7ee787"];
+
+const FIELD = TRACE.field || { widthIn:144, heightIn:144 };
+const W = FIELD.widthIn || 144;
+
+const state = { alliance:"BLUE", bgOpacity:0.65, S:0, scale:1, img:null };
+
+// ---- Field background image ----
+function loadImage(src) {
+  if (!src) { state.img = null; draw(); return; }
+  const im = new Image();
+  im.onload = () => { state.img = im; draw(); };
+  im.onerror = () => { state.img = null; draw(); };
+  im.src = src;
+}
+
+// ---- Coordinate transform (field inches -> canvas px, Y-up, x mirrored for red) ----
+function mx(x){ return state.alliance === "RED" ? W - x : x; }
+function mh(h){ return state.alliance === "RED" ? -h : h; }
+function px(x){ return mx(x) * state.scale; }
+function py(y){ return state.S - y * state.scale; }
+
+const canvas = document.getElementById("field");
+const ctx = canvas.getContext("2d");
+
+function fit() {
+  const wrap = document.getElementById("wrap");
+  const pad = 28;
+  const cssSize = Math.max(280, Math.min(wrap.clientWidth - pad, wrap.clientHeight - pad));
+  const dpr = window.devicePixelRatio || 1;
+  canvas.style.width = cssSize + "px";
+  canvas.style.height = cssSize + "px";
+  canvas.width = Math.round(cssSize * dpr);
+  canvas.height = Math.round(cssSize * dpr);
+  state.S = cssSize;
+  state.scale = cssSize / W;
+  state.dpr = dpr;
+  draw();
+}
+
+function draw() {
+  if (!state.S) return;
+  ctx.setTransform(state.dpr, 0, 0, state.dpr, 0, 0);
+  ctx.clearRect(0, 0, state.S, state.S);
+
+  drawFieldImage();
+  drawGrid();
+  drawGoal();
+  drawPaths();
+  drawStartRobot();
+}
+
+function drawFieldImage() {
+  if (state.img) {
+    ctx.save();
+    ctx.globalAlpha = state.bgOpacity;
+    // image is full-field, screen-oriented; never mirrored (it already contains both sides)
+    ctx.drawImage(state.img, 0, 0, state.S, state.S);
+    ctx.restore();
+  } else {
+    ctx.fillStyle = "#0b0f14";
+    ctx.fillRect(0, 0, state.S, state.S);
+  }
+}
+
+function drawGrid() {
+  ctx.save();
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= W; i += 12) {
+    const p = i * state.scale;
+    ctx.strokeStyle = (i % 24 === 0) ? "rgba(120,135,160,.22)" : "rgba(120,135,160,.10)";
+    ctx.beginPath(); ctx.moveTo(p, 0); ctx.lineTo(p, state.S); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, p); ctx.lineTo(state.S, p); ctx.stroke();
+  }
+  ctx.strokeStyle = "rgba(160,175,200,.45)";
+  ctx.strokeRect(0.5, 0.5, state.S - 1, state.S - 1);
+  ctx.restore();
+}
+
+function drawGoal() {
+  const g = FIELD.goal; if (!g) return;
+  const x = px(g.x), y = py(g.y);
+  ctx.save();
+  ctx.strokeStyle = state.alliance === "RED" ? "#ff7b72" : "#58a6ff";
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.lineWidth = 2;
+  for (const r of [11, 6.5]) { ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI*2); ctx.stroke(); }
+  ctx.beginPath(); ctx.arc(x, y, 2.2, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.moveTo(x-14,y); ctx.lineTo(x+14,y); ctx.moveTo(x,y-14); ctx.lineTo(x,y+14); ctx.stroke();
+  ctx.font = "11px monospace";
+  ctx.fillText("goal", x + 14, y - 8);
+  ctx.restore();
+}
+
+function drawPaths() {
+  const paths = TRACE.paths || [];
+  paths.forEach((p, i) => {
+    const poly = p.polyline || [];
+    if (poly.length < 2) return;
+    const color = PATH_PALETTE[i % PATH_PALETTE.length];
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2.5;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.beginPath();
+    ctx.moveTo(px(poly[0].x), py(poly[0].y));
+    for (let k = 1; k < poly.length; k++) ctx.lineTo(px(poly[k].x), py(poly[k].y));
+    ctx.stroke();
+    // direction arrow at the segment's end
+    const a = poly[poly.length - 2], b = poly[poly.length - 1];
+    arrowHead(px(a.x), py(a.y), px(b.x), py(b.y), color);
+    ctx.restore();
+  });
+}
+
+function arrowHead(x1, y1, x2, y2, color) {
+  const ang = Math.atan2(y2 - y1, x2 - x1);
+  const len = 9;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.translate(x2, y2);
+  ctx.rotate(ang);
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(-len, -len * 0.5);
+  ctx.lineTo(-len, len * 0.5);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawStartRobot() {
+  const f = (TRACE.frames && TRACE.frames[0]) || null;
+  const pose = f ? f.pose : (TRACE.meta && TRACE.meta.startPose);
+  if (!pose) return;
+  const cx = px(pose.x), cy = py(pose.y);
+  const hRad = mh(pose.headingDeg) * Math.PI / 180;
+  const sz = 18 * state.scale;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(-hRad);                       // field heading is CCW; screen Y is down
+  ctx.fillStyle = "rgba(88,166,255,.16)";
+  ctx.strokeStyle = "#58a6ff";
+  ctx.lineWidth = 2;
+  roundRect(-sz/2, -sz/2, sz, sz, 3);
+  ctx.fill(); ctx.stroke();
+  // heading nose at +X (forward)
+  ctx.fillStyle = "#58a6ff";
+  ctx.beginPath();
+  ctx.moveTo(sz/2, 0); ctx.lineTo(sz/2 - 6, -5); ctx.lineTo(sz/2 - 6, 5); ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+
+  // aim line robot -> goal (turret convention rendered properly in Phase 3)
+  if (FIELD.goal) {
+    ctx.save();
+    ctx.strokeStyle = "rgba(255,122,24,.7)";
+    ctx.setLineDash([5, 4]);
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.lineTo(px(FIELD.goal.x), py(FIELD.goal.y));
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // start dot
+  ctx.save();
+  ctx.fillStyle = "#fff";
+  ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI*2); ctx.fill();
+  ctx.restore();
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+}
+
+// ---- Side panel ----
+function buildLegend() {
+  const el = document.getElementById("legend");
+  el.innerHTML = "";
+  Object.keys(PROFILE).forEach(cat => {
+    const e = PROFILE[cat];
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML = '<span class="sw" style="background:' + e.color + '"></span>' +
+                    '<span>' + e.glyph + ' ' + e.label + '</span>';
+    el.appendChild(row);
+  });
+}
+
+function fillInfo() {
+  document.getElementById("autoName").textContent = (TRACE.meta && TRACE.meta.autoName) || "";
+  const f = (TRACE.frames && TRACE.frames[0]) || {};
+  const pose = f.pose || (TRACE.meta && TRACE.meta.startPose) || {};
+  const set = (id, v) => document.getElementById(id).textContent = v;
+  set("sx", fmt(pose.x)); set("sy", fmt(pose.y));
+  set("sh", fmt(pose.headingDeg) + "°");
+  set("st", (f.turretDeg != null ? fmt(f.turretDeg) : "—") + "°");
+  set("shood", (f.hoodDeg != null ? fmt(f.hoodDeg) : "—") + "°");
+
+  const list = document.getElementById("pathList");
+  list.innerHTML = "";
+  (TRACE.paths || []).forEach((p, i) => {
+    const row = document.createElement("div");
+    row.className = "row legend";
+    row.style.flexDirection = "row";
+    row.innerHTML = '<span class="sw" style="background:' + PATH_PALETTE[i % PATH_PALETTE.length] + '"></span>' +
+                    '<span style="color:var(--muted)">' + p.id + '</span>';
+    list.appendChild(row);
+  });
+}
+function fmt(v){ return (v == null) ? "—" : (Math.round(v * 10) / 10).toString(); }
+
+// ---- Controls ----
+document.getElementById("alliance").addEventListener("click", e => {
+  const b = e.target.closest("button"); if (!b) return;
+  state.alliance = b.dataset.team;
+  [...e.currentTarget.children].forEach(c => c.classList.toggle("on", c === b));
+  draw();
+});
+document.getElementById("opacity").addEventListener("input", e => {
+  state.bgOpacity = e.target.value / 100; draw();
+});
+const fileInput = document.getElementById("fileInput");
+document.getElementById("uploadBtn").addEventListener("click", () => fileInput.click());
+fileInput.addEventListener("change", e => {
+  const file = e.target.files && e.target.files[0]; if (!file) return;
+  const rd = new FileReader();
+  rd.onload = () => loadImage(rd.result);
+  rd.readAsDataURL(file);
+});
+document.getElementById("resetBtn").addEventListener("click", () => loadImage(FIELD_IMAGE_DATAURI || null));
+
+const wrap = document.getElementById("wrap");
+["dragenter","dragover"].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.add("drag"); }));
+["dragleave","drop"].forEach(t => wrap.addEventListener(t, e => { e.preventDefault(); wrap.classList.remove("drag"); }));
+wrap.addEventListener("drop", e => {
+  const file = e.dataTransfer.files && e.dataTransfer.files[0]; if (!file) return;
+  const rd = new FileReader();
+  rd.onload = () => loadImage(rd.result);
+  rd.readAsDataURL(file);
+});
+
+window.addEventListener("resize", fit);
+
+// ---- Boot ----
+buildLegend();
+fillInfo();
+loadImage(FIELD_IMAGE_DATAURI || null);
+fit();
+</script>
+</body>
+</html>

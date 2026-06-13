@@ -535,4 +535,36 @@ Every gating question is answered; nothing blocks Phase 0 but the captain's go-a
 12. **Event durations sourced from the auto (§3, §8, §9).** Every `durationMs` is computed
     from the FSM's real timing (feed window ≈ 1.10 s, drive = traversal time, intake =
     powered span), never a guessed constant.
+
+---
+
+## 12. Phase 1 — as built (2026-06-13)
+
+Phase 0 scaffold + Phase 1 static render are implemented in the new `autosim/` module.
+A few implementation choices refined the plan (all reversible, none touch the robot build):
+
+- **Home = a plain-`java` Gradle subproject `:autosim`** (one `include` line in
+  `settings.gradle`). Root gradle only shares repositories, so this does **not** apply the
+  Android plugin or affect `TeamCode`/`FtcRobotController`. It has **no Android/Pedro
+  dependency**, so it runs on any JVM and in CI.
+- **Geometry = local De Casteljau, not Pedro's classes.** Because a plain-java module
+  can't depend on the Pedro AAR, `V3FarAutoSim` re-declares V3FarAuto's **control points**
+  (the acknowledged §5 FSM-copy duplication) and samples them with
+  [`Bezier`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/geom/Bezier.java).
+  A Bezier is fully defined by its control points, so the sampled curve is mathematically
+  identical to Pedro's; the viewer still receives polylines **from the source**, so there's
+  no second place to edit coordinates (the original intent of the single-source rule).
+- **Field image = SVG placeholder.** [`fields/decode.svg`](../autosim/fields/decode.svg) is
+  a full-field schematic; the generator base64-inlines whatever image it's pointed at
+  (svg/png/jpg), and the viewer's upload/drag-drop overrides it at runtime. Drop in the
+  official DECODE field render to replace it.
+- **Run it:** `./gradlew :autosim:autosim` (or run `AutoSimGenerator` from Android Studio)
+  → writes the standalone
+  [`dist/autosim-V3FarAuto.html`](../autosim/dist/autosim-V3FarAuto.html). Verified headless
+  with the Android Studio JBR: 9 paths, 57 sampled points, bbox x[12.5..64.1] y[6.8..38.0],
+  all inside the 144″ field; placeholders fully substituted and the field image inlined.
+- **Deferred to later phases (unchanged):** the `SimClock`/`SimFollower`/two-FSM playback
+  (Phase 2) and the data-driven action overlays with real durations (Phase 3). The effect
+  profile, alliance mirror, field-image upload, and opacity controls are already wired in
+  the viewer so those phases only add data.
 ```
