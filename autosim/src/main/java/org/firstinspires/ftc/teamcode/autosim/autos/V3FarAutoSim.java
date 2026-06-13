@@ -105,6 +105,12 @@ public final class V3FarAutoSim {
         trace.field.goal = new Pt(BLUE_TARGET_X, TARGET_Y);
         trace.field.backgroundImage = "fields/decode.svg";
 
+        // Real robot footprint (edit here, or adjust live in the viewer): 18" long incl. a
+        // front intake, 13" wide, wheelbase ~3.5" behind the body center.
+        trace.robot.lengthIn = 18.0;
+        trace.robot.widthIn = 13.0;
+        trace.robot.wheelbaseOffsetIn = 3.5;
+
         shoot1 = new Pt(START_X, START_Y);
         shoot2 = new Pt(START_X, START_Y + SHOOT2_Y_OFFSET);
         lastLine = new Pt(LAST_LINE_X, LAST_LINE_Y);

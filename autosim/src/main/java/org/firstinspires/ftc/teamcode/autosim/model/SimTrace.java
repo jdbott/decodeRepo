@@ -7,6 +7,7 @@ import java.util.List;
 public final class SimTrace {
     public Meta meta = new Meta();
     public FieldSpec field = new FieldSpec();
+    public RobotSpec robot = new RobotSpec();
     public List<PathSpec> paths = new ArrayList<>();
     public List<Frame> frames = new ArrayList<>();
     public List<ActionEvent> events = new ArrayList<>();

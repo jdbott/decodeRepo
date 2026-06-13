@@ -42,6 +42,10 @@ public final class TraceWriter {
                 .append(", \"goal\": ").append(pt(f.goal))
                 .append(", \"backgroundImage\": ").append(str(f.backgroundImage)).append(" },\n");
 
+        b.append("  \"robot\": { \"lengthIn\": ").append(n(t.robot.lengthIn))
+                .append(", \"widthIn\": ").append(n(t.robot.widthIn))
+                .append(", \"wheelbaseOffsetIn\": ").append(n(t.robot.wheelbaseOffsetIn)).append(" },\n");
+
         b.append("  \"paths\": [\n");
         for (int i = 0; i < t.paths.size(); i++) {
             PathSpec p = t.paths.get(i);

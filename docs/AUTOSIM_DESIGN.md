@@ -600,6 +600,18 @@ the viewer animates it.
   readouts, and traversed / active / upcoming path styling. Keyboard: space = play, ←/→ = step.
 - **Note:** the dense frames make the standalone HTML ~0.5 MB (still a single self-contained
   file that opens instantly). If that ever matters, the frame stride is one constant to raise.
+- **Follow-up tweaks (2026-06-13):**
+  - **Configurable robot footprint.** A `robot { lengthIn, widthIn, wheelbaseOffsetIn }`
+    block in the trace (defaults: 18 × 13, offset 3.5 — the real robot) drives the drawn
+    body. The viewer exposes length/width inputs and a ±4″ **wheelbase-offset** slider:
+    the pose is the tracked (odometry) point, and a positive offset pushes the body/intake
+    *forward* of it, so an asymmetric chassis sits correctly relative to the path. Live
+    edits persist per-auto via `localStorage`.
+  - **Red-alliance heading fix.** Red mirrors across the vertical centerline (`x → W-x`);
+    the heading now mirrors as `180 - h` (was `-h`, which left the front arrow 180° off).
+    The robot's perceived front now swaps with the alliance — important once the body is
+    asymmetric.
+
 - **Deferred to Phase 3:** sparse `events[]` with FSM-sourced `durationMs` and the on-field
   effect overlays (shoot ring/flash, intake chevrons, …) rendered through the effect profile.
 ```
