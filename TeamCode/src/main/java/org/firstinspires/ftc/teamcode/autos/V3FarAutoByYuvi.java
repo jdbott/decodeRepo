@@ -1,21 +1,22 @@
 package org.firstinspires.ftc.teamcode.autos;
 
+import org.firstinspires.ftc.teamcode.RobotConfig;
+
+import com.pedropathing.follower.Follower;
+import com.pedropathing.geometry.BezierLine;
+import com.pedropathing.geometry.Pose;
+import com.pedropathing.paths.Path;
+import com.pedropathing.paths.PathChain;
 import com.qualcomm.robotcore.eventloop.opmode.Autonomous;
-import com.qualcomm.robotcore.eventloop.opmode.OpMode;
+import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
-
-import com.pedropathing.follower.Follower;
-import com.pedropathing.geometry.BezierCurve;
-import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.Pose;
-import com.pedropathing.paths.PathChain;
+import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.AllianceMirror;
 import org.firstinspires.ftc.teamcode.AllianceStore;
 import org.firstinspires.ftc.teamcode.AutoStartStore;
-import org.firstinspires.ftc.teamcode.RobotConfig;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
@@ -23,60 +24,86 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "V3 Far Auto : Yuvi Edition", group = "Autonomous")
-public class V3FarAutoByYuvi extends OpMode {
+@Autonomous(name = "Yuvi Auto")
+public class V3FarAutoByYuvi extends LinearOpMode {
 
-    /* ===== Hardware Subsystems ===== */
-    private Follower follower;
-    private Turret turret;
-    private Flywheel flywheel;
-    private Intake intake;
     private Hood hood;
     private Feeder feeder;
 
-    /* ===== Fixed Shot Settings ===== */
+    private Follower follower;
+    private Turret turret;
+    private Intake intake;
+    private Flywheel flywheel;
+
+    private boolean isRedAlliance = false;
+
+    // ===== Fixed shot settings =====
     private static final double FIXED_HOOD_DEG = 53.5;
-    private static final double FIXED_FLYWHEEL_RAD = 445.0;
-    private static final double INIT_TURRET_ANGLE_DEG = 113.0;
-    private static final double RUN_TURRET_ANGLE_DEG = 113.0;
+    private static final double FIXED_FLYWHEEL_RAD = 445;
 
-    /* ===== Gate Collection Point ===== */
-    private static final double GATE_X = 136.5559649236386;
-    private static final double GATE_Y = 69.90375693752594;
-    private static final double GATE_INTAKE_THRESHOLD = 20.0; // inches before arrival
+    // ===== Field positions (BLUE-NATIVE) =====
+    private static final double START_X = 56.0;
+    private static final double START_Y = 8.0;
+    private static final double START_HEADING_DEG = 90.0;
 
-    /* ===== Timing ===== */
-    private static final double FIRST_SHOT_DELAY_SEC = 2.5;
-    private static final double SHOOT_PAUSE_MS = 1600.0;   // Standard shooting stops
-    private static final double GATE_WAIT_MS = 2400.0;     // Gate collection (no shot)
-    private static final double FLYWHEEL_TOLERANCE = 10.0;
+    private static final double BLUE_TARGET_X = 5.0;
+    private static final double TARGET_Y = 139.0;
 
+    // ===== Turret config =====
+    private static final double TURRET_CENTER_OFFSET_IN = 1.5;
+    private static final double TURRET_MIN_DEG = -180.0;
+    private static final double TURRET_MAX_DEG = 180.0;
+    private static final double TURRET_OFFSET_DEG = 180;
+
+    // ===== Timing =====
+    private static final double FIRST_SHOT_DELAY_SEC = 2.25;
     private static final double FEED_START_DELAY_SEC = 0.10;
-    private static final double FEED_TOTAL_TIME_SEC = 1.00;
+    private static final double FEED_TOTAL_TIME_SEC = 0.65;   // 3 preloaded balls ≈ 0.5–0.75 s
     private static final double REVERSE_TIME_SEC = 0.25;
 
-    /* ===== Timers ===== */
+    private static final double FLYWHEEL_PREP_SEC = 1.25;     // spin up before each shot
+    private static final double INTAKE_DURATION_SEC = 3.00;   // total intake runtime per cycle
+    private static final double INTAKE_START_DIST = 30.0;     // inches before intake zone (~1 s)
+    private static final double FLYWHEEL_PREP_DIST = 22.0;    // inches before shoot point (~0.75 s)
+
+    // ===== Fixed turret aim commands (BLUE-NATIVE) =====
+    private static final double INIT_TURRET_ANGLE_DEG = 113;
+
+    // ===== Key poses =====
+    private Pose startPose;
+    private Pose intake1StartPose;   // (3.520, 16.562)
+    private Pose intake1EndPose;     // (2.343, 2.837)
+    private Pose shoot1Pose;       // (70.646, 20.581)
+    private Pose intake2StartPose; // (33.219, 35.214)
+    private Pose intake2EndPose;   // (18.290, 35.059)
+    private Pose shoot2Pose;       // (69.914, 75.762)
+    private Pose intake3StartPose; // (32.187, 59.918)
+    private Pose intake3EndPose;   // (16.285, 59.078)
+    private Pose shoot3Pose;       // (68.186, 78.109)
+    private Pose endPose;          // (68.963, 16.829)
+
+    // ===== Paths =====
+    private PathChain toIntake1Zone;
+    private Path toShoot1;
+    private PathChain toIntake2Zone;
+    private Path toShoot2;
+    private PathChain toIntake3Zone;
+    private Path toShoot3;
+    private Path toEnd;
+
+    // ===== Timers =====
     private final ElapsedTime stateTimer = new ElapsedTime();
     private final ElapsedTime feedTimer = new ElapsedTime();
     private final ElapsedTime reverseTimer = new ElapsedTime();
+    private final ElapsedTime intakeTimer = new ElapsedTime();
+    private final ElapsedTime flywheelPrepTimer = new ElapsedTime();
 
-    /* ===== State ===== */
-    private boolean isRedAlliance = false;
     private boolean reversingIntake = false;
+    private boolean intakeRunning = false;
+    private boolean flywheelPrepped = false;
 
-    private enum AutoState {
-        WAIT_INITIAL_DELAY,
-        SHOOT_FIRST,
-        DRIVE_SEG1, PAUSE_SEG1,
-        DRIVE_SEG2, PAUSE_SEG2,
-        DRIVE_SEG3, PAUSE_SEG3,
-        DRIVE_SEG4, PAUSE_SEG4,
-        DRIVE_SEG5, PAUSE_SEG5,   // Gate approach & collection
-        DRIVE_SEG6, PAUSE_SEG6,
-        DRIVE_SEG7, PAUSE_SEG7,
-        DRIVE_SEG8, PAUSE_SEG8,
-        DONE
-    }
+    // ===== Cycle tracking =====
+    private int extraCycleCount = 0;
 
     private enum FeedState {
         IDLE,
@@ -85,311 +112,389 @@ public class V3FarAutoByYuvi extends OpMode {
         DONE
     }
 
-    private AutoState autoState = AutoState.WAIT_INITIAL_DELAY;
     private FeedState feedState = FeedState.IDLE;
 
-    /* ===== Segmented Path Chains ===== */
-    private PathChain seg1, seg2, seg3, seg4, seg5, seg6, seg7, seg8;
+    private enum AutoState {
+        WAIT_INITIAL_DELAY,
+        SHOOT_PRELOAD,
 
-    /* ===================================================================== */
-    /*  LIFECYCLE                                                            */
-    /* ===================================================================== */
+        DRIVE_TO_INTAKE1,
+        INTAKE1,
+
+        DRIVE_TO_SHOOT1,
+        SHOOT1,
+
+        DRIVE_TO_INTAKE2,
+        INTAKE2,
+
+        DRIVE_TO_SHOOT2,
+        SHOOT2,
+
+        DRIVE_TO_INTAKE3,
+        INTAKE3,
+
+        DRIVE_TO_SHOOT3,
+        SHOOT3,
+
+        DRIVE_TO_END,
+        DONE
+    }
+
+    private AutoState autoState = AutoState.WAIT_INITIAL_DELAY;
 
     @Override
-    public void init() {
+    public void runOpMode() {
         isRedAlliance = AllianceStore.isRed(hardwareMap.appContext);
         AutoStartStore.setFar(hardwareMap.appContext);
 
-        /* -- Pedro Pathing -- */
-        follower = Constants.createFollower(hardwareMap);
-        Pose startPose = p(72.0, 8.0, 90.0);
-        follower.setStartingPose(startPose);
-        follower.updatePose();
-        follower.setMaxPower(1.0);
+        // ----- Poses -----
+        startPose = new Pose(START_X, START_Y, Math.toRadians(START_HEADING_DEG));
+        intake1StartPose = new Pose(3.520, 16.562, Math.toRadians(180));
+        intake1EndPose = new Pose(2.343, 2.837, Math.toRadians(180));
+        shoot1Pose = new Pose(70.646, 20.581, Math.toRadians(180));
+        intake2StartPose = new Pose(33.219, 35.214, Math.toRadians(180));
+        intake2EndPose = new Pose(18.290, 35.059, Math.toRadians(180));
+        shoot2Pose = new Pose(69.914, 75.762, Math.toRadians(180));
+        intake3StartPose = new Pose(32.187, 59.918, Math.toRadians(180));
+        intake3EndPose = new Pose(16.285, 59.078, Math.toRadians(180));
+        shoot3Pose = new Pose(68.186, 78.109, Math.toRadians(180));
+        endPose = new Pose(68.963, 16.829, Math.toRadians(180));
 
-        /* -- Hardware -- */
+        // ----- Hardware -----
         intake = new Intake(hardwareMap);
+
         hood = new Hood(hardwareMap);
         feeder = new Feeder(hardwareMap);
 
         VoltageSensor battery = hardwareMap.voltageSensor.iterator().next();
         flywheel = new Flywheel(hardwareMap, battery);
 
+        follower = Constants.createFollower(hardwareMap);
+        follower.setStartingPose(startPose);
+        follower.updatePose();
+        follower.setMaxPower(1.0);
+
         turret = new Turret(hardwareMap, RobotConfig.TURRET_MOTOR, DcMotorSimple.Direction.REVERSE);
 
         buildPaths();
 
-        /* -- Safe defaults (exact from V3FarAuto) -- */
+        // ----- Initial mechanism state -----
         intake.setPower(0.0);
         flywheel.stop();
         feeder.clutchIn();
         feeder.armBlock();
         hood.setAngle(FIXED_HOOD_DEG);
 
-        telemetry.addLine("Far Auto Perfect Initialized");
+        telemetry.addLine("Yuvi Auto Initialized");
         telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
+        telemetry.addData("Start Pose", startPose);
         telemetry.update();
-    }
 
-    @Override
-    public void init_loop() {
-        follower.updatePose();
-        turret.setAngle(mirrorTurretCommand(INIT_TURRET_ANGLE_DEG));
-        turret.update();
+        // ----- Init loop -----
+        while (opModeInInit()) {
+            follower.updatePose();
+            turret.setAngle(mirrorTurretCommand(INIT_TURRET_ANGLE_DEG));
+            turret.update();
+            trackGoalFromOdometry(follower.getPose());
 
-        telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
-        telemetry.addData("Pose", follower.getPose());
-        telemetry.addData("Turret Angle", turret.getCurrentAngle());
-        telemetry.update();
-    }
+            telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
+            telemetry.addData("Pose", follower.getPose());
+            telemetry.addData("Turret Angle", turret.getCurrentAngle());
+            telemetry.update();
+        }
 
-    @Override
-    public void start() {
+        waitForStart();
+        if (isStopRequested()) return;
+
+        // ----- On start -----
+        hood.setAngle(FIXED_HOOD_DEG);
+        flywheel.setTargetVelocity(FIXED_FLYWHEEL_RAD);
+
         stateTimer.reset();
         autoState = AutoState.WAIT_INITIAL_DELAY;
 
-        hood.setAngle(FIXED_HOOD_DEG);
-        flywheel.setTargetVelocity(FIXED_FLYWHEEL_RAD);
-    }
+        while (opModeIsActive()) {
+            follower.update();
 
-    @Override
-    public void loop() {
-        /* -- Frame-rate decoupled updates -- */
-        follower.update();
-        flywheel.setTargetVelocity(FIXED_FLYWHEEL_RAD);
-        flywheel.update();
-        updateFeedSequence();
+            // ----- Dynamic goal turret tracking -----
+            if (autoState != AutoState.DONE) {
+                trackGoalFromOdometry(follower.getPose());
+            } else {
+                turret.setAngle(0.0);
+            }
+            turret.update();
 
-        /* -- Fixed turret aim (exact from V3FarAuto) -- */
-        if (autoState != AutoState.DONE) {
-            turret.setAngle(mirrorTurretCommand(RUN_TURRET_ANGLE_DEG));
-        } else {
-            turret.setAngle(0.0);
+            // ----- Flywheel always at target -----
+            flywheel.setTargetVelocity(FIXED_FLYWHEEL_RAD);
+            flywheel.update();
+
+            updateFeedSequence();
+            updateAutoState();
+
+            telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
+            telemetry.addData("Auto State", autoState);
+            telemetry.addData("Feed State", feedState);
+            telemetry.addData("Cycle Count", extraCycleCount);
+            telemetry.addData("Pose", follower.getPose());
+            telemetry.addData("Follower Busy", follower.isBusy());
+            telemetry.addData("Turret Angle", turret.getCurrentAngle());
+            telemetry.addData("Flywheel Target", FIXED_FLYWHEEL_RAD);
+            telemetry.addData("Flywheel Actual", flywheel.getVelocityRadPerSec());
+            telemetry.addData("Intake Running", intakeRunning);
+            telemetry.addData("Flywheel Prepped", flywheelPrepped);
+            telemetry.update();
         }
-        turret.update();
 
-        /* -- Main state machine -- */
-        updateAutoState();
-
-        /* -- Telemetry -- */
-        telemetry.addData("State", autoState);
-        telemetry.addData("Feed", feedState);
-        telemetry.addData("X", follower.getPose().getX());
-        telemetry.addData("Y", follower.getPose().getY());
-        telemetry.addData("Heading", Math.toDegrees(follower.getPose().getHeading()));
-        telemetry.addData("Flywheel", flywheel.getVelocityRadPerSec());
-        telemetry.addData("Turret", turret.getCurrentAngle());
-        telemetry.addData("Path Busy", follower.isBusy());
-        telemetry.update();
+        flywheel.stop();
+        intake.setPower(0.0);
     }
 
-    /* ===================================================================== */
-    /*  PATH CONSTRUCTION  (Exact uploaded Pedro Pathing)                    */
-    /* ===================================================================== */
-
+    // -------------------------------------------------------------------------
+    //  Path Building — exact coordinates from the Pedro Pathing file
+    // -------------------------------------------------------------------------
     private void buildPaths() {
-        // Seg 1 – initialization push curve
-        seg1 = follower.pathBuilder()
-                .addPath(new BezierCurve(
-                        p(83.458, 8.000), p(141.143, 39.956), p(140.594, 6.691),
-                        p(138.580, 16.068), p(138.580, 7.013), p(138.081, 3.240)))
+        // Intake 1 chain: start -> (13.876, 18.959) -> (3.520, 16.562) -> (2.343, 2.837)
+        toIntake1Zone = follower.pathBuilder()
+                .addPath(new BezierLine(
+                        startPose,
+                        new Pose(13.876, 18.959, Math.toRadians(180))
+                ))
+                .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(180))
+                .addPath(new BezierLine(
+                        new Pose(13.876, 18.959, Math.toRadians(180)),
+                        new Pose(3.520, 16.562, Math.toRadians(180))
+                ))
+                .setTangentHeadingInterpolation()
+                .addPath(new BezierLine(
+                        new Pose(3.520, 16.562, Math.toRadians(180)),
+                        intake1EndPose
+                ))
                 .setTangentHeadingInterpolation()
                 .build();
 
-        // Seg 2 – base return line
-        seg2 = follower.pathBuilder()
-                .addPath(new BezierLine(p(138.081, 3.240), p(84.930, 5.641)))
+        // Shoot 1 path: (2.343, 2.837) -> (70.646, 20.581)
+        toShoot1 = new Path(new BezierLine(intake1EndPose, shoot1Pose));
+        toShoot1.setTangentHeadingInterpolation();
+
+        // Intake 2 chain: (70.646, 20.581) -> (33.219, 35.214) -> (18.290, 35.059)
+        toIntake2Zone = follower.pathBuilder()
+                .addPath(new BezierLine(shoot1Pose, intake2StartPose))
+                .setTangentHeadingInterpolation()
+                .addPath(new BezierLine(intake2StartPose, intake2EndPose))
                 .setTangentHeadingInterpolation()
                 .build();
 
-        // Seg 3 – deep field push curve (BALL RICH ZONE)
-        seg3 = follower.pathBuilder()
-                .addPath(new BezierCurve(
-                        p(84.930, 5.641), p(97.822, 64.859), p(123.669, 58.869)))
+        // Shoot 2 path: (18.290, 35.059) -> (69.914, 75.762)
+        toShoot2 = new Path(new BezierLine(intake2EndPose, shoot2Pose));
+        toShoot2.setTangentHeadingInterpolation();
+
+        // Intake 3 chain: (69.914, 75.762) -> (32.187, 59.918) -> (16.285, 59.078)
+        toIntake3Zone = follower.pathBuilder()
+                .addPath(new BezierLine(shoot2Pose, intake3StartPose))
+                .setTangentHeadingInterpolation()
+                .addPath(new BezierLine(intake3StartPose, intake3EndPose))
                 .setTangentHeadingInterpolation()
                 .build();
 
-        // Seg 4 – primary reverse sweep
-        seg4 = follower.pathBuilder()
-                .addPath(new BezierLine(p(123.669, 58.869), p(87.495, 91.064)))
-                .setTangentHeadingInterpolation()
-                .setReversed()
-                .build();
+        // Shoot 3 path: (16.285, 59.078) -> (68.186, 78.109)
+        toShoot3 = new Path(new BezierLine(intake3EndPose, shoot3Pose));
+        toShoot3.setTangentHeadingInterpolation();
 
-        // Seg 5 – outbound sweep to gate
-        seg5 = follower.pathBuilder()
-                .addPath(new BezierLine(p(87.495, 91.064), p(136.556, 69.904)))
-                .setLinearHeadingInterpolation(h(0.0), h(25.0))
-                .build();
-
-        // Seg 6 – return from gate
-        seg6 = follower.pathBuilder()
-                .addPath(new BezierLine(p(136.556, 69.904), p(91.113, 93.969)))
-                .setTangentHeadingInterpolation()
-                .setReversed()
-                .build();
-
-        // Seg 7 – complex clearance curve (BALL RICH ZONE)
-        seg7 = follower.pathBuilder()
-                .addPath(new BezierCurve(
-                        p(91.113, 93.969), p(99.017, 27.747), p(112.224, 34.252),
-                        p(118.011, 35.520), p(123.634, 34.352)))
-                .setLinearHeadingInterpolation(h(0.0), h(355.0))
-                .build();
-
-        // Seg 8 – final park line
-        seg8 = follower.pathBuilder()
-                .addPath(new BezierLine(p(123.634, 34.352), p(70.553, 21.301)))
-                .setTangentHeadingInterpolation()
-                .setReversed()
-                .build();
+        // End path: (68.186, 78.109) -> (68.963, 16.829)
+        toEnd = new Path(new BezierLine(shoot3Pose, endPose));
+        toEnd.setTangentHeadingInterpolation();
     }
 
-    /* ===================================================================== */
-    /*  STATE MACHINE                                                        */
-    /* ===================================================================== */
-
+    // -------------------------------------------------------------------------
+    //  Finite State Machine
+    // -------------------------------------------------------------------------
     private void updateAutoState() {
         switch (autoState) {
-
             case WAIT_INITIAL_DELAY:
                 intake.setPower(0.0);
-                if (stateTimer.seconds() >= FIRST_SHOT_DELAY_SEC
-                        && Math.abs(flywheel.getVelocityRadPerSec() - FIXED_FLYWHEEL_RAD) < FLYWHEEL_TOLERANCE) {
+                if (stateTimer.seconds() >= FIRST_SHOT_DELAY_SEC) {
                     startFeedSequence();
-                    autoState = AutoState.SHOOT_FIRST;
+                    autoState = AutoState.SHOOT_PRELOAD;
                 }
                 break;
 
-            case SHOOT_FIRST:
+            case SHOOT_PRELOAD:
                 if (feedState == FeedState.DONE) {
-                    resetMechanisms();
-                    follower.followPath(seg1, true);
-                    autoState = AutoState.DRIVE_SEG1;
-                }
-                break;
-
-            case DRIVE_SEG1:
-                if (!follower.isBusy()) { stateTimer.reset(); autoState = AutoState.PAUSE_SEG1; }
-                break;
-            case PAUSE_SEG1:
-                handleShootingPause(seg2, AutoState.DRIVE_SEG2);
-                break;
-
-            case DRIVE_SEG2:
-                if (!follower.isBusy()) { stateTimer.reset(); autoState = AutoState.PAUSE_SEG2; }
-                break;
-            case PAUSE_SEG2:
-                handleShootingPause(seg3, AutoState.DRIVE_SEG3);
-                break;
-
-            /* ===== DRIVE_SEG3: Deep field push — INTAKE ON to collect balls ===== */
-            case DRIVE_SEG3:
-                intake.setPower(1.0); // collect balls while pushing through field
-                if (!follower.isBusy()) {
+                    feeder.clutchOut();
+                    feeder.armBlock();
                     intake.setPower(0.0);
-                    stateTimer.reset();
-                    autoState = AutoState.PAUSE_SEG3;
+
+                    follower.followPath(toIntake1Zone, false);
+                    intakeRunning = false;
+                    flywheelPrepped = false;
+                    autoState = AutoState.DRIVE_TO_INTAKE1;
                 }
                 break;
-            case PAUSE_SEG3:
-                handleShootingPause(seg4, AutoState.DRIVE_SEG4);
-                break;
 
-            case DRIVE_SEG4:
-                if (!follower.isBusy()) { stateTimer.reset(); autoState = AutoState.PAUSE_SEG4; }
-                break;
-            case PAUSE_SEG4:
-                handleShootingPause(seg5, AutoState.DRIVE_SEG5);
-                break;
-
-            /* ===== DRIVE_SEG5: To gate — INTAKE ON near gate ===== */
-            case DRIVE_SEG5:
-                double dxGate = GATE_X - follower.getPose().getX();
-                double dyGate = GATE_Y - follower.getPose().getY();
-                if (Math.hypot(dxGate, dyGate) < GATE_INTAKE_THRESHOLD) {
+            case DRIVE_TO_INTAKE1:
+                // Start intake ~1 second before reaching (3.520, 16.562)
+                if (!intakeRunning && distanceTo(intake1StartPose) < INTAKE_START_DIST) {
+                    intakeTimer.reset();
                     intake.setPower(1.0);
+                    intakeRunning = true;
                 }
                 if (!follower.isBusy()) {
-                    stateTimer.reset();
-                    autoState = AutoState.PAUSE_SEG5;
+                    autoState = AutoState.INTAKE1;
                 }
                 break;
 
-            /* ===== PAUSE_SEG5: Gate wait — 2.5s collection, NO shooting ===== */
-            case PAUSE_SEG5:
-                intake.setPower(1.0); // stay on to collect from gate
-                if (stateTimer.milliseconds() >= GATE_WAIT_MS) {
+            case INTAKE1:
+                // Ensure intake runs full 2.75 seconds
+                if (intakeTimer.seconds() >= INTAKE_DURATION_SEC) {
                     intake.setPower(0.0);
-                    resetMechanisms();
-                    follower.followPath(seg6, true);
-                    autoState = AutoState.DRIVE_SEG6;
+                    intakeRunning = false;
+
+                    follower.followPath(toShoot1, true);
+                    flywheelPrepped = false;
+                    autoState = AutoState.DRIVE_TO_SHOOT1;
                 }
                 break;
 
-            case DRIVE_SEG6:
-                if (!follower.isBusy()) { stateTimer.reset(); autoState = AutoState.PAUSE_SEG6; }
-                break;
-            case PAUSE_SEG6:
-                handleShootingPause(seg7, AutoState.DRIVE_SEG7);
+            case DRIVE_TO_SHOOT1:
+                // Start flywheel prep 0.75 sec before arrival
+                if (!flywheelPrepped && distanceTo(shoot1Pose) < FLYWHEEL_PREP_DIST) {
+                    flywheelPrepTimer.reset();
+                    flywheelPrepped = true;
+                }
+                if (!follower.isBusy() && flywheelPrepped && flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
+                    startFeedSequence();
+                    autoState = AutoState.SHOOT1;
+                }
                 break;
 
-            /* ===== DRIVE_SEG7: Clearance curve — INTAKE ON to collect balls ===== */
-            case DRIVE_SEG7:
-                intake.setPower(1.0); // collect balls on clearance sweep
+            case SHOOT1:
+                if (feedState == FeedState.DONE) {
+                    feeder.clutchOut();
+                    feeder.armBlock();
+
+                    follower.followPath(toIntake2Zone, false);
+                    intakeRunning = false;
+                    flywheelPrepped = false;
+                    autoState = AutoState.DRIVE_TO_INTAKE2;
+                }
+                break;
+
+            case DRIVE_TO_INTAKE2:
+                if (!intakeRunning && distanceTo(intake2StartPose) < INTAKE_START_DIST) {
+                    intakeTimer.reset();
+                    intake.setPower(1.0);
+                    intakeRunning = true;
+                }
                 if (!follower.isBusy()) {
-                    intake.setPower(0.0);
-                    stateTimer.reset();
-                    autoState = AutoState.PAUSE_SEG7;
+                    autoState = AutoState.INTAKE2;
                 }
                 break;
-            case PAUSE_SEG7:
-                handleShootingPause(seg8, AutoState.DRIVE_SEG8);
+
+            case INTAKE2:
+                if (intakeTimer.seconds() >= INTAKE_DURATION_SEC) {
+                    intake.setPower(0.0);
+                    intakeRunning = false;
+
+                    follower.followPath(toShoot2, true);
+                    flywheelPrepped = false;
+                    autoState = AutoState.DRIVE_TO_SHOOT2;
+                }
                 break;
 
-            case DRIVE_SEG8:
-                if (!follower.isBusy()) { stateTimer.reset(); autoState = AutoState.PAUSE_SEG8; }
+            case DRIVE_TO_SHOOT2:
+                if (!flywheelPrepped && distanceTo(shoot2Pose) < FLYWHEEL_PREP_DIST) {
+                    flywheelPrepTimer.reset();
+                    flywheelPrepped = true;
+                }
+                if (!follower.isBusy() && flywheelPrepped && flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
+                    startFeedSequence();
+                    autoState = AutoState.SHOOT2;
+                }
                 break;
-            case PAUSE_SEG8:
-                verifyFlywheelAndShoot();
-                if (stateTimer.milliseconds() >= SHOOT_PAUSE_MS && feedState == FeedState.DONE) {
-                    resetMechanisms();
+
+            case SHOOT2:
+                if (feedState == FeedState.DONE) {
+                    feeder.clutchOut();
+                    feeder.armBlock();
+
+                    follower.followPath(toIntake3Zone, false);
+                    intakeRunning = false;
+                    flywheelPrepped = false;
+                    autoState = AutoState.DRIVE_TO_INTAKE3;
+                }
+                break;
+
+            case DRIVE_TO_INTAKE3:
+                if (!intakeRunning && distanceTo(intake3StartPose) < INTAKE_START_DIST) {
+                    intakeTimer.reset();
+                    intake.setPower(1.0);
+                    intakeRunning = true;
+                }
+                if (!follower.isBusy()) {
+                    autoState = AutoState.INTAKE3;
+                }
+                break;
+
+            case INTAKE3:
+                if (intakeTimer.seconds() >= INTAKE_DURATION_SEC) {
+                    intake.setPower(0.0);
+                    intakeRunning = false;
+
+                    follower.followPath(toShoot3, true);
+                    flywheelPrepped = false;
+                    autoState = AutoState.DRIVE_TO_SHOOT3;
+                }
+                break;
+
+            case DRIVE_TO_SHOOT3:
+                if (!flywheelPrepped && distanceTo(shoot3Pose) < FLYWHEEL_PREP_DIST) {
+                    flywheelPrepTimer.reset();
+                    flywheelPrepped = true;
+                }
+                if (!follower.isBusy() && flywheelPrepped && flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
+                    startFeedSequence();
+                    autoState = AutoState.SHOOT3;
+                }
+                break;
+
+            case SHOOT3:
+                if (feedState == FeedState.DONE) {
+                    feeder.clutchOut();
+                    feeder.armBlock();
+                    intake.setPower(0.0);
+
+                    follower.followPath(toEnd, true);
+                    autoState = AutoState.DRIVE_TO_END;
+                }
+                break;
+
+            case DRIVE_TO_END:
+                if (!follower.isBusy()) {
                     autoState = AutoState.DONE;
                 }
                 break;
 
             case DONE:
                 intake.setPower(0.0);
-                flywheel.stop();
                 turret.setAngle(0.0);
+                flywheel.stop();
                 break;
         }
     }
 
-    /** 1.5 s verified-velocity shooting pause. */
-    private void handleShootingPause(PathChain nextSeg, AutoState nextState) {
-        boolean shotComplete = verifyFlywheelAndShoot();
-        if (stateTimer.milliseconds() >= SHOOT_PAUSE_MS && shotComplete) {
-            resetMechanisms();
-            if (nextSeg != null) follower.followPath(nextSeg, true);
-            autoState = nextState;
-        }
+    // -------------------------------------------------------------------------
+    //  Distance helper
+    // -------------------------------------------------------------------------
+    private double distanceTo(Pose target) {
+        Pose current = follower.getPose();
+        double dx = target.getX() - current.getX();
+        double dy = target.getY() - current.getY();
+        return Math.hypot(dx, dy);
     }
 
-    /** Only starts feeding once flywheel is within tolerance. Returns true when feed is done. */
-    private boolean verifyFlywheelAndShoot() {
-        double err = Math.abs(flywheel.getVelocityRadPerSec() - FIXED_FLYWHEEL_RAD);
-        if (err < FLYWHEEL_TOLERANCE && feedState == FeedState.IDLE) {
-            startFeedSequence();
-            return false;
-        }
-        return feedState == FeedState.DONE;
-    }
-
-    /* ===================================================================== */
-    /*  FEED STATE MACHINE  (exact from V3FarAuto)                            */
-    /* ===================================================================== */
-
+    // -------------------------------------------------------------------------
+    //  Feed Sequence (Sub-State Machine)
+    // -------------------------------------------------------------------------
     private void startFeedSequence() {
         feeder.armShoot();
         feeder.clutchIn();
@@ -409,7 +514,6 @@ public class V3FarAutoByYuvi extends OpMode {
 
         switch (feedState) {
             case IDLE:
-            case DONE:
                 break;
 
             case WAIT_BEFORE_INTAKE:
@@ -430,33 +534,72 @@ public class V3FarAutoByYuvi extends OpMode {
                     feedState = FeedState.DONE;
                 }
                 break;
+
+            case DONE:
+                break;
         }
     }
 
-    private void resetMechanisms() {
-        feeder.clutchOut();
-        feeder.armBlock();
-        intake.setPower(0.0);
-        feedState = FeedState.IDLE;
+    // -------------------------------------------------------------------------
+    //  Alliance Helpers
+    // -------------------------------------------------------------------------
+    private double getTargetX() {
+        return AllianceMirror.mirrorX(BLUE_TARGET_X, isRedAlliance);
     }
-
-    /* ===================================================================== */
-    /*  ALLIANCE MIRRORING  (exact from V3FarAuto)                            */
-    /* ===================================================================== */
 
     private double mirrorTurretCommand(double angleDeg) {
         return isRedAlliance ? -angleDeg : angleDeg;
     }
 
-    private Pose p(double x, double y) {
-        return AllianceMirror.mirrorPose(new Pose(x, y, 0), isRedAlliance);
+    // -------------------------------------------------------------------------
+    //  Dynamic Turret Tracking — always looks at the goal
+    // -------------------------------------------------------------------------
+    private void trackGoalFromOdometry(Pose pose) {
+        double robotX = pose.getX();
+        double robotY = pose.getY();
+        double robotHeadingRad = pose.getHeading();
+        double robotHeadingDeg = Math.toDegrees(robotHeadingRad);
+
+        double turretX = robotX - TURRET_CENTER_OFFSET_IN * Math.cos(robotHeadingRad);
+        double turretY = robotY - TURRET_CENTER_OFFSET_IN * Math.sin(robotHeadingRad);
+
+        double dx = getTargetX() - turretX;
+        double dy = TARGET_Y - turretY;
+
+        double angleToTargetFieldDeg = Math.toDegrees(Math.atan2(dy, dx));
+        double angleToTargetRobotDeg = normalize180(angleToTargetFieldDeg - robotHeadingDeg);
+        double desiredTurretDeg = normalize180(angleToTargetRobotDeg + TURRET_OFFSET_DEG);
+
+        double safeTurretDeg = wrapIntoTurretWindow(
+                desiredTurretDeg,
+                turret.getCurrentAngle(),
+                TURRET_MIN_DEG,
+                TURRET_MAX_DEG
+        );
+
+        turret.setAngle(safeTurretDeg);
     }
 
-    private Pose p(double x, double y, double headingDeg) {
-        return AllianceMirror.mirrorPose(new Pose(x, y, Math.toRadians(headingDeg)), isRedAlliance);
+    private double normalize180(double a) {
+        return ((a + 180) % 360 + 360) % 360 - 180;
     }
 
-    private double h(double headingDeg) {
-        return Math.toRadians(AllianceMirror.mirrorHeadingDeg(headingDeg, isRedAlliance));
+    private double wrapIntoTurretWindow(double desiredDeg, double referenceDeg, double minDeg, double maxDeg) {
+        double best = Double.NaN;
+
+        for (int k = -2; k <= 2; k++) {
+            double candidate = desiredDeg + 360.0 * k;
+            if (candidate >= minDeg && candidate <= maxDeg) {
+                if (Double.isNaN(best) || Math.abs(candidate - referenceDeg) < Math.abs(best - referenceDeg)) {
+                    best = candidate;
+                }
+            }
+        }
+
+        if (Double.isNaN(best)) {
+            best = Range.clip(desiredDeg, minDeg, maxDeg);
+        }
+
+        return best;
     }
 }
