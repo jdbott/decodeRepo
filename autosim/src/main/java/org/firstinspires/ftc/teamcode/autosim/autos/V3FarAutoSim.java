@@ -1,8 +1,11 @@
 package org.firstinspires.ftc.teamcode.autosim.autos;
 
+import org.firstinspires.ftc.teamcode.autoshared.V3FarAutoConfig;
 import org.firstinspires.ftc.teamcode.autosim.geom.Bezier;
 import org.firstinspires.ftc.teamcode.autosim.geom.Pose2d;
 import org.firstinspires.ftc.teamcode.autosim.geom.Pt;
+import org.firstinspires.ftc.teamcode.autosim.model.ActionEvent;
+import org.firstinspires.ftc.teamcode.autosim.model.Category;
 import org.firstinspires.ftc.teamcode.autosim.model.Frame;
 import org.firstinspires.ftc.teamcode.autosim.model.PathSpec;
 import org.firstinspires.ftc.teamcode.autosim.model.SimTrace;
@@ -15,6 +18,7 @@ import org.firstinspires.ftc.teamcode.autosim.sim.SimIntake;
 import org.firstinspires.ftc.teamcode.autosim.sim.SimStopwatch;
 import org.firstinspires.ftc.teamcode.autosim.sim.SimTurret;
 
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
@@ -30,35 +34,35 @@ import java.util.List;
  */
 public final class V3FarAutoSim {
 
-    // ===== Sim cadence =====
+    // ===== Sim cadence (sim-only) =====
     private static final double DT_SEC = 0.02;        // 20 ms tick
     private static final long MAX_MS = 40_000;        // runaway guard
-
-    // ===== Fixed shot settings =====
-    private static final double FIXED_HOOD_DEG = 53.5;
-    private static final double FIXED_FLYWHEEL_RAD = 445;
-
-    // ===== Field positions (BLUE-NATIVE) =====
-    private static final double START_X = 64.1, START_Y = 6.75, START_HEADING_DEG = 180.0;
-    private static final double BLUE_TARGET_X = 5.0, TARGET_Y = 139.0;
-    private static final double SHOOT2_Y_OFFSET = 5.5;
-    private static final double LAST_LINE_X = 12.5, LAST_LINE_Y = 38.0;
-    private static final double INTAKE_1_X = 15.0, INTAKE_1_Y = 9.5;
-    private static final double BACKUP_DISTANCE = 10.0, ALT_CYCLE_Y_OFFSET = 19.0;
-    private static final double CURVE_CTRL_X = 45.0, CURVE_CTRL_Y = 38.0;
-    private static final double RETREAT_DX = -23.0;   // blue-native
-
-    // ===== Turret / mechanism =====
-    private static final double INIT_TURRET_ANGLE_DEG = 113.0;
-    private static final double RUN_TURRET_ANGLE_DEG = 113.0;
-
-    // ===== Timing =====
-    private static final double FIRST_SHOT_DELAY_SEC = 3;
-    private static final double FEED_START_DELAY_SEC = 0.10;
-    private static final double FEED_TOTAL_TIME_SEC = 1.00;
-    private static final double REVERSE_TIME_SEC = 0.25;
-
     private static final int CURVE_SEGMENTS = 40;
+
+    // ===== Tunables / geometry — shared with the real opmode via V3FarAutoConfig =====
+    private static final double FIXED_HOOD_DEG = V3FarAutoConfig.FIXED_HOOD_DEG;
+    private static final double FIXED_FLYWHEEL_RAD = V3FarAutoConfig.FIXED_FLYWHEEL_RAD;
+
+    private static final double START_X = V3FarAutoConfig.START_X,
+            START_Y = V3FarAutoConfig.START_Y, START_HEADING_DEG = V3FarAutoConfig.START_HEADING_DEG;
+    private static final double BLUE_TARGET_X = V3FarAutoConfig.BLUE_TARGET_X, TARGET_Y = V3FarAutoConfig.TARGET_Y;
+    private static final double SHOOT2_Y_OFFSET = V3FarAutoConfig.SHOOT2_Y_OFFSET;
+    private static final double LAST_LINE_X = V3FarAutoConfig.LAST_LINE_X, LAST_LINE_Y = V3FarAutoConfig.LAST_LINE_Y;
+    private static final double INTAKE_1_X = V3FarAutoConfig.INTAKE_1_X, INTAKE_1_Y = V3FarAutoConfig.INTAKE_1_Y;
+    private static final double BACKUP_DISTANCE = V3FarAutoConfig.BACKUP_DISTANCE,
+            ALT_CYCLE_Y_OFFSET = V3FarAutoConfig.ALT_CYCLE_Y_OFFSET;
+    private static final double CURVE_CTRL_X = V3FarAutoConfig.CURVE_CTRL_X, CURVE_CTRL_Y = V3FarAutoConfig.CURVE_CTRL_Y;
+    private static final double RETREAT_DX = -V3FarAutoConfig.RETREAT_DX;   // blue-native (-X)
+    private static final double DRIVE_HEADING_DEG = V3FarAutoConfig.DRIVE_HEADING_DEG;
+    private static final double INTAKE_HEADING_DEG = V3FarAutoConfig.INTAKE_HEADING_DEG;
+
+    private static final double INIT_TURRET_ANGLE_DEG = V3FarAutoConfig.INIT_TURRET_ANGLE_DEG;
+    private static final double RUN_TURRET_ANGLE_DEG = V3FarAutoConfig.RUN_TURRET_ANGLE_DEG;
+
+    private static final double FIRST_SHOT_DELAY_SEC = V3FarAutoConfig.FIRST_SHOT_DELAY_SEC;
+    private static final double FEED_START_DELAY_SEC = V3FarAutoConfig.FEED_START_DELAY_SEC;
+    private static final double FEED_TOTAL_TIME_SEC = V3FarAutoConfig.FEED_TOTAL_TIME_SEC;
+    private static final double REVERSE_TIME_SEC = V3FarAutoConfig.REVERSE_TIME_SEC;
 
     private enum FeedState { IDLE, WAIT_BEFORE_INTAKE, RUN_INTAKE, DONE }
     private enum AutoState {
@@ -86,6 +90,10 @@ public final class V3FarAutoSim {
     private int extraCycleCount = 0;
     private FeedState feedState = FeedState.IDLE;
     private AutoState autoState = AutoState.WAIT_INITIAL_DELAY;
+
+    // Shot markers captured at each feed sequence; turned into SHOOT events post-run.
+    private final List<Long> shotTimes = new ArrayList<>();
+    private final List<Pose2d> shotPoses = new ArrayList<>();
 
     // ===== Poses =====
     private Pt shoot1, shoot2, lastLine;
@@ -146,7 +154,48 @@ public final class V3FarAutoSim {
         }
 
         trace.meta.totalMillis = clock.millis();
+        buildEvents();
         return trace;
+    }
+
+    /**
+     * Derive the sparse {@code events[]} overlay from what the sim actually did. Durations come
+     * from the FSM's own timing (the feed window) or from the recorded frame stream (intake
+     * spans) — never a guessed constant (AUTOSIM_DESIGN.md §3/§8).
+     */
+    private void buildEvents() {
+        long feedWindowMs = Math.round((FEED_START_DELAY_SEC + FEED_TOTAL_TIME_SEC) * 1000.0);
+        for (int i = 0; i < shotTimes.size(); i++) {
+            trace.events.add(new ActionEvent(
+                    shotTimes.get(i), Category.SHOOT, "shot " + (i + 1), feedWindowMs, shotPoses.get(i)));
+        }
+
+        // Intake spans: contiguous frame runs where the intake is commanded forward. The true
+        // powered duration falls straight out of the dense frames.
+        List<Frame> fr = trace.frames;
+        int i = 0;
+        while (i < fr.size()) {
+            if (fr.get(i).intakePower > 0.05) {
+                long start = fr.get(i).tMs;
+                Pose2d at = fr.get(i).pose;
+                int j = i;
+                while (j < fr.size() && fr.get(j).intakePower > 0.05) j++;
+                long end = fr.get(j - 1).tMs;
+                trace.events.add(new ActionEvent(
+                        start, Category.INTAKE, "intake", Math.max((long) (DT_SEC * 1000), end - start), at));
+                i = j;
+            } else {
+                i++;
+            }
+        }
+
+        // Hood is set once at init; the turret slews to its aim angle at start. Single markers.
+        trace.events.add(new ActionEvent(
+                0, Category.HOOD, "hood " + FIXED_HOOD_DEG + "°", 400, trace.meta.startPose));
+        trace.events.add(new ActionEvent(
+                0, Category.TURRET, "turret " + (int) RUN_TURRET_ANGLE_DEG + "°", 600, trace.meta.startPose));
+
+        trace.events.sort((a, b) -> Long.compare(a.tMs, b.tMs));
     }
 
     private Frame sampleFrame() {
@@ -266,6 +315,8 @@ public final class V3FarAutoSim {
         feeder.clutchIn();
         feedTimer.reset();
         feedState = FeedState.WAIT_BEFORE_INTAKE;
+        shotTimes.add(clock.millis());
+        shotPoses.add(follower.getPose());
     }
 
     private void updateFeedSequence() {
@@ -322,18 +373,18 @@ public final class V3FarAutoSim {
         String tag = "#" + extraCycleCount;
         Pt intakeP = currentIntakePose();
         Pt backedP = currentBackedPose();
-        toIntake1 = line("toIntake1 " + tag, shoot2, intakeP, 200);
-        backupFromIntake1 = line("backup " + tag, intakeP, backedP, 180);
-        backToShoot2 = line("backToShoot2 " + tag, backedP, shoot2, 180);
+        toIntake1 = line("toIntake1 " + tag, shoot2, intakeP, INTAKE_HEADING_DEG);
+        backupFromIntake1 = line("backup " + tag, intakeP, backedP, DRIVE_HEADING_DEG);
+        backToShoot2 = line("backToShoot2 " + tag, backedP, shoot2, DRIVE_HEADING_DEG);
     }
 
     private PathSpec curveToLastLine() {
         return curve("toLastLine",
-                Arrays.asList(shoot1, new Pt(CURVE_CTRL_X, CURVE_CTRL_Y), lastLine), 180);
+                Arrays.asList(shoot1, new Pt(CURVE_CTRL_X, CURVE_CTRL_Y), lastLine), DRIVE_HEADING_DEG);
     }
 
     private PathSpec lineLastLineToShoot2() {
-        return line("fromLastLineToShoot2", lastLine, shoot2, 180);
+        return line("fromLastLineToShoot2", lastLine, shoot2, DRIVE_HEADING_DEG);
     }
 
     private static PathSpec line(String id, Pt a, Pt b, double headingDeg) {

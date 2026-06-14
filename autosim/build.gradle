@@ -12,6 +12,20 @@ java {
     targetCompatibility = JavaVersion.VERSION_17
 }
 
+// Single source of truth for auto constants/geometry: the `autoshared` package physically lives
+// in TeamCode (so the real opmodes compile it natively) and is ALSO compiled here so the sim
+// copies read the exact same numbers. Only plain-Java files in that package are pulled in — the
+// include filters keep TeamCode's Android/Pedro sources out of this plain-Java module.
+sourceSets {
+    main {
+        java {
+            srcDir '../TeamCode/src/main/java'
+            include 'org/firstinspires/ftc/teamcode/autosim/**'
+            include 'org/firstinspires/ftc/teamcode/autoshared/**'
+        }
+    }
+}
+
 application {
     mainClass = 'org.firstinspires.ftc.teamcode.autosim.AutoSimGenerator'
 }

@@ -121,7 +121,8 @@ public final class TraceWriter {
         return b.append("]").toString();
     }
 
-    private static String str(String s) {
+    /** JSON-escape a string (also used by the generator for the auto-name keys). */
+    public static String str(String s) {
         if (s == null) return "null";
         StringBuilder b = new StringBuilder("\"");
         for (int i = 0; i < s.length(); i++) {

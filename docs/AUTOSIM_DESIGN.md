@@ -14,8 +14,11 @@ events (shoot / intake / feed / hood / turret) surfaced on a scrubable timeline.
   a second engine. It also dovetails with the eventual auto-base refactor in
   [AUTO_BASE_DESIGN.md](AUTO_BASE_DESIGN.md) (see "Future convergence" below).
 
-> **Status: design only.** No implementation code is written yet. §11 records every
-> design decision; all are now resolved, so Phase 0 is ready to build on instruction.
+> **Status: Phases 1–3 built + Phase 4 partial + fidelity tweaks** (see §12–§16). The `autosim/` module simulates
+> `V3FarAuto` and `V3ClosePartner` end-to-end and emits one standalone viewer (path render,
+> kinematic playback, data-driven action overlays, auto dropdown, 640p video export). Tier-1
+> single-source config is in place (§15). Replay mode + assertion overlay remain the stretch.
+> §11 records every design decision; all are resolved.
 >
 > **Decisions locked (2026-06-12):** front-end = **Web (HTML5 Canvas)**; build order =
 > **predictive sim first** (the `SimFollower` kinematic model, so a run can be watched
@@ -559,10 +562,9 @@ A few implementation choices refined the plan (all reversible, none touch the ro
   (svg/png/jpg), and the viewer's upload/drag-drop overrides it at runtime. Drop in the
   official DECODE field render to replace it.
 - **Run it:** `./gradlew :autosim:autosim` (or run `AutoSimGenerator` from Android Studio)
-  → writes the standalone
-  [`dist/autosim-V3FarAuto.html`](../autosim/dist/autosim-V3FarAuto.html). Verified headless
-  with the Android Studio JBR: 9 paths, 57 sampled points, bbox x[12.5..64.1] y[6.8..38.0],
-  all inside the 144″ field; placeholders fully substituted and the field image inlined.
+  → writes the standalone [`dist/autosim.html`](../autosim/dist/autosim.html) (one file with
+  *all* registered autos embedded — see §15). Verified headless with the Android Studio JBR;
+  placeholders fully substituted and the field image inlined.
 - **Deferred to later phases:** Phase 2 (playback) is now built — see §13. Phase 3
   (data-driven action overlays with real durations) is still pending; the effect profile,
   alliance mirror, field-image upload, and opacity controls are already wired in the viewer
@@ -612,6 +614,145 @@ the viewer animates it.
     The robot's perceived front now swaps with the alliance — important once the body is
     asymmetric.
 
-- **Deferred to Phase 3:** sparse `events[]` with FSM-sourced `durationMs` and the on-field
-  effect overlays (shoot ring/flash, intake chevrons, …) rendered through the effect profile.
+---
+
+## 14. Phase 3 — as built (2026-06-13)
+
+Data-driven action overlays are implemented. The sim now emits `events[]` and the viewer
+renders them **through the effect profile** — no DECODE assumptions in the render core.
+
+- **Events are emitted in a post-pass** (`V3FarAutoSim.buildEvents()`), so every `durationMs`
+  is sourced, not guessed:
+  - **`SHOOT` × 6** — one per `startFeedSequence()`; `durationMs` = the real feed window
+    `FEED_START_DELAY_SEC + FEED_TOTAL_TIME_SEC` = **1100 ms**; pose = the shoot pose. First
+    fires at **t = 3000 ms** (the 3 s delay).
+  - **`INTAKE` × 7 spans** — derived from the dense frames (contiguous runs of
+    `intakePower > 0.05`), so the powered duration falls straight out of what the sim did
+    (880 ms feed-window bursts, 3.3–4.7 s cycle-drive spans).
+  - **`HOOD` / `TURRET`** — single markers at t = 0 (hood set once; turret slews to its aim
+    angle). Sorted by time.
+- **Effect profile carries a season-agnostic primitive per category** (`effect:
+  RING | CHEVRONS | GAUGE | NONE`, plus `ray`). The render core knows only those primitives;
+  DECODE maps `SHOOT → RING+FLASH+ray`, `INTAKE → CHEVRONS`, `HOOD/TURRET → GAUGE`. Reskinning
+  a season is an edit to one profile object, not to draw code.
+- **On-field overlays:** the shot **ring expands and re-pulses for the event's full duration**
+  (held ~1.1 s, not a blip) with a muzzle flash and a bright animated **shot ray** to the goal;
+  a **launched artifact** (one ball per shot pulse) flies along the aim line, its radius peaking
+  at mid-flight (apex height cue) and shrinking into the goal; **intake chevrons** converge on
+  the robot's intake side for as long as intake is commanded;
+  a **turret wedge** points from the robot toward the goal; a brief **gauge** arc marks
+  hood/turret. All draw in field units and mirror correctly for red.
+- **Timeline gained event pins:** a category-colored marker (and faint duration bar) at each
+  event, sitting above the `AutoState` bands; **click a pin to jump to it**. Transport adds
+  **⏮ / ⏭ prev/next-action** buttons and `,` / `.` keys.
+- **Legend** is already profile-driven, so it keys color/glyph → category and auto-updates if
+  the profile changes.
+- **Verified:** regenerated headless (15 paths, 1445 frames, 28.88 s, ends `DONE`) and
+  visually in-browser on **both** alliances — shot ring/flash/ray, intake chevrons on the
+  correct (mirrored) side, turret aim, and clickable timeline pins all render with no console
+  errors. Original `V3FarAuto.java` still untouched.
+
+This closes the core phased plan (Phases 1–3).
+
+---
+
+## 15. Phase 4 (partial) — as built (2026-06-14)
+
+Three Phase-4 items were pulled forward by the captain (replay mode + assertion overlay are
+**not** done and remain the stretch).
+
+### Tier-1 single source of truth (the FSM-copy duplication, partly paid down)
+
+The acknowledged §5 cost — every constant/pose/path lives in *both* the real opmode and its
+`…Sim` copy — is now removed for the **data** (not yet the control flow; that's Tier 2 / the
+AUTO_BASE refactor). Two plain-Java config classes hold the numbers:
+
+- [`autoshared/V3FarAutoConfig.java`](../TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autoshared/V3FarAutoConfig.java)
+  and [`autoshared/V3ClosePartnerConfig.java`](../TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autoshared/V3ClosePartnerConfig.java)
+  — poses, geometry/control points, headings, timing, turret config, and (for close) the
+  distance→shot lookup table. **Plain Java, zero Pedro/Android imports.**
+- The package lives in **TeamCode's own source tree** (so the real opmodes compile it with no
+  build change) and is **also** compiled into the plain-Java `autosim` module via a filtered
+  `srcDir` in [`autosim/build.gradle`](../autosim/build.gradle). One physical file, two modules,
+  no inter-module dependency, no Pedro leaking into the sim. Each side adapts the neutral numbers
+  into its own types (real builds Pedro `Pose`/`BezierCurve`; sim builds polylines).
+- `V3FarAuto.java`, `V3FarAutoSim`, `V3ClosePartner.java`, and `V3ClosePartnerSim` were all
+  migrated to reference the config. The migration is a **literal→named-constant swap** — values
+  are byte-identical, so robot behavior is unchanged (the V3FarAuto trace is bit-for-bit the same:
+  15 paths / 1445 frames / 28.88 s). **Heads-up:** the Android side can't be compiled in this
+  headless env, so a one-time Android Studio build is the final confirmation for the two real
+  opmodes (the sim side is JBR-verified). This is the forcing function for Tier 2: once the FSM
+  *body* is shared too, the `…Sim` copies disappear entirely.
+
+### Second auto: V3ClosePartner
+
+[`V3ClosePartnerSim`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/autos/V3ClosePartnerSim.java)
+reproduces the close auto's 25-state machine, three gate cycles, and feed sequence from
+`V3ClosePartner.java`, reading geometry/timing from the shared config from day one. `SimFollower`
+gained `getCurrentTValue()`, `setMaxPower()` cruise-scaling, `isRobotStuck()`/`breakFollowing()`
+to support its t-value- and timer-gated transitions. The real auto's shot-on-move turret/hood
+compensation is simplified to straight-line goal tracking + the same `SHOT_TABLE` (readouts only;
+path/state/timing/shots are faithful). Verified: 17 paths, 1397 frames, 27.92 s, 6 shots, ends
+`DONE`, in-bounds.
+
+### Multi-auto generator + dropdown
+
+- [`AutoRegistry`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/AutoRegistry.java)
+  lists the simulatable autos (one line each). The generator builds **every** registered trace and
+  embeds them all into **one** `dist/autosim.html` (`TRACES = { name: trace, … }`); a **header
+  dropdown** switches between them live (re-binds trace/robot/events/frames, rebuilds legend +
+  timeline, resets playback). Robot-footprint tweaks persist per-auto.
+
+### 640p annotated video export
+
+A **"↓ video"** button records the current run+alliance to a `.webm`. It renders to a 640×640
+backing canvas (matching the field image) and captures via `MediaRecorder` + `captureStream(0)` +
+manual `requestFrame()`, driven by its **own timer** (not `requestAnimationFrame`) so it's
+deterministic and never stalls if the tab loses focus. The clip is annotated — all on-field
+overlays plus a burned-in HUD (auto name, alliance, time, state) — and downloads as
+`autosim-<auto>-<alliance>.webm` (~2× speed so it isn't overlong). Verified end-to-end in-browser.
+
+**Still stretch (not built):** replay mode (on-robot logging in the same schema) and the
+assertion/regression overlay.
 ```
+
+## 16. Post-Phase-4 fidelity tweaks — as built (2026-06-14)
+
+Three captain-requested polish items on top of §15.
+
+### Real heading interpolation + "turn, then drive"
+
+The sim follower previously treated **every** path as a single constant heading that *snapped* at
+the path boundary (the "jerk"). `SimFollower` now models Pedro's interpolation modes and pivots
+before translating:
+
+- New [`model/HeadingMode`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/model/HeadingMode.java)
+  (`CONSTANT` / `TANGENT` / `REVERSE_TANGENT` / `LINEAR`) carried on `PathSpec` via chained setters
+  (`.tangent()`, `.reverseTangent()`, `.linear(start,end,endT)`; `CONSTANT` is the default so
+  existing constant paths are unchanged). Heading is **not** serialized — it's baked into the
+  per-frame poses.
+- `SimFollower.getPose()` computes heading point-by-point from the mode: `TANGENT` follows the
+  actual polyline tangent at the current arc-length, `REVERSE_TANGENT` is tangent + 180°, `LINEAR`
+  slews start→end over the first `endT` of the path.
+- **Turn-then-move:** on `followPath`, the robot first pivots in place from its current heading to
+  the path's starting heading at `TURN_RATE_DEG_S = 270°/s`, a phase that **consumes sim time**
+  (so total durations grew slightly: V3Far 28.88→29.48 s, ClosePartner 27.92→29.56 s). `isBusy()`
+  spans turn + translation; `getCurrentTValue()` stays 0 during the pivot so t-value gates fire on
+  real path progress.
+- [`V3ClosePartnerSim`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/autos/V3ClosePartnerSim.java)
+  declares each path's mode to mirror `V3ClosePartner.buildPaths()` exactly (first shot = tangent;
+  back-to-shoot / return-from-gate / final = reversed; gate-open = linear; the rest constant).
+  V3FarAuto is all-constant and needed no per-path change; both autos benefit from the no-snap
+  pivot.
+- **Continuity fix:** `lastPose` is now refreshed on every `getPose()`, not only at move
+  completion. Without this, autos that chain paths in a single tick (V3FarAuto, no wait state) read
+  a stale heading for the next pivot and snapped. Verified: max per-frame heading step is now
+  **5.4° = 270°/s × 20 ms** for *both* autos (was a 20° one-frame jump in V3Far).
+
+### Artifacts finish their flight
+
+In the viewer, launched balls now complete their full `BALL_FLIGHT` (900 ms) arc to the goal even
+after the shot window / `SHOOT` state ends and the robot drives away — the shot ray, pulses, and
+muzzle flash still stop at the window end, but `drawEffects` extends the cull horizon to
+`dur + BALL_FLIGHT` for shooting events so in-flight artifacts aren't truncated. (Balls originate
+from the fixed shot pose, so they were already independent of the moving robot.)
