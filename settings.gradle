@@ -1,2 +1,3 @@
 include ':FtcRobotController'
 include ':TeamCode'
+include ':autosim'   // plain-Java AutoSim viewer generator (no Android/Pedro deps; does not affect the robot build)

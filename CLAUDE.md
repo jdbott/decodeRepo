@@ -60,3 +60,6 @@ The codebase was swept clean of prior-season and superseded files (old V2 teleop
 
 - **Don't run gradle builds by default.** Jason builds and deploys to the robot through Android Studio. Only run `./gradlew ...` to verify compilation if explicitly asked.
 - **Never run `git add`/`commit`/`push` unless explicitly asked.** Edit files and leave committing to Jason.
+- **Prefer working directly on `master`** for simple, low-risk changes — new opmodes, behavior tweaks, button-mapping changes, tuning constants, etc. Push directly to `master` rather than opening a PR for these.
+- **Only create a feature branch/PR** for major refactors (e.g. renaming/restructuring shared classes across many files) or when Jason explicitly asks for one.
+- **If unsure which to do**, ask before pushing — don't default to a branch+PR "just in case."
