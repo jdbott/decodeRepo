@@ -65,7 +65,8 @@
 <body>
 <div id="app">
   <header>
-    <div class="title">AutoSim <small id="autoName">—</small></div>
+    <div class="title">AutoSim</div>
+    <div class="ctl">auto <select id="autoSel" title="which auto to simulate"></select></div>
     <div class="spacer"></div>
     <div class="ctl">alliance
       <span class="seg" id="alliance">
@@ -76,6 +77,7 @@
     <div class="ctl">field <input type="range" id="opacity" min="0" max="100" value="65" title="field image opacity"></div>
     <button class="btn" id="uploadBtn">Upload field image</button>
     <button class="btn" id="resetBtn" title="restore bundled field image">Reset</button>
+    <button class="btn" id="videoBtn" title="record this run to a 640p .webm">⤓ video</button>
     <input type="file" id="fileInput" accept="image/*" hidden>
   </header>
 
@@ -113,7 +115,9 @@
   </main>
 
   <div class="transport">
+    <button class="btn" id="prevEv" title="previous action (,)">⏮</button>
     <button class="btn play" id="play" title="play / pause (space)">▶</button>
+    <button class="btn" id="nextEv" title="next action (.)">⏭</button>
     <select id="speed" title="playback speed">
       <option value="0.25">0.25×</option>
       <option value="0.5">0.5×</option>
@@ -126,7 +130,7 @@
   </div>
 
   <footer>
-    <span><span class="phase">Phase 2</span> — kinematic playback. Action overlays (Phase 3) coming.</span>
+    <span><span class="phase">Phase 3</span> — action overlays: shot rings, intake chevrons, turret aim, timeline pins.</span>
     <span class="gen">generated __GENERATED_AT__</span>
   </footer>
 </div>
@@ -134,31 +138,45 @@
 <script>
 "use strict";
 
-const TRACE = __TRACE_JSON__;
+const TRACES = __TRACES_JSON__;                 // { autoName: trace, ... } — all embedded
 const FIELD_IMAGE_DATAURI = "__FIELD_IMAGE_DATAURI__";
+const AUTO_NAMES = Object.keys(TRACES);
 
+// Each category maps to a season-agnostic render PRIMITIVE (RING/CHEVRONS/GAUGE/NONE) plus
+// its color/glyph/label. The render core only knows the primitives — reskinning a season is
+// an edit here, not in the draw code. DECODE: shoot = ring+flash+ray, intake = chevrons.
 const EFFECT_PROFILES = {
   decode: {
-    DRIVE:  { color:"#7a8aa0", glyph:"→", label:"drive"  },
-    SHOOT:  { color:"#ff7a18", glyph:"▲", label:"shoot"  },
-    FEED:   { color:"#ffb020", glyph:"⯈", label:"feed"   },
-    INTAKE: { color:"#37c871", glyph:"⟳", label:"intake" },
-    HOOD:   { color:"#9b6cff", glyph:"◠", label:"hood"   },
-    TURRET: { color:"#28c1d6", glyph:"⟲", label:"turret" },
-    WAIT:   { color:"#8a8f98", glyph:"⏱", label:"wait"   }
+    DRIVE:  { color:"#7a8aa0", glyph:"→", label:"drive",  effect:"NONE" },
+    SHOOT:  { color:"#ff7a18", glyph:"▲", label:"shoot",  effect:"RING", ray:true },
+    FEED:   { color:"#ffb020", glyph:"⯈", label:"feed",   effect:"RING" },
+    INTAKE: { color:"#37c871", glyph:"⟳", label:"intake", effect:"CHEVRONS" },
+    HOOD:   { color:"#9b6cff", glyph:"◠", label:"hood",   effect:"GAUGE" },
+    TURRET: { color:"#28c1d6", glyph:"⟲", label:"turret", effect:"GAUGE" },
+    WAIT:   { color:"#8a8f98", glyph:"⏱", label:"wait",   effect:"NONE" }
   }
 };
-const PROFILE = EFFECT_PROFILES[(TRACE.meta && TRACE.meta.effectProfile) || "decode"] || EFFECT_PROFILES.decode;
 const PALETTE = ["#58a6ff","#56d364","#e3b341","#bc8cff","#ff7b72","#39c5cf","#ffa657","#7ee787"];
+const BALL_FLIGHT = 900;   // ms an artifact spends flying to the goal (independent of the shot window)
 
-const FIELD = TRACE.field || { widthIn:144, heightIn:144 };
-const W = FIELD.widthIn || 144;
-const ROBOT = TRACE.robot || { lengthIn:18, widthIn:18, wheelbaseOffsetIn:0 };
-const FRAMES = TRACE.frames || [];
-const TOTAL = (TRACE.meta && TRACE.meta.totalMillis) || (FRAMES.length ? FRAMES[FRAMES.length-1].tMs : 0);
+// Active-auto bindings — reassigned by selectAuto() when the dropdown changes.
+let TRACE, PROFILE, EVENTS, FIELD, W, ROBOT, FRAMES, TOTAL;
+function bindAuto(name){
+  TRACE = TRACES[name] || {};
+  PROFILE = EFFECT_PROFILES[(TRACE.meta && TRACE.meta.effectProfile) || "decode"] || EFFECT_PROFILES.decode;
+  EVENTS = TRACE.events || [];
+  FIELD = TRACE.field || { widthIn:144, heightIn:144 };
+  W = FIELD.widthIn || 144;
+  ROBOT = TRACE.robot || { lengthIn:18, widthIn:18, wheelbaseOffsetIn:0 };
+  FRAMES = TRACE.frames || [];
+  TOTAL = (TRACE.meta && TRACE.meta.totalMillis) || (FRAMES.length ? FRAMES[FRAMES.length-1].tMs : 0);
+}
+bindAuto("__DEFAULT_AUTO__");
 
 const state = { alliance:"BLUE", bgOpacity:0.65, img:null, robot:{ length:18, width:18, offset:0 } };
 const play = { on:false, t:0, speed:1, scrubbing:false };
+const vid = { on:false, rec:null, restoreSpeed:1 };   // video-export state
+const EXPORT_PX = 640, EXPORT_SPEED = 2;              // 640p, ~2x so the clip isn't long
 
 // ---------- field canvas ----------
 const canvas = document.getElementById("field");
@@ -191,6 +209,20 @@ function drawField(){
   drawGoal();
   drawPaths(play.t);
   drawRobot(poseAt(play.t));
+  drawEffects(play.t);
+  if (vid.on) drawExportHud();
+}
+// Burned-in label for exported video: auto name, alliance, time + current state.
+function drawExportHud(){
+  const f = frameAt(play.t); const name = (TRACE.meta&&TRACE.meta.autoName)||"";
+  ctx.save();
+  ctx.font = "600 13px -apple-system,Segoe UI,Roboto,sans-serif";
+  ctx.fillStyle = "rgba(13,17,23,.62)"; ctx.fillRect(8, 8, 226, 38);
+  ctx.fillStyle = state.alliance==="RED" ? "#ff7b72" : "#7db4ff";
+  ctx.fillText(name + "  ·  " + state.alliance, 16, 24);
+  ctx.fillStyle = "#e6edf3"; ctx.font = "11px ui-monospace,monospace";
+  ctx.fillText((play.t/1000).toFixed(1)+"s   "+(f?f.autoState:""), 16, 40);
+  ctx.restore();
 }
 
 function drawFieldImage(){
@@ -246,11 +278,101 @@ function drawRobot(pose){
   const tip = off + L/2, noseD = Math.min(8, L*0.35), noseH = Math.min(8, Wd*0.42);
   ctx.fillStyle="#58a6ff"; ctx.beginPath(); ctx.moveTo(tip,0); ctx.lineTo(tip-noseD,-noseH); ctx.lineTo(tip-noseD,noseH); ctx.closePath(); ctx.fill();
   ctx.restore();
+  // turret: a short wedge from robot center aimed at the goal (where the shooter points)
+  if (FIELD.goal){
+    const gx=px(FIELD.goal.x), gy=py(FIELD.goal.y), a=Math.atan2(gy-cy,gx-cx);
+    const len=Math.max(L,Wd)*0.55, hw=0.12;
+    ctx.save(); ctx.translate(cx,cy); ctx.rotate(a);
+    ctx.fillStyle=PROFILE.TURRET.color; ctx.globalAlpha=0.9;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(len,-len*hw); ctx.lineTo(len,len*hw); ctx.closePath(); ctx.fill();
+    ctx.restore();
+  }
   // tracked point (wheelbase / odometry) marker at the pose
   ctx.save(); ctx.fillStyle="#fff"; ctx.strokeStyle="rgba(0,0,0,.5)"; ctx.lineWidth=0.5;
   ctx.beginPath(); ctx.arc(cx,cy,2.5,0,Math.PI*2); ctx.fill(); ctx.stroke(); ctx.restore();
 }
 function roundRect(x,y,w,h,r){ ctx.beginPath(); ctx.moveTo(x+r,y); ctx.arcTo(x+w,y,x+w,y+h,r); ctx.arcTo(x+w,y+h,x,y+h,r); ctx.arcTo(x,y+h,x,y,r); ctx.arcTo(x,y,x+w,y,r); ctx.closePath(); }
+
+// ---------- on-field action overlays (effect profile) ----------
+// The render core knows only generic primitives; the profile maps each category onto one.
+function drawEffects(now){
+  for (const ev of EVENTS){
+    const e = PROFILE[ev.category]; if (!e) continue;
+    const age = now - ev.tMs, dur = ev.durationMs || 0;
+    // Shots keep drawing past the window so in-flight artifacts can reach the goal.
+    const tail = (e.effect === "RING" && e.ray) ? BALL_FLIGHT : 200;
+    if (age < 0 || age > dur + tail) continue;
+    if (e.effect === "RING")      fxRing(ev, e, age, dur);
+    else if (e.effect === "CHEVRONS") fxChevrons(e, now);
+    else if (e.effect === "GAUGE")    fxGauge(ev, e, age);
+  }
+}
+// RING+FLASH (+ optional shot ray): held/pulsing for the event's true duration.
+function fxRing(ev, e, age, dur){
+  if (!ev.pose) return;
+  const x=px(ev.pose.x), y=py(ev.pose.y), s=view.scale;
+  if (e.ray && FIELD.goal && age <= dur){            // bright animated shot ray to the goal
+    ctx.save(); ctx.strokeStyle=e.color; ctx.globalAlpha=0.85; ctx.lineWidth=2;
+    ctx.setLineDash([6,5]); ctx.lineDashOffset=-(age*0.06);
+    ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(px(FIELD.goal.x),py(FIELD.goal.y)); ctx.stroke(); ctx.restore();
+  }
+  const period=380;                                  // repeated expanding pulses across the window
+  ctx.save(); ctx.strokeStyle=e.color; ctx.lineWidth=2.2;
+  for (let k=0; k*period <= dur; k++){
+    const ra = age - k*period; if (ra < 0 || ra > period) continue;
+    const f = ra/period;
+    ctx.globalAlpha = (1-f)*0.7;
+    ctx.beginPath(); ctx.arc(x,y,(1.5+f*7)*s,0,Math.PI*2); ctx.stroke();
+  }
+  const ff = (age % period)/period;                  // muzzle flash core (only during the window)
+  ctx.globalAlpha = Math.max(0, (1-ff)) * (age<=dur?0.9:0);
+  ctx.fillStyle=e.color; ctx.beginPath(); ctx.arc(x,y,1.3*s,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+
+  // launched artifacts: one ball per pulse flies along the aim line to the goal. The radius
+  // peaks at mid-flight (the apex of a lofted shot rising toward the camera) and shrinks into
+  // the goal — a top-down height cue.
+  if (e.ray && FIELD.goal){
+    const FLIGHT=BALL_FLIGHT, gx=px(FIELD.goal.x), gy=py(FIELD.goal.y);
+    ctx.save();
+    for (let k=0; k*period <= dur; k++){
+      const p = (age - k*period)/FLIGHT;
+      if (p < 0 || p > 1) continue;
+      const bx = x+(gx-x)*p, by = y+(gy-y)*p;
+      const loft = 4*p*(1-p);                          // 0 at ends, 1 at apex
+      const r = (0.7 + 1.6*loft)*s;
+      ctx.globalAlpha = 0.35*loft; ctx.fillStyle=e.color;   // soft halo near the apex
+      ctx.beginPath(); ctx.arc(bx,by,r*1.7,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 0.95; ctx.fillStyle="#ffd98a";      // bright artifact core
+      ctx.beginPath(); ctx.arc(bx,by,r,0,Math.PI*2); ctx.fill();
+      ctx.globalAlpha = 0.9; ctx.strokeStyle=e.color; ctx.lineWidth=1.4; ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+// CHEVRONS: converging arrows pulled toward the robot's intake side, while intake is on.
+function fxChevrons(e, now){
+  const pose = poseAt(now); if (!pose) return;
+  const cx=px(pose.x), cy=py(pose.y), s=view.scale;
+  const hRad = mh(pose.headingDeg)*Math.PI/180;
+  const L=state.robot.length*s, off=state.robot.offset*s, front=off+L/2;
+  ctx.save(); ctx.translate(cx,cy); ctx.rotate(-hRad);
+  ctx.strokeStyle=e.color; ctx.lineWidth=2; ctx.lineJoin="round"; ctx.lineCap="round";
+  const span=3*s, t=(now%480)/480;                   // animate inward (toward the robot)
+  for (let k=0;k<3;k++){
+    const d = front + 1.2*s + ((k - t + 3)%3)*span;
+    ctx.globalAlpha = 0.85 - ((k - t + 3)%3)*0.22;
+    ctx.beginPath(); ctx.moveTo(d, -1.5*s); ctx.lineTo(d-1.4*s, 0); ctx.lineTo(d, 1.5*s); ctx.stroke();
+  }
+  ctx.restore();
+}
+// GAUGE: a brief arc tick near the robot when a hood/turret command fires.
+function fxGauge(ev, e, age){
+  if (age > 600 || !ev.pose) return;
+  const x=px(ev.pose.x), y=py(ev.pose.y), s=view.scale;
+  ctx.save(); ctx.strokeStyle=e.color; ctx.globalAlpha=(1-age/600)*0.9; ctx.lineWidth=2.4;
+  ctx.beginPath(); ctx.arc(x,y,2.4*s, -2.2, -0.9); ctx.stroke(); ctx.restore();
+}
 
 // ---------- frame lookup + interpolation ----------
 function frameIndexAt(t){
@@ -306,11 +428,12 @@ function fitTimeline(){
   tlview.w=w; tlview.h=h; tlview.dpr=dpr;
 }
 function tx(ms){ return TOTAL? (ms/TOTAL)*tlview.w : 0; }
+const PIN_ROW = 12;   // top strip reserved for category event pins
 function drawTimeline(){
   if (!tlview.w) return;
   tlx.setTransform(tlview.dpr,0,0,tlview.dpr,0,0);
   tlx.clearRect(0,0,tlview.w,tlview.h);
-  const bandTop=4, bandH=tlview.h-22;
+  const bandTop=PIN_ROW, bandH=tlview.h-bandTop-12;
   // state bands
   for (const r of STATE_RUNS){
     const x0=tx(r.start), x1=tx(r.end);
@@ -321,21 +444,40 @@ function drawTimeline(){
     if (x1-x0 > 34){ tlx.fillStyle="rgba(13,17,23,.85)"; tlx.font="10px monospace";
       tlx.fillText(label, x0+4, bandTop+bandH-5); }
   }
+  // event overlays: a faint duration bar + a category marker at each event's start
+  for (const ev of EVENTS){
+    const e = PROFILE[ev.category]; if (!e) continue;
+    const x0=tx(ev.tMs), x1=tx(ev.tMs + (ev.durationMs||0));
+    if (x1-x0 > 1){ tlx.fillStyle=e.color; tlx.globalAlpha=0.30; tlx.fillRect(x0, bandTop, x1-x0, bandH); tlx.globalAlpha=1; }
+    tlx.fillStyle=e.color;
+    tlx.beginPath(); tlx.moveTo(x0, PIN_ROW); tlx.lineTo(x0-3.5, 2); tlx.lineTo(x0+3.5, 2); tlx.closePath(); tlx.fill();
+  }
   // second ticks
   tlx.fillStyle="rgba(160,175,200,.55)"; tlx.font="10px monospace";
   for (let s=0; s<=TOTAL/1000; s+=5){ const x=tx(s*1000);
     tlx.fillRect(x,bandTop+bandH+2,1,4); tlx.fillText(s+"s", x+2, tlview.h-2); }
   // playhead
   const xh = tx(play.t);
-  tlx.strokeStyle="#fff"; tlx.lineWidth=2; tlx.beginPath(); tlx.moveTo(xh,0); tlx.lineTo(xh,bandTop+bandH+2); tlx.stroke();
-  tlx.fillStyle="#fff"; tlx.beginPath(); tlx.moveTo(xh-4,0); tlx.lineTo(xh+4,0); tlx.lineTo(xh,5); tlx.closePath(); tlx.fill();
+  tlx.strokeStyle="#fff"; tlx.lineWidth=2; tlx.beginPath(); tlx.moveTo(xh,2); tlx.lineTo(xh,bandTop+bandH+2); tlx.stroke();
+  tlx.fillStyle="#fff"; tlx.beginPath(); tlx.moveTo(xh-4,2); tlx.lineTo(xh+4,2); tlx.lineTo(xh,7); tlx.closePath(); tlx.fill();
+}
+// Snap to the nearest event pin if the click lands in the top pin strip, else null.
+function pinAt(clientX, clientY){
+  const rect = tl.getBoundingClientRect();
+  if (clientY - rect.top > PIN_ROW + 2) return null;
+  const x = clientX - rect.left; let best=null, bd=10;
+  for (const ev of EVENTS){ const d=Math.abs(tx(ev.tMs)-x); if (d<bd){ bd=d; best=ev; } }
+  return best;
 }
 function scrubTo(clientX){
   const rect = tl.getBoundingClientRect();
   const x = Math.max(0, Math.min(tlview.w, clientX-rect.left));
   play.t = TOTAL ? (x/tlview.w)*TOTAL : 0;
 }
-tl.addEventListener("pointerdown", e=>{ play.scrubbing=true; setPlaying(false); scrubTo(e.clientX); tl.setPointerCapture(e.pointerId); });
+tl.addEventListener("pointerdown", e=>{ setPlaying(false);
+  const pin=pinAt(e.clientX,e.clientY);
+  if (pin){ play.t=pin.tMs; return; }                 // click a pin: jump to that event
+  play.scrubbing=true; scrubTo(e.clientX); tl.setPointerCapture(e.pointerId); });
 tl.addEventListener("pointermove", e=>{ if (play.scrubbing) scrubTo(e.clientX); });
 tl.addEventListener("pointerup",   e=>{ play.scrubbing=false; });
 
@@ -352,7 +494,6 @@ function buildPathList(){
 }
 function fmt(v,d){ return v==null?"—":(typeof d==="number"?v.toFixed(d):Math.round(v).toString()); }
 function updatePanel(){
-  document.getElementById("autoName").textContent = (TRACE.meta&&TRACE.meta.autoName)||"";
   const f = frameAt(play.t); if (!f) return;
   document.getElementById("stateChip").textContent = f.autoState;
   document.getElementById("stateChip").style.borderColor = stateColor(f.autoState);
@@ -372,10 +513,20 @@ function updatePanel(){
 function setPlaying(on){ play.on=on; document.getElementById("play").textContent = on?"⏸":"▶"; }
 document.getElementById("play").addEventListener("click", ()=>{ if (play.t>=TOTAL) play.t=0; setPlaying(!play.on); });
 document.getElementById("speed").addEventListener("change", e=>{ play.speed=parseFloat(e.target.value); });
+function jumpEvent(dir){
+  setPlaying(false);
+  const times=[...new Set(EVENTS.map(ev=>ev.tMs))].sort((a,b)=>a-b);
+  if (dir>0){ const t=times.find(x=>x>play.t+1); play.t = t==null?TOTAL:t; }
+  else { const prev=times.filter(x=>x<play.t-1); play.t = prev.length?prev[prev.length-1]:0; }
+}
+document.getElementById("nextEv").addEventListener("click", ()=>jumpEvent(1));
+document.getElementById("prevEv").addEventListener("click", ()=>jumpEvent(-1));
 window.addEventListener("keydown", e=>{
   if (e.code==="Space"){ e.preventDefault(); if (play.t>=TOTAL) play.t=0; setPlaying(!play.on); }
   else if (e.code==="ArrowRight"){ setPlaying(false); play.t=Math.min(TOTAL, play.t+100); }
   else if (e.code==="ArrowLeft"){ setPlaying(false); play.t=Math.max(0, play.t-100); }
+  else if (e.key===".") jumpEvent(1);
+  else if (e.key===",") jumpEvent(-1);
 });
 
 // ---------- field image ----------
@@ -427,12 +578,80 @@ function tick(now){
 function onResize(){ fitField(); fitTimeline(); }
 window.addEventListener("resize", onResize);
 
+// ---------- auto switching ----------
+function selectAuto(name){
+  if (!TRACES[name]) return;
+  bindAuto(name);
+  setPlaying(false); play.t = 0;
+  state.robot = loadRobot(); applyRobotInputs();
+  buildLegend(); buildPathList(); computeRuns();
+  document.getElementById("tTotal").textContent = (TOTAL/1000).toFixed(1);
+  fitField();
+}
+function setupAutoDropdown(){
+  const sel = document.getElementById("autoSel");
+  AUTO_NAMES.forEach(n=>{ const o=document.createElement("option"); o.value=n; o.textContent=n; sel.appendChild(o); });
+  sel.value = "__DEFAULT_AUTO__";
+  sel.addEventListener("change", ()=>selectAuto(sel.value));
+}
+
+// ---------- video export ----------
+// Render the run to a 640x640 backing canvas and capture it to a .webm via MediaRecorder.
+// Driven by its own timer + manual frame capture (NOT requestAnimationFrame), so the recording
+// is deterministic and never stalls if the tab loses focus (rAF throttles in background tabs).
+// The displayed canvas size is left alone — the browser just scales the 640 backing.
+function startExport(){
+  if (vid.on) return;
+  const track0 = canvas.captureStream && canvas.captureStream(0).getVideoTracks()[0];
+  if (typeof MediaRecorder === "undefined" || !track0 || !track0.requestFrame){
+    alert("This browser can't record canvas video (need MediaRecorder + captureStream)."); return;
+  }
+  canvas.width = EXPORT_PX; canvas.height = EXPORT_PX;
+  view.S = EXPORT_PX; view.scale = EXPORT_PX / W; view.dpr = 1;
+  setPlaying(false); play.t = 0;
+
+  const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9") ? "video/webm;codecs=vp9"
+             : MediaRecorder.isTypeSupported("video/webm;codecs=vp8") ? "video/webm;codecs=vp8" : "video/webm";
+  const chunks = [];
+  const stream = canvas.captureStream(0);
+  const track = stream.getVideoTracks()[0];
+  vid.rec = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 3_000_000 });
+  vid.rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+  vid.rec.onstop = () => {
+    const blob = new Blob(chunks, { type: "video/webm" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "autosim-" + ((TRACE.meta&&TRACE.meta.autoName)||"run") + "-" + state.alliance + ".webm";
+    a.click(); setTimeout(()=>URL.revokeObjectURL(a.href), 4000);
+    fitField();
+    document.getElementById("videoBtn").textContent = "⤓ video";
+  };
+
+  const FPS = 30, dtMs = (1000 / FPS) * EXPORT_SPEED;   // sim ms advanced per captured frame
+  vid.on = true;
+  document.getElementById("videoBtn").textContent = "● recording…";
+  vid.rec.start();
+  vid.timer = setInterval(() => {
+    drawField();                                 // render current play.t to the 640 canvas (+HUD)
+    track.requestFrame();                        // push exactly one frame
+    if (play.t >= TOTAL){ stopExport(); return; }
+    play.t = Math.min(TOTAL, play.t + dtMs);
+  }, 1000 / FPS);
+}
+function stopExport(){
+  if (!vid.on) return;
+  vid.on = false;
+  clearInterval(vid.timer);
+  try { vid.rec.stop(); } catch(e) {}
+}
+document.getElementById("videoBtn").addEventListener("click", ()=>{ vid.on ? stopExport() : startExport(); });
+
 // ---------- boot ----------
-document.getElementById("tTotal").textContent = (TOTAL/1000).toFixed(1);
-state.robot = loadRobot(); applyRobotInputs(); setupRobotControls();
-buildLegend(); buildPathList(); computeRuns();
+setupAutoDropdown();
+setupRobotControls();
+selectAuto("__DEFAULT_AUTO__");
 loadImage(FIELD_IMAGE_DATAURI||null);
-fitField(); fitTimeline();
+fitTimeline();
 requestAnimationFrame(tick);
 </script>
 </body>

@@ -17,6 +17,7 @@ import com.qualcomm.robotcore.util.Range;
 import org.firstinspires.ftc.teamcode.AllianceMirror;
 import org.firstinspires.ftc.teamcode.AllianceStore;
 import org.firstinspires.ftc.teamcode.AutoStartStore;
+import org.firstinspires.ftc.teamcode.autoshared.V3FarAutoConfig;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
@@ -37,44 +38,43 @@ public class V3FarAuto extends LinearOpMode {
 
     private boolean isRedAlliance = false;
 
-    // ===== Fixed shot settings =====
-    private static final double FIXED_HOOD_DEG = 53.5;
-    private static final double FIXED_FLYWHEEL_RAD = 445;
+    // ===== Tunables / geometry — single source of truth in V3FarAutoConfig =====
+    private static final double FIXED_HOOD_DEG = V3FarAutoConfig.FIXED_HOOD_DEG;
+    private static final double FIXED_FLYWHEEL_RAD = V3FarAutoConfig.FIXED_FLYWHEEL_RAD;
 
-    // ===== Field positions (BLUE-NATIVE) =====
-    private static final double START_X = 64.1;
-    private static final double START_Y = 6.75;
-    private static final double START_HEADING_DEG = 180.0;
+    private static final double START_X = V3FarAutoConfig.START_X;
+    private static final double START_Y = V3FarAutoConfig.START_Y;
+    private static final double START_HEADING_DEG = V3FarAutoConfig.START_HEADING_DEG;
 
-    private static final double BLUE_TARGET_X = 5.0;
-    private static final double TARGET_Y = 139.0;
+    private static final double BLUE_TARGET_X = V3FarAutoConfig.BLUE_TARGET_X;
+    private static final double TARGET_Y = V3FarAutoConfig.TARGET_Y;
 
-    private static final double SHOOT2_Y_OFFSET = 5.5;
+    private static final double SHOOT2_Y_OFFSET = V3FarAutoConfig.SHOOT2_Y_OFFSET;
 
-    private static final double LAST_LINE_X = 12.5;
-    private static final double LAST_LINE_Y = 38.0;
+    private static final double LAST_LINE_X = V3FarAutoConfig.LAST_LINE_X;
+    private static final double LAST_LINE_Y = V3FarAutoConfig.LAST_LINE_Y;
 
-    private static final double INTAKE_1_X = 15.0;
-    private static final double INTAKE_1_Y = 9.5;
+    private static final double INTAKE_1_X = V3FarAutoConfig.INTAKE_1_X;
+    private static final double INTAKE_1_Y = V3FarAutoConfig.INTAKE_1_Y;
 
-    private static final double BACKUP_DISTANCE = 10.0;
-    private static final double ALT_CYCLE_Y_OFFSET = 19.0;
+    private static final double BACKUP_DISTANCE = V3FarAutoConfig.BACKUP_DISTANCE;
+    private static final double ALT_CYCLE_Y_OFFSET = V3FarAutoConfig.ALT_CYCLE_Y_OFFSET;
 
-    // ===== Turret config =====
+    // ===== Turret config (real-auto only; not shared with the sim) =====
     private static final double TURRET_CENTER_OFFSET_IN = 1.5;
     private static final double TURRET_MIN_DEG = -180.0;
     private static final double TURRET_MAX_DEG = 180.0;
     private static final double TURRET_OFFSET_DEG = 180;
 
     // ===== Timing =====
-    private static final double FIRST_SHOT_DELAY_SEC = 3;
-    private static final double FEED_START_DELAY_SEC = 0.10;
-    private static final double FEED_TOTAL_TIME_SEC = 1.00;
-    private static final double REVERSE_TIME_SEC = 0.25;
+    private static final double FIRST_SHOT_DELAY_SEC = V3FarAutoConfig.FIRST_SHOT_DELAY_SEC;
+    private static final double FEED_START_DELAY_SEC = V3FarAutoConfig.FEED_START_DELAY_SEC;
+    private static final double FEED_TOTAL_TIME_SEC = V3FarAutoConfig.FEED_TOTAL_TIME_SEC;
+    private static final double REVERSE_TIME_SEC = V3FarAutoConfig.REVERSE_TIME_SEC;
 
     // ===== Fixed turret aim commands (BLUE-NATIVE) =====
-    private static final double INIT_TURRET_ANGLE_DEG = 113;
-    private static final double RUN_TURRET_ANGLE_DEG = 113.0;
+    private static final double INIT_TURRET_ANGLE_DEG = V3FarAutoConfig.INIT_TURRET_ANGLE_DEG;
+    private static final double RUN_TURRET_ANGLE_DEG = V3FarAutoConfig.RUN_TURRET_ANGLE_DEG;
 
     // ===== Poses =====
     private Pose startPose;
@@ -252,11 +252,11 @@ public class V3FarAuto extends LinearOpMode {
         toLastLine = new Path(
                 new BezierCurve(
                         shootPose1,
-                        p(45.0, 38.0),
+                        p(V3FarAutoConfig.CURVE_CTRL_X, V3FarAutoConfig.CURVE_CTRL_Y),
                         lastLinePose
                 )
         );
-        toLastLine.setConstantHeadingInterpolation(h(180.0));
+        toLastLine.setConstantHeadingInterpolation(h(V3FarAutoConfig.DRIVE_HEADING_DEG));
 
         fromLastLineToShoot2 = new Path(
                 new BezierLine(
@@ -264,7 +264,7 @@ public class V3FarAuto extends LinearOpMode {
                         shootPose2
                 )
         );
-        fromLastLineToShoot2.setConstantHeadingInterpolation(h(180.0));
+        fromLastLineToShoot2.setConstantHeadingInterpolation(h(V3FarAutoConfig.DRIVE_HEADING_DEG));
         fromLastLineToShoot2.setBrakingStrength(0.85);
     }
 
@@ -301,7 +301,7 @@ public class V3FarAuto extends LinearOpMode {
                         currentIntakePose
                 )
         );
-        toIntake1.setConstantHeadingInterpolation(h(200.0));
+        toIntake1.setConstantHeadingInterpolation(h(V3FarAutoConfig.INTAKE_HEADING_DEG));
 
         backupFromIntake1 = new Path(
                 new BezierLine(
@@ -309,7 +309,7 @@ public class V3FarAuto extends LinearOpMode {
                         currentBackedPose
                 )
         );
-        backupFromIntake1.setConstantHeadingInterpolation(h(180.0));
+        backupFromIntake1.setConstantHeadingInterpolation(h(V3FarAutoConfig.DRIVE_HEADING_DEG));
 
         backToShoot2 = new Path(
                 new BezierLine(
@@ -317,7 +317,7 @@ public class V3FarAuto extends LinearOpMode {
                         shootPose2
                 )
         );
-        backToShoot2.setConstantHeadingInterpolation(h(180.0));
+        backToShoot2.setConstantHeadingInterpolation(h(V3FarAutoConfig.DRIVE_HEADING_DEG));
         backToShoot2.setBrakingStrength(0.85);
     }
 
@@ -409,7 +409,7 @@ public class V3FarAuto extends LinearOpMode {
                         autoState = AutoState.DONE;
 
                         Pose currentPose = follower.getPose();
-                        double retreatDx = isRedAlliance ? 23 : -23.0;
+                        double retreatDx = isRedAlliance ? V3FarAutoConfig.RETREAT_DX : -V3FarAutoConfig.RETREAT_DX;
 
                         follower.followPath(
                                 new Path(

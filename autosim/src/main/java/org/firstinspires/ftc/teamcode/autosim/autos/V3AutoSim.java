@@ -1,0 +1,648 @@
+package org.firstinspires.ftc.teamcode.autosim.autos;
+
+import org.firstinspires.ftc.teamcode.autosim.geom.Bezier;
+import org.firstinspires.ftc.teamcode.autosim.geom.Pose2d;
+import org.firstinspires.ftc.teamcode.autosim.geom.Pt;
+import org.firstinspires.ftc.teamcode.autosim.model.ActionEvent;
+import org.firstinspires.ftc.teamcode.autosim.model.Category;
+import org.firstinspires.ftc.teamcode.autosim.model.Frame;
+import org.firstinspires.ftc.teamcode.autosim.model.PathSpec;
+import org.firstinspires.ftc.teamcode.autosim.model.SimTrace;
+import org.firstinspires.ftc.teamcode.autosim.sim.SimClock;
+import org.firstinspires.ftc.teamcode.autosim.sim.SimFeeder;
+import org.firstinspires.ftc.teamcode.autosim.sim.SimFlywheel;
+import org.firstinspires.ftc.teamcode.autosim.sim.SimFollower;
+import org.firstinspires.ftc.teamcode.autosim.sim.SimHood;
+import org.firstinspires.ftc.teamcode.autosim.sim.SimIntake;
+import org.firstinspires.ftc.teamcode.autosim.sim.SimStopwatch;
+import org.firstinspires.ftc.teamcode.autosim.sim.SimTurret;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+/**
+ * Simulatable copy of V3Auto ("V3 Auto FSM", BLUE-NATIVE). The 25-state {@code AutoState} machine,
+ * the {@code FeedState} machine, path geometry, and timing are reproduced from
+ * {@code V3Auto.java} with its literal constants (V3Auto has no shared config — this sim does not
+ * change or depend on the real opmode). See AUTOSIM_DESIGN.md §5/§9.
+ *
+ * <p>Deliberate simplifications (readouts/heading only — path, state order, timing, intake, and
+ * shot events are faithful):
+ * <ul>
+ *   <li>Shot-on-move turret/hood compensation ({@code trackGoalFromOdometry} with
+ *       predicted-distance filtering) is reduced to straight-line goal tracking + the same shot
+ *       table.</li>
+ *   <li>{@code toLastLine} starts with {@code setTangentHeadingInterpolation()} but the real auto
+ *       switches it to {@code setConstantHeadingInterpolation(180°)} once t &gt; 0.2; this sim
+ *       keeps TANGENT for the whole path.</li>
+ *   <li>{@code backToShootFromLastLine} starts as REVERSE_TANGENT but the real auto switches it to
+ *       a constant -90° once t &gt; 0.8; this sim keeps REVERSE_TANGENT for the whole path.</li>
+ * </ul>
+ */
+public final class V3AutoSim {
+
+    private static final double DT_SEC = 0.02;
+    private static final long MAX_MS = 60_000;
+    private static final int CURVE_SEGMENTS = 40;
+
+    // Starting pose (blue-native)
+    private static final double START_X = 20.75;
+    private static final double START_Y = 128.1;
+    private static final double START_HEADING_DEG = -39.38;
+
+    // First shot fixed setup
+    private static final double FIRST_SHOT_HOOD_DEG = 37;
+    private static final double FIRST_SHOT_FLYWHEEL_RAD = 310;
+
+    // Goal position (blue-native)
+    private static final double BLUE_TARGET_X = 5.0;
+    private static final double TARGET_Y = 139.0;
+
+    // Turret center offset / limits / offset
+    private static final double TURRET_CENTER_OFFSET_IN = 1.5;
+    private static final double TURRET_MIN_DEG = -180.0;
+    private static final double TURRET_MAX_DEG = 180.0;
+    private static final double TURRET_OFFSET_DEG = 180.0;
+    private static final double INIT_TURRET_ANGLE_DEG = 90.0;
+
+    // Extra intake move after gate intake
+    private static final double EXTRA_GATE_INTAKE_Y_IN = 4.5;
+
+    // Feed timings
+    private static final double FEED_START_DELAY_SEC = 0.1;
+    private static final double FEED_TOTAL_TIME_SEC = 1.0;
+    private static final double REVERSE_TIME_SEC = 0.25;
+
+    // Headings
+    private static final double LINE_H = 180.0;
+    private static final double GATE_INTAKE_H = 135.0;
+    private static final double GATE_OPEN_H_START = 235.0;
+    private static final double GATE_OPEN_H_END = 170.0;
+    private static final double GATE_OPEN_H_T = 0.9;
+
+    // t-value / timer gates
+    private static final double FIRST_SHOT_FEED_TVALUE = 0.9;
+    private static final double LINE2_SLOW_TVALUE = 0.35;
+    private static final double LINE2_SLOW_POWER = 0.8;
+    private static final double WAIT_AT_GATE_SEC = 0.1;
+    private static final double GATE_INTAKE_ON_TVALUE = 0.5;
+    private static final double GATE_INTAKE_SEC = 1.5;
+    private static final double EXTRA_MOVE_TIMEOUT_SEC = 1.0;
+    private static final double WAIT_AT_GATE_AGAIN_SEC = 0.25;
+    private static final double GATE_INTAKE_AGAIN_SEC = 1.3;
+    private static final double LAST_LINE_SLOW_TVALUE = 0.2;
+    private static final double LAST_LINE_SLOW_POWER = 0.8;
+
+    // Distance -> {hoodDeg, flywheelRad} (matches updateShotFromDistance's literal table)
+    private static final double[][] SHOT_TABLE = {
+            {37.0, 30.0, 267.0},
+            {43.0, 30.0, 267.0},
+            {50.0, 37.0, 277.0 + 5},
+            {57.0, 37.0, 282.0 + 5},
+            {63.5, 37.0, 292.0 + 5},
+            {71.0, 39.0, 307.0 + 5},
+            {77.0, 40.0, 312.0 + 5},
+            {82.0, 42.0, 327.0 + 5},
+            {88.0, 43.0, 332.0 + 5},
+            {93.0, 44.0, 347.0 + 5},
+            {99.0, 46.0, 364.0 + 5},
+            {104.0, 47.0, 374.0 + 5},
+            {110.0, 48.0, 389.0 + 5},
+            {122.0, 53.0, 409.5 + 5}
+    };
+
+    private enum FeedState { IDLE, WAIT_BEFORE_INTAKE, RUN_INTAKE, DONE }
+    private enum AutoState {
+        DRIVE_TO_FIRST_SHOT, WAIT_FOR_FIRST_SHOT_TO_FINISH,
+        DRIVE_TO_LINE2, DRIVE_BACK_TO_SHOOT, SHOOT_SECOND,
+        DRIVE_TO_GATE, WAIT_AT_GATE, WAIT_FOR_GATE_INTAKE, DRIVE_EXTRA_INTAKE_AT_GATE, DRIVE_BACK_TO_SHOOT_THIRD, SHOOT_THIRD,
+        DRIVE_TO_FOURTH_PICKUP, DRIVE_BACK_TO_FINAL_SHOOT, SHOOT_FOURTH,
+        DRIVE_TO_GATE_AGAIN, WAIT_AT_GATE_AGAIN, WAIT_FOR_GATE_INTAKE_AGAIN, DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN, DRIVE_BACK_TO_SHOOT_FIFTH, SHOOT_FIFTH,
+        DRIVE_TO_LAST_LINE, DRIVE_BACK_TO_SHOOT_LAST, SHOOT_LAST,
+        DONE
+    }
+
+    private final SimTrace trace = new SimTrace();
+    private final SimClock clock = new SimClock();
+    private final SimFollower follower = new SimFollower(clock, trace);
+    private final SimIntake intake = new SimIntake();
+    private final SimFlywheel flywheel = new SimFlywheel();
+    private final SimTurret turret = new SimTurret();
+    private final SimHood hood = new SimHood();
+    private final SimFeeder feeder = new SimFeeder();
+
+    private final SimStopwatch feedTimer = new SimStopwatch(clock);
+    private final SimStopwatch autoTimer = new SimStopwatch(clock);
+    private final SimStopwatch reverseTimer = new SimStopwatch(clock);
+
+    private boolean reversingIntake = false;
+    private boolean enableDynamicShotControl = false;
+    private double hoodAngleDeg = 50.0;
+    private double targetVelocityRad = 0.0;
+
+    private FeedState feedState = FeedState.IDLE;
+    private AutoState autoState = AutoState.DRIVE_TO_FIRST_SHOT;
+
+    private Pt startPt, firstShot;
+
+    // Static paths
+    private PathSpec toFirstShot, toLine2, backToShoot, toGateOpenGate, toGateIntake,
+            toFourthPickup, backToFinalShoot, toLastLine, backToShootFromLastLine;
+    // Dynamic paths (rebuilt from the live pose)
+    private PathSpec gateExtraIntakeMove, backToShootFromGate;
+
+    private final List<Long> shotTimes = new ArrayList<>();
+    private final List<Pose2d> shotPoses = new ArrayList<>();
+
+    public static SimTrace build() {
+        return new V3AutoSim().run();
+    }
+
+    private SimTrace run() {
+        trace.meta.autoName = "V3Auto";
+        trace.meta.simDtMillis = (int) Math.round(DT_SEC * 1000);
+        trace.field.goal = new Pt(BLUE_TARGET_X, TARGET_Y);
+        trace.field.backgroundImage = "fields/decode.svg";
+        trace.robot.lengthIn = 18.0;
+        trace.robot.widthIn = 13.0;
+        trace.robot.wheelbaseOffsetIn = 3.5;
+
+        startPt = new Pt(START_X, START_Y);
+        double hr = Math.toRadians(START_HEADING_DEG);
+        firstShot = new Pt(START_X + 35 * Math.cos(hr), START_Y + 55.0 * Math.sin(hr));
+        trace.meta.startPose = new Pose2d(START_X, START_Y, START_HEADING_DEG);
+
+        follower.setStartingPose(trace.meta.startPose);
+        buildStaticPaths();
+
+        intake.setPower(0.0);
+        flywheel.stop();
+        feeder.clutchIn();
+        feeder.armBlock();
+        hood.setAngle(FIRST_SHOT_HOOD_DEG);
+        turret.setAngle(INIT_TURRET_ANGLE_DEG);
+
+        hoodAngleDeg = FIRST_SHOT_HOOD_DEG;
+        targetVelocityRad = FIRST_SHOT_FLYWHEEL_RAD;
+        hood.setAngle(hoodAngleDeg);
+        flywheel.setTargetVelocity(targetVelocityRad);
+        follower.followPath(toFirstShot, false);
+        autoState = AutoState.DRIVE_TO_FIRST_SHOT;
+
+        while (true) {
+            follower.update();
+            updateShotControl();
+            flywheel.update(DT_SEC);
+            updateFeedSequence();
+            updateAutoState();
+            turret.update();
+
+            trace.frames.add(sampleFrame());
+
+            if (autoState == AutoState.DONE && !follower.isBusy()) break;
+            if (clock.millis() >= MAX_MS) break;
+            clock.advance(DT_SEC);
+        }
+
+        trace.meta.totalMillis = clock.millis();
+        buildEvents();
+        return trace;
+    }
+
+    private Frame sampleFrame() {
+        Frame f = new Frame();
+        f.tMs = clock.millis();
+        f.pose = follower.getPose();
+        f.autoState = autoState.name();
+        f.feedState = feedState.name();
+        f.followerBusy = follower.isBusy();
+        f.flywheelTargetRadS = flywheel.getTarget();
+        f.flywheelActualRadS = flywheel.getVelocityRadPerSec();
+        f.turretDeg = turret.getCurrentAngle();
+        f.hoodDeg = hood.angle;
+        f.intakePower = intake.power;
+        return f;
+    }
+
+    /** Turret goal-tracking (readout only) + hood/flywheel selection. */
+    private void updateShotControl() {
+        if (autoState == AutoState.DONE) {
+            turret.setAngle(0.0);
+            return;
+        }
+        Pose2d pose = follower.getPose();
+        double hr = Math.toRadians(pose.headingDeg);
+        double turretX = pose.x - TURRET_CENTER_OFFSET_IN * Math.cos(hr);
+        double turretY = pose.y - TURRET_CENTER_OFFSET_IN * Math.sin(hr);
+        double angleFieldDeg = Math.toDegrees(Math.atan2(TARGET_Y - turretY, BLUE_TARGET_X - turretX));
+        double angleRobotDeg = normalize180(angleFieldDeg - pose.headingDeg);
+        double desiredDeg = normalize180(angleRobotDeg + TURRET_OFFSET_DEG);
+        turret.setAngle(Math.max(TURRET_MIN_DEG, Math.min(TURRET_MAX_DEG, desiredDeg)));
+
+        if (enableDynamicShotControl) {
+            double dist = Math.hypot(BLUE_TARGET_X - pose.x, TARGET_Y - pose.y);
+            updateShotFromDistance(dist);
+        } else {
+            hoodAngleDeg = FIRST_SHOT_HOOD_DEG;
+            hood.setAngle(hoodAngleDeg);
+            targetVelocityRad = FIRST_SHOT_FLYWHEEL_RAD;
+        }
+        flywheel.setTargetVelocity(targetVelocityRad);
+    }
+
+    private void updateAutoState() {
+        switch (autoState) {
+            case DRIVE_TO_FIRST_SHOT:
+                if (feedState == FeedState.IDLE && follower.getCurrentTValue() > FIRST_SHOT_FEED_TVALUE) {
+                    startFeedSequence();
+                }
+                if (!follower.isBusy()) {
+                    if (feedState == FeedState.DONE) finishFirstShotAndStartLine2();
+                    else autoState = AutoState.WAIT_FOR_FIRST_SHOT_TO_FINISH;
+                }
+                break;
+
+            case WAIT_FOR_FIRST_SHOT_TO_FINISH:
+                if (feedState == FeedState.DONE) finishFirstShotAndStartLine2();
+                break;
+
+            case DRIVE_TO_LINE2:
+                if (follower.getCurrentTValue() > LINE2_SLOW_TVALUE) {
+                    follower.setMaxPower(LINE2_SLOW_POWER);
+                }
+                if (!follower.isBusy()) {
+                    follower.setMaxPower(1.0);
+                    follower.followPath(backToShoot, true);
+                    autoState = AutoState.DRIVE_BACK_TO_SHOOT;
+                    enableDynamicShotControl = true;
+                }
+                break;
+
+            case DRIVE_BACK_TO_SHOOT:
+                follower.setMaxPower(1.0);
+                if (!follower.isBusy()) {
+                    startFeedSequence();
+                    autoState = AutoState.SHOOT_SECOND;
+                }
+                break;
+
+            case SHOOT_SECOND:
+                if (feedState == FeedState.DONE) {
+                    feeder.armBlock(); feeder.clutchOut();
+                    startThirdCycleToGate();
+                }
+                break;
+
+            // ---- Gate cycle ----
+            case DRIVE_TO_GATE:
+                intake.setPower(0);
+                if (!follower.isBusy()) { autoTimer.reset(); autoState = AutoState.WAIT_AT_GATE; }
+                break;
+            case WAIT_AT_GATE:
+                intake.setPower(0.0);
+                if (autoTimer.seconds() >= WAIT_AT_GATE_SEC) {
+                    follower.setMaxPower(1.0);
+                    follower.followPath(toGateIntake, false);
+                    autoTimer.reset();
+                    autoState = AutoState.WAIT_FOR_GATE_INTAKE;
+                }
+                break;
+            case WAIT_FOR_GATE_INTAKE:
+                intake.setPower(follower.getCurrentTValue() >= GATE_INTAKE_ON_TVALUE ? 1.0 : 0.0);
+                if (autoTimer.seconds() >= GATE_INTAKE_SEC) startExtraGateIntakeMove();
+                break;
+            case DRIVE_EXTRA_INTAKE_AT_GATE:
+                intake.setPower(1.0);
+                if (!follower.isBusy() || autoTimer.seconds() >= EXTRA_MOVE_TIMEOUT_SEC) startReturnFromGateToShoot();
+                break;
+            case DRIVE_BACK_TO_SHOOT_THIRD:
+                intake.setPower(1.0);
+                if (!follower.isBusy()) { startFeedSequence(); autoState = AutoState.SHOOT_THIRD; }
+                break;
+            case SHOOT_THIRD:
+                if (feedState == FeedState.DONE) {
+                    feeder.armBlock(); feeder.clutchOut();
+                    startFourthPickupCycle();
+                }
+                break;
+
+            // ---- Fourth pickup (no gate) ----
+            case DRIVE_TO_FOURTH_PICKUP:
+                if (!follower.isBusy()) startReturnToFinalShoot();
+                break;
+            case DRIVE_BACK_TO_FINAL_SHOOT:
+                intake.setPower(1.0);
+                if (!follower.isBusy()) { startFeedSequence(); autoState = AutoState.SHOOT_FOURTH; }
+                break;
+            case SHOOT_FOURTH:
+                if (feedState == FeedState.DONE) {
+                    feeder.armBlock(); feeder.clutchOut();
+                    startGateCycleAgain();
+                }
+                break;
+
+            // ---- Gate cycle again ----
+            case DRIVE_TO_GATE_AGAIN:
+                intake.setPower(0);
+                if (!follower.isBusy()) { autoTimer.reset(); autoState = AutoState.WAIT_AT_GATE_AGAIN; }
+                break;
+            case WAIT_AT_GATE_AGAIN:
+                intake.setPower(0.0);
+                if (autoTimer.seconds() >= WAIT_AT_GATE_AGAIN_SEC) {
+                    follower.setMaxPower(1.0);
+                    follower.followPath(toGateIntake, true);
+                    autoTimer.reset();
+                    autoState = AutoState.WAIT_FOR_GATE_INTAKE_AGAIN;
+                }
+                break;
+            case WAIT_FOR_GATE_INTAKE_AGAIN:
+                intake.setPower(follower.getCurrentTValue() >= GATE_INTAKE_ON_TVALUE ? 1.0 : 0.0);
+                if (autoTimer.seconds() >= GATE_INTAKE_AGAIN_SEC) startExtraGateIntakeMoveAgain();
+                break;
+            case DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN:
+                intake.setPower(1.0);
+                if (!follower.isBusy() || autoTimer.seconds() >= EXTRA_MOVE_TIMEOUT_SEC) startReturnFromGateToShootAgain();
+                break;
+            case DRIVE_BACK_TO_SHOOT_FIFTH:
+                intake.setPower(1.0);
+                if (!follower.isBusy()) { startFeedSequence(); autoState = AutoState.SHOOT_FIFTH; }
+                break;
+            case SHOOT_FIFTH:
+                if (feedState == FeedState.DONE) {
+                    feeder.armBlock(); feeder.clutchOut();
+                    startLastLineCycle();
+                }
+                break;
+
+            // ---- Last line ----
+            case DRIVE_TO_LAST_LINE:
+                if (follower.getCurrentTValue() > LAST_LINE_SLOW_TVALUE) {
+                    follower.setMaxPower(LAST_LINE_SLOW_POWER);
+                }
+                if (!follower.isBusy()) {
+                    intake.setPower(1.0);
+                    follower.setMaxPower(1.0);
+                    follower.followPath(backToShootFromLastLine, true);
+                    autoState = AutoState.DRIVE_BACK_TO_SHOOT_LAST;
+                    enableDynamicShotControl = true;
+                }
+                break;
+            case DRIVE_BACK_TO_SHOOT_LAST:
+                intake.setPower(1.0);
+                if (!follower.isBusy()) { startFeedSequence(); autoState = AutoState.SHOOT_LAST; }
+                break;
+            case SHOOT_LAST:
+                if (feedState == FeedState.DONE) {
+                    intake.setPower(0.0);
+                    feeder.armBlock(); feeder.clutchOut();
+                    enableDynamicShotControl = false;
+                    turret.setAngle(0);
+                    autoState = AutoState.DONE;
+                }
+                break;
+
+            case DONE:
+                turret.setAngle(0);
+                intake.setPower(0.0);
+                break;
+        }
+    }
+
+    private void finishFirstShotAndStartLine2() {
+        feeder.clutchOut();
+        feeder.armBlock();
+        enableDynamicShotControl = true;
+        follower.setMaxPower(1.0);
+        follower.followPath(toLine2, false);
+        autoState = AutoState.DRIVE_TO_LINE2;
+    }
+
+    private void startThirdCycleToGate() {
+        intake.setPower(0.0);
+        feedState = FeedState.IDLE;
+        enableDynamicShotControl = true;
+        follower.setMaxPower(1.0);
+        follower.followPath(toGateOpenGate, false);
+        autoState = AutoState.DRIVE_TO_GATE;
+    }
+
+    private void startExtraGateIntakeMove() {
+        follower.setMaxPower(1.0);
+        Pose2d cur = follower.getPose();
+        gateExtraIntakeMove = line("gateExtra", new Pt(cur.x, cur.y),
+                new Pt(cur.x, cur.y + EXTRA_GATE_INTAKE_Y_IN), GATE_INTAKE_H);
+        follower.followPath(gateExtraIntakeMove, true);
+        autoState = AutoState.DRIVE_EXTRA_INTAKE_AT_GATE;
+    }
+
+    private void startReturnFromGateToShoot() {
+        follower.setMaxPower(1.0);
+        Pose2d cur = follower.getPose();
+        backToShootFromGate = curve("backFromGate",
+                Arrays.asList(new Pt(cur.x, cur.y), new Pt(42.0, 59.0), firstShot),
+                tangentDeg(new Pt(cur.x, cur.y), firstShot)).reverseTangent();
+        intake.setPower(1.0);
+        feedState = FeedState.IDLE;
+        enableDynamicShotControl = true;
+        follower.followPath(backToShootFromGate, true);
+        autoState = AutoState.DRIVE_BACK_TO_SHOOT_THIRD;
+    }
+
+    private void startFourthPickupCycle() {
+        intake.setPower(1.0);
+        feedState = FeedState.IDLE;
+        enableDynamicShotControl = true;
+        follower.setMaxPower(1.0);
+        follower.followPath(toFourthPickup, false);
+        autoState = AutoState.DRIVE_TO_FOURTH_PICKUP;
+    }
+
+    private void startReturnToFinalShoot() {
+        intake.setPower(1.0);
+        feedState = FeedState.IDLE;
+        enableDynamicShotControl = true;
+        follower.setMaxPower(1.0);
+        follower.followPath(backToFinalShoot, false);
+        autoState = AutoState.DRIVE_BACK_TO_FINAL_SHOOT;
+    }
+
+    private void startGateCycleAgain() {
+        intake.setPower(0.0);
+        feedState = FeedState.IDLE;
+        enableDynamicShotControl = true;
+        follower.setMaxPower(1.0);
+        follower.followPath(toGateOpenGate, false);
+        autoState = AutoState.DRIVE_TO_GATE_AGAIN;
+    }
+
+    private void startExtraGateIntakeMoveAgain() {
+        follower.setMaxPower(1.0);
+        Pose2d cur = follower.getPose();
+        gateExtraIntakeMove = line("gateExtraAgain", new Pt(cur.x, cur.y),
+                new Pt(cur.x, cur.y + EXTRA_GATE_INTAKE_Y_IN), GATE_INTAKE_H);
+        follower.followPath(gateExtraIntakeMove, true);
+        autoState = AutoState.DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN;
+    }
+
+    private void startReturnFromGateToShootAgain() {
+        follower.setMaxPower(1.0);
+        Pose2d cur = follower.getPose();
+        backToShootFromGate = curve("backFromGateAgain",
+                Arrays.asList(new Pt(cur.x, cur.y), new Pt(42.0, 62.0), firstShot),
+                tangentDeg(new Pt(cur.x, cur.y), firstShot)).reverseTangent();
+        intake.setPower(1.0);
+        feedState = FeedState.IDLE;
+        enableDynamicShotControl = true;
+        follower.followPath(backToShootFromGate, true);
+        autoState = AutoState.DRIVE_BACK_TO_SHOOT_FIFTH;
+    }
+
+    private void startLastLineCycle() {
+        intake.setPower(1.0);
+        feedState = FeedState.IDLE;
+        enableDynamicShotControl = true;
+        follower.setMaxPower(1.0);
+        follower.followPath(toLastLine, false);
+        autoState = AutoState.DRIVE_TO_LAST_LINE;
+    }
+
+    private void startFeedSequence() {
+        feeder.armShoot();
+        feedTimer.reset();
+        feedState = FeedState.WAIT_BEFORE_INTAKE;
+        shotTimes.add(clock.millis());
+        shotPoses.add(follower.getPose());
+    }
+
+    private void updateFeedSequence() {
+        if (reversingIntake) {
+            if (reverseTimer.seconds() < REVERSE_TIME_SEC) {
+                intake.setPower(-1.0);
+            } else {
+                intake.setPower(1.0);
+                reversingIntake = false;
+            }
+        }
+        switch (feedState) {
+            case IDLE:
+                break;
+            case WAIT_BEFORE_INTAKE:
+                feeder.clutchIn();
+                intake.setPower(0.0);
+                if (feedTimer.seconds() >= FEED_START_DELAY_SEC) {
+                    intake.setPower(1.0);
+                    feedState = FeedState.RUN_INTAKE;
+                }
+                break;
+            case RUN_INTAKE:
+                if (feedTimer.seconds() >= FEED_TOTAL_TIME_SEC) {
+                    reversingIntake = true;
+                    reverseTimer.reset();
+                    intake.setPower(0.0);
+                    feedState = FeedState.DONE;
+                    feeder.clutchOut();
+                }
+                break;
+            case DONE:
+                break;
+        }
+    }
+
+    private void updateShotFromDistance(double distance) {
+        double[][] t = SHOT_TABLE;
+        if (distance <= t[0][0]) {
+            hoodAngleDeg = t[0][1]; targetVelocityRad = t[0][2]; hood.setAngle(hoodAngleDeg); return;
+        }
+        int last = t.length - 1;
+        if (distance >= t[last][0]) {
+            hoodAngleDeg = t[last][1]; targetVelocityRad = t[last][2]; hood.setAngle(hoodAngleDeg); return;
+        }
+        for (int i = 0; i < t.length - 1; i++) {
+            double d1 = t[i][0], a1 = t[i][1], v1 = t[i][2];
+            double d2 = t[i + 1][0], a2 = t[i + 1][1], v2 = t[i + 1][2];
+            if (distance >= d1 && distance <= d2) {
+                double f = (distance - d1) / (d2 - d1);
+                hoodAngleDeg = a1 + f * (a2 - a1);
+                targetVelocityRad = (v1 + f * (v2 - v1)) + 15;
+                hood.setAngle(hoodAngleDeg);
+                return;
+            }
+        }
+    }
+
+    private void buildEvents() {
+        long feedWindowMs = Math.round((FEED_START_DELAY_SEC + FEED_TOTAL_TIME_SEC) * 1000.0);
+        for (int i = 0; i < shotTimes.size(); i++) {
+            trace.events.add(new ActionEvent(shotTimes.get(i), Category.SHOOT, "shot " + (i + 1), feedWindowMs, shotPoses.get(i)));
+        }
+        List<Frame> fr = trace.frames;
+        int i = 0;
+        while (i < fr.size()) {
+            if (fr.get(i).intakePower > 0.05) {
+                long start = fr.get(i).tMs;
+                Pose2d at = fr.get(i).pose;
+                int j = i;
+                while (j < fr.size() && fr.get(j).intakePower > 0.05) j++;
+                long end = fr.get(j - 1).tMs;
+                trace.events.add(new ActionEvent(start, Category.INTAKE, "intake", Math.max((long) (DT_SEC * 1000), end - start), at));
+                i = j;
+            } else {
+                i++;
+            }
+        }
+        trace.events.sort((a, b) -> Long.compare(a.tMs, b.tMs));
+    }
+
+    // ===== Path builders =====
+
+    private void buildStaticPaths() {
+        toFirstShot = line("toFirstShot", startPt, firstShot, tangentDeg(startPt, firstShot)).tangent();
+
+        toLine2 = curve("toLine2", Arrays.asList(firstShot,
+                new Pt(48.0, 67.0), new Pt(40.0, 63.0), new Pt(12.5, 62.0)), LINE_H);
+
+        backToShoot = curve("backToShoot", Arrays.asList(
+                new Pt(11.0, 65.0), new Pt(30.0, 65.0), firstShot),
+                tangentDeg(new Pt(11.0, 65.0), firstShot)).reverseTangent();
+
+        toGateOpenGate = curve("toGateOpenGate", Arrays.asList(firstShot,
+                new Pt(50.0, 66.326), new Pt(15.0, 67.5)), GATE_OPEN_H_END)
+                .linear(GATE_OPEN_H_START, GATE_OPEN_H_END, GATE_OPEN_H_T);
+
+        toGateIntake = line("toGateIntake", new Pt(16.0, 69.5), new Pt(11.0, 59.0), GATE_INTAKE_H);
+
+        toFourthPickup = curve("toFourthPickup", Arrays.asList(firstShot,
+                new Pt(40.0, 84.0), new Pt(20.0, 84.0)), LINE_H);
+
+        Pt fourthEnd = new Pt(20.0, 84.0);
+        backToFinalShoot = line("backToFinalShoot", fourthEnd, firstShot, tangentDeg(fourthEnd, firstShot))
+                .reverseTangent();
+
+        toLastLine = curve("toLastLine", Arrays.asList(firstShot,
+                new Pt(48.0, 43.0), new Pt(40.0, 36.0), new Pt(12.5, 35.0)),
+                LINE_H).tangent();
+
+        Pt lastReturnEnd = new Pt(firstShot.x + 10, firstShot.y + 18);
+        backToShootFromLastLine = curve("backToShootFromLastLine", Arrays.asList(
+                new Pt(12.5, 35.0), new Pt(30.0, 41.0), lastReturnEnd),
+                tangentDeg(new Pt(11.0, 41.0), lastReturnEnd)).reverseTangent();
+    }
+
+    private static double tangentDeg(Pt a, Pt b) {
+        return Math.toDegrees(Math.atan2(b.y - a.y, b.x - a.x));
+    }
+
+    private static double normalize180(double a) {
+        return ((a + 180) % 360 + 360) % 360 - 180;
+    }
+
+    private static PathSpec line(String id, Pt a, Pt b, double headingDeg) {
+        List<Pt> cp = Arrays.asList(a, b);
+        return new PathSpec(id, "LINE", cp, Bezier.sample(cp, 1), headingDeg);
+    }
+
+    private static PathSpec curve(String id, List<Pt> control, double headingDeg) {
+        return new PathSpec(id, "CURVE", control, Bezier.sample(control, CURVE_SEGMENTS), headingDeg);
+    }
+}
