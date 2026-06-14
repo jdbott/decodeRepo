@@ -14,7 +14,7 @@ events (shoot / intake / feed / hood / turret) surfaced on a scrubable timeline.
   a second engine. It also dovetails with the eventual auto-base refactor in
   [AUTO_BASE_DESIGN.md](AUTO_BASE_DESIGN.md) (see "Future convergence" below).
 
-> **Status: Phases 1–3 built + Phase 4 partial + fidelity tweaks** (see §12–§17). The `autosim/` module simulates
+> **Status: Phases 1–3 built + Phase 4 partial + fidelity tweaks** (see §12–§18). The `autosim/` module simulates
 > `V3FarAuto` and `V3ClosePartner` end-to-end and emits one standalone viewer (path render,
 > kinematic playback, data-driven action overlays, auto dropdown, 640p video export). Tier-1
 > single-source config is in place (§15). Replay mode + assertion overlay remain the stretch.
@@ -788,3 +788,57 @@ as a known simplification in `V3AutoSim`'s class Javadoc).
   counterparts, so `headingSwitchT` stays at its default (-1) for all their paths — their
   traces are byte-for-byte unchanged except V3Auto's total duration (28.92→29.06 s, +7
   frames) from the two new snap-points slightly perturbing the trapezoidal timing.
+
+> **Superseded by §18:** the "turn-then-move" pivot (§16) and the "instantaneous target
+> snap" for mid-path switches (this section) were both replaced by a single continuous
+> heading-chase model. The mechanism and verified numbers above are now historical.
+
+## 18. Heading-chase rewrite + path discontinuity indicator — as built (2026-06-14)
+
+Two more captain-requested changes on top of §16/§17.
+
+### Rotate while driving (replaces turn-then-move)
+
+The §16 pivot — stopping to turn in place before translating — didn't match how Pedro's
+`Follower` actually behaves (heading control and translation run concurrently). It's
+removed:
+
+- `SimFollower` drops `turnSec`/`turnFromDeg`/`turnToDeg` entirely. `followPath()` no
+  longer reserves any turn time: `travSec`/`tEndMs` are purely the trapezoidal drive
+  time, and `isBusy()`/`getCurrentTValue()` are driven by that drive time from `t=0`.
+- `getPose()` instead computes the path's *commanded* heading at the current
+  arc-length (`headingAt(active, d)` — unchanged from §17, including `thenConstant`
+  switches) and rate-limits the robot's *actual* heading toward it: `step =
+  clamp(delta, ±TURN_RATE_DEG_S * dtSec)`, where `dtSec` is the time since the previous
+  `getPose()` call (`lastSampleSec`, now updated unconditionally on every call including
+  the idle/`active==null` branch). `TURN_RATE_DEG_S` stays `270°/s`, repurposed from "pivot
+  speed" to "max heading slew rate while driving."
+- This applies uniformly to path-start heading changes AND `thenConstant` mid-path
+  switches — no special-casing needed, both are just "target changed, chase it."
+- **Durations**, with no reserved turn time, drop back close to the pre-§16 baseline:
+  V3FarAuto 29480→28880 ms, V3ClosePartner 29560→27920 ms, V3Auto 29060→27540 ms.
+- Verified in-browser: max per-frame heading step remains capped at 5.4°/frame (=270°/s
+  × 20 ms) for all three autos; V3Auto's `toLastLine` and `backToShootFromLastLine` now
+  show a gradual heading ramp through their `thenConstant` switch points instead of a
+  snap.
+
+### Path discontinuity indicator
+
+Added a viewer-only check (no schema/Java changes — operates on the already-serialized
+`polyline` endpoints): for each consecutive path pair, if the distance between path
+*i*'s last polyline point and path *i+1*'s first polyline point exceeds
+`DISCONTINUITY_THRESHOLD_IN = 0.5` inches, it's flagged as a gap in the path plan.
+
+- `computeDiscontinuities()` runs once per `bindAuto()` call and produces a list of
+  `{a, b, gap, from, to}`.
+- `drawDiscontinuities()` renders each flagged gap as a red dashed line with pulsing
+  rings and a "⚠" marker on the canvas, every frame.
+- `buildDiscoList()` populates a "Discontinuities ⚠" sidebar section (hidden if empty)
+  listing `fromPath → toPath (N.Nin)`.
+- V3Auto has several real flagged gaps (e.g. `toLine2 → backToShoot` 3.4in,
+  `toGateOpenGate → toGateIntake` 2.2in, `gateExtra → backFromGate` 4.5in and its
+  "Again" duplicates) — these are genuine path-planning gaps in `V3Auto.java`'s control
+  points, not sim artifacts. V3FarAuto and V3ClosePartner have none above threshold.
+
+See `autosim/AUTOSIM.md` §7.1, §7.2, and §9.4 for the maintainer-facing description of
+both changes.

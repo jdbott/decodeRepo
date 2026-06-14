@@ -15,10 +15,13 @@ import java.util.List;
  * arrival.
  *
  * <p><b>Heading.</b> Each path declares a {@link HeadingMode} (constant / tangent / reversed
- * tangent / linear), reproducing Pedro's interpolation. Rather than snapping, the robot first
- * pivots in place from its current heading to the path's starting heading — a turn phase that
- * consumes sim time ({@link #TURN_RATE_DEG_S}) — and only then translates, so playback shows the
- * real "turn, then drive" behavior. Heading then tracks the mode point-by-point along the path.
+ * tangent / linear), reproducing Pedro's interpolation. Translation along the path begins
+ * immediately — there is no blocking in-place pivot. Instead, the robot's actual heading
+ * continuously chases the path's commanded heading (the {@code headingAt} target) at up to
+ * {@link #TURN_RATE_DEG_S}, so a large heading change (e.g. a tangent path starting well off
+ * the robot's current heading, or a mid-path {@link PathSpec#thenConstant} switch) is a fast
+ * but non-instant turn happening <i>while</i> the robot drives — "turn and move at the same
+ * time" rather than "turn, then move."
  *
  * <p>This validates FSM logic, ordering, and timing — NOT exact pose error. CRUISE/ACCEL are
  * deliberately coarse, seeded near Pedro's measured caps; swap this one class for higher
@@ -27,7 +30,7 @@ import java.util.List;
 public final class SimFollower {
     private static final double CRUISE_IN_S = 55.0;     // ~ below Pedro xVel 73.8 / yVel 60.8
     private static final double ACCEL_IN_S2 = 80.0;     // accel/decel magnitude
-    private static final double TURN_RATE_DEG_S = 270.0; // in-place pivot speed before translating
+    private static final double TURN_RATE_DEG_S = 270.0; // max heading slew rate while driving
 
     private final SimClock clock;
     private final SimTrace trace;
@@ -35,13 +38,11 @@ public final class SimFollower {
     private PathSpec active;
     private double startSec;
     private double travSec;
-    private double turnSec;        // in-place pivot time before translation begins
-    private double turnFromDeg;    // heading at the moment the path started
-    private double turnToDeg;      // path's heading at its start point
     private double length;
     private double activeCruise = CRUISE_IN_S;
     private double maxPower = 1.0;
     private Pose2d lastPose = new Pose2d(0, 0, 0);
+    private double lastSampleSec = 0;   // clock time of the last getPose() call, for heading-rate limiting
 
     public SimFollower(SimClock clock, SimTrace trace) {
         this.clock = clock;
@@ -63,51 +64,42 @@ public final class SimFollower {
         activeCruise = CRUISE_IN_S * maxPower;
         travSec = traversalTime(length);
 
-        // Turn-then-move: pivot in place from the current heading to this path's starting heading.
-        turnFromDeg = lastPose.headingDeg;
-        turnToDeg = headingAt(spec, 0.0);
-        turnSec = Math.abs(shortestDelta(turnFromDeg, turnToDeg)) / TURN_RATE_DEG_S;
-
         spec.tStartMs = clock.millis();
-        spec.tEndMs = clock.millis() + Math.round((turnSec + travSec) * 1000.0);
+        spec.tEndMs = clock.millis() + Math.round(travSec * 1000.0);
         trace.paths.add(spec);
     }
 
     public boolean isBusy() {
-        return active != null && (clock.now() - startSec) < turnSec + travSec;
+        return active != null && (clock.now() - startSec) < travSec;
     }
 
-    /**
-     * Fraction of the active path <i>translated</i>, 0..1 (a proxy for Pedro's parametric t-value).
-     * Stays 0 during the initial in-place pivot, so FSM t-value gates fire on real path progress.
-     */
+    /** Fraction of the active path traveled, 0..1 (a proxy for Pedro's parametric t-value). */
     public double getCurrentTValue() {
         if (active == null || travSec <= 0) return 1.0;
-        double moveElapsed = (clock.now() - startSec) - turnSec;
-        if (moveElapsed <= 0) return 0;
-        double f = moveElapsed / travSec;
+        double f = (clock.now() - startSec) / travSec;
+        if (f < 0) return 0;
         return f > 1 ? 1 : f;
     }
 
     public Pose2d getPose() {
-        if (active == null) return lastPose;
+        if (active == null) { lastSampleSec = clock.now(); return lastPose; }
         double elapsed = clock.now() - startSec;
+        double d = (elapsed >= travSec) ? length : distanceAt(elapsed);
+        Pt p = pointAtArcLength(active.polyline, d);
 
-        Pose2d pose;
-        if (elapsed < turnSec) {                          // pivoting in place at the path start
-            double f = turnSec <= 0 ? 1.0 : elapsed / turnSec;
-            double h = turnFromDeg + shortestDelta(turnFromDeg, turnToDeg) * f;
-            Pt p0 = active.polyline.get(0);
-            pose = new Pose2d(p0.x, p0.y, h);
-        } else {
-            double moveElapsed = elapsed - turnSec;
-            double d = (moveElapsed >= travSec) ? length : distanceAt(moveElapsed);
-            Pt p = pointAtArcLength(active.polyline, d);
-            pose = new Pose2d(p.x, p.y, headingAt(active, d));
-        }
-        // Track the latest pose so the next path's pivot starts from the true current heading,
-        // even when the FSM chains paths in a single tick (no idle frame to refresh it).
+        // Chase the commanded heading at TURN_RATE_DEG_S rather than snapping to it, so large
+        // heading changes (path start, or a mid-path thenConstant switch) play out as a fast
+        // turn concurrent with translation.
+        double target = headingAt(active, d);
+        double dtSec = Math.max(0, clock.now() - lastSampleSec);
+        double maxStep = TURN_RATE_DEG_S * dtSec;
+        double delta = shortestDelta(lastPose.headingDeg, target);
+        double step = Math.max(-maxStep, Math.min(maxStep, delta));
+        double heading = lastPose.headingDeg + step;
+
+        Pose2d pose = new Pose2d(p.x, p.y, heading);
         lastPose = pose;
+        lastSampleSec = clock.now();
         return pose;
     }
 
