@@ -271,32 +271,32 @@ target heading the robot's heading chases toward (§7.1) — pass the real
 value, not `0`, unless the mode is non-constant (in which case the constructor's
 `headingDeg` argument is ignored and `0` is conventional).
 
-### 7.1 "Rotate while driving" — the heading-chase model
+### 7.1 Hybrid heading model: blocking start pivot + concurrent mid-path switches
 
-`SimFollower.getPose()` computes, for the current arc-length `d`, the heading the path
-*commands* right now (`headingAt(active, d)` — see §7.2 for mid-path switches). The
-robot's *actual* heading then chases that target at up to `TURN_RATE_DEG_S = 270.0°/s`
-(`SimFollower.java`), moving by at most `TURN_RATE_DEG_S * dtSec` toward the target each
-frame (`dtSec` is the wall-clock-of-sim time since the previous `getPose()` call,
-tracked in `lastSampleSec`).
+`followPath()` computes the path's initial commanded heading (`headingAt(spec, 0.0)`)
+and, if it differs from the robot's current heading, reserves a **blocking in-place
+pivot**: `turnSec = |shortestDelta(currentHeading, target0)| / TURN_RATE_DEG_S`
+(`TURN_RATE_DEG_S = 270.0°/s`), added on top of the trapezoidal drive time `travSec` for
+both `tEndMs` and `isBusy()`/`getCurrentTValue()`. While `elapsed < turnSec`,
+`getPose()` holds the robot at the path's start point and rotates it in place toward
+`target0` at up to `TURN_RATE_DEG_S`; `getCurrentTValue()` reports `t=0` throughout the
+pivot. This is the "turn, then move" behavior — matches the pre-§18 model and reflects
+how Pedro paths are normally driven: a sizeable heading error at a path's start is
+squared away before translation begins.
 
-Translation along the path begins **immediately** — there is no blocking in-place pivot
-and no time is reserved for turning. `followPath()`'s `travSec`/`tEndMs` are purely the
-trapezoidal drive time; `isBusy()` and `getCurrentTValue()` are driven by that drive time
-only. A large heading change (a tangent path starting well off the robot's current
-heading, or a `thenConstant` switch — §7.2) plays out as a fast turn *concurrent with*
-translation: "turn and move at the same time," not "turn, then move." This matches how
-Pedro's `Follower` actually behaves — heading PID and translation run simultaneously.
-
-Because there's no reserved pivot time, this is also simpler than the old turn-then-move
-model: `getCurrentTValue()` reflects real path progress from `t=0`, and durations are
-close to the original (pre-pivot) Phase-3 baseline — see `AUTOSIM_DESIGN.md` §18.
+Once translation begins, heading normally snaps directly to `headingAt(active, d)` each
+frame (no further rate limiting needed — by construction the pivot already closed the
+gap to `target0`, and continuous interpolation modes like `TANGENT`/`LINEAR` don't jump).
+The exception is a mid-path `thenConstant` switch (§7.2): when `t` crosses
+`headingSwitchT`, the *target* heading can jump discontinuously, and that jump is **not**
+a pose snap — the robot's actual heading chases the new target at up to
+`TURN_RATE_DEG_S` while continuing to translate ("turn and move at the same time").
 
 **Lesson learned the hard way:** `SimFollower.getPose()` must update `lastPose` and
 `lastSampleSec` **unconditionally on every call** — including the `active == null`
-branch — so that `dtSec` is always the true elapsed time since the last sample. If a
-call is skipped, the next `dtSec` is too large and the rate limiter allows an
-oversized single-frame heading jump.
+branch and the pivot branch — so that `dtSec` is always the true elapsed time since the
+last sample. If a call is skipped, the next `dtSec` is too large and the rate limiter
+allows an oversized single-frame heading jump.
 
 ### 7.2 Mid-path heading-mode switches
 
@@ -318,7 +318,7 @@ backToShootFromLastLine = curve("backToShootFromLastLine", controlPts, 0)
 `SimFollower.headingAt` computes the path fraction `t = d/length` and, once `t >
 headingSwitchT`, switches the *target* heading from `headingMode` to a constant
 `headingDegAfter`. This target change is **not** an instantaneous pose snap — it flows
-through the same heading-chase rate limiter described in §7.1, so the robot's actual
+through the heading-chase rate limiter described in §7.1, so the robot's actual
 heading turns smoothly from the tangent direction to `headingDegAfter` over time, while
 continuing to translate. If you find a real path that switches to something other than
 `CONSTANT` after the threshold (e.g. tangent → linear), you'll need to extend
@@ -548,10 +548,12 @@ without rebuilding).
 
 ## 13. Things that look like bugs but aren't
 
-- **The robot's heading visibly lags the path's commanded heading for a moment after a
-  large heading change** (path start or a `thenConstant` switch) — intentional (§7.1),
-  the heading-chase rate limiter at `TURN_RATE_DEG_S=270°/s`. It always catches up; if
-  it doesn't, that's a bug (check `lastSampleSec` is updated on every `getPose()` call).
+- **The robot rotates in place before a path's translation visibly starts** —
+  intentional (§7.1), the blocking start-of-path pivot at `TURN_RATE_DEG_S=270°/s`.
+- **The robot's heading visibly lags a `thenConstant` switch's new target for a
+  moment** — intentional (§7.1/§7.2), the mid-path heading-chase rate limiter at
+  `TURN_RATE_DEG_S=270°/s`. It always catches up; if it doesn't, that's a bug (check
+  `lastSampleSec` is updated on every `getPose()` call).
 - **A SHOOT ring's ball keeps animating after the robot has visibly left the shooting
   spot** — intentional (§11.3), models the real flight time of a launched artifact.
 - **Red dashed connectors / pulsing "⚠" markers between two paths** — the discontinuity

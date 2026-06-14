@@ -842,3 +842,31 @@ Added a viewer-only check (no schema/Java changes — operates on the already-se
 
 See `autosim/AUTOSIM.md` §7.1, §7.2, and §9.4 for the maintainer-facing description of
 both changes.
+
+## 19. Hybrid heading model — as built (2026-06-14)
+
+Captain feedback on §18: the "rotate while driving" model was too broad. Smooth
+concurrent rotation is correct for `thenConstant` mid-path switches, but path-*start*
+heading changes should still be a blocking pivot, as in §16.
+
+- `SimFollower` reinstates `turnSec`/`turnFromDeg`/`turnToDeg`. `followPath()` computes
+  `target0 = headingAt(spec, 0.0)` and `turnSec = |shortestDelta(currentHeading,
+  target0)| / TURN_RATE_DEG_S`, added on top of `travSec` for `tEndMs`,
+  `isBusy()`, and `getCurrentTValue()` (which reports `t=0` during the pivot).
+- During the pivot (`elapsed < turnSec`), `getPose()` holds position at the path's
+  start point and rate-limits heading toward `target0` — unchanged blocking
+  turn-then-move from §16.
+- During translation, heading snaps directly to `headingAt(active, d)` each frame,
+  *except* once `t > headingSwitchT` (a `thenConstant` switch fires), where it falls
+  back to the §18 rate-limited chase from `lastPose.headingDeg` toward the new target —
+  concurrent with translation, no reserved time.
+- Durations partially revert toward the §16/pre-§18 baseline (path-start pivots are
+  reserved again): V3FarAuto 28880→29480 ms, V3ClosePartner 27920→29560 ms, V3Auto
+  27540→29060 ms. `toLastLine`/`backToShootFromLastLine`'s `thenConstant` switches
+  remain smooth, as in §18.
+- As part of the same change, V3Auto's tunables/path geometry/shot table were extracted
+  into a new `autoshared/V3AutoConfig.java` (mirroring `V3FarAutoConfig`/
+  `V3ClosePartnerConfig`), and both `autos/V3Auto.java` and `autosim/.../V3AutoSim.java`
+  now read from it instead of duplicating literals.
+
+See `autosim/AUTOSIM.md` §7.1 for the updated maintainer-facing description.

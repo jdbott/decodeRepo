@@ -15,13 +15,12 @@ import java.util.List;
  * arrival.
  *
  * <p><b>Heading.</b> Each path declares a {@link HeadingMode} (constant / tangent / reversed
- * tangent / linear), reproducing Pedro's interpolation. Translation along the path begins
- * immediately — there is no blocking in-place pivot. Instead, the robot's actual heading
- * continuously chases the path's commanded heading (the {@code headingAt} target) at up to
- * {@link #TURN_RATE_DEG_S}, so a large heading change (e.g. a tangent path starting well off
- * the robot's current heading, or a mid-path {@link PathSpec#thenConstant} switch) is a fast
- * but non-instant turn happening <i>while</i> the robot drives — "turn and move at the same
- * time" rather than "turn, then move."
+ * tangent / linear), reproducing Pedro's interpolation. At the start of a path, the robot
+ * performs a blocking in-place pivot to the path's initial commanded heading (at
+ * {@link #TURN_RATE_DEG_S}) before translation begins — "turn, then move," as before. A
+ * mid-path {@link PathSpec#thenConstant} heading-mode switch, however, does not block: the
+ * robot's actual heading continuously chases the new commanded heading at up to
+ * {@link #TURN_RATE_DEG_S} while translation continues — "turn and move at the same time."
  *
  * <p>This validates FSM logic, ordering, and timing — NOT exact pose error. CRUISE/ACCEL are
  * deliberately coarse, seeded near Pedro's measured caps; swap this one class for higher
@@ -42,7 +41,12 @@ public final class SimFollower {
     private double activeCruise = CRUISE_IN_S;
     private double maxPower = 1.0;
     private Pose2d lastPose = new Pose2d(0, 0, 0);
-    private double lastSampleSec = 0;   // clock time of the last getPose() call, for heading-rate limiting
+    private double lastSampleSec = 0;   // clock time of the last getPose() call, for switch heading-rate limiting
+
+    // Blocking start-of-path pivot.
+    private double turnSec;
+    private double turnFromDeg;
+    private double turnToDeg;
 
     public SimFollower(SimClock clock, SimTrace trace) {
         this.clock = clock;
@@ -64,19 +68,23 @@ public final class SimFollower {
         activeCruise = CRUISE_IN_S * maxPower;
         travSec = traversalTime(length);
 
+        turnFromDeg = lastPose.headingDeg;
+        turnToDeg = headingAt(spec, 0.0);
+        turnSec = Math.abs(shortestDelta(turnFromDeg, turnToDeg)) / TURN_RATE_DEG_S;
+
         spec.tStartMs = clock.millis();
-        spec.tEndMs = clock.millis() + Math.round(travSec * 1000.0);
+        spec.tEndMs = clock.millis() + Math.round((turnSec + travSec) * 1000.0);
         trace.paths.add(spec);
     }
 
     public boolean isBusy() {
-        return active != null && (clock.now() - startSec) < travSec;
+        return active != null && (clock.now() - startSec) < turnSec + travSec;
     }
 
     /** Fraction of the active path traveled, 0..1 (a proxy for Pedro's parametric t-value). */
     public double getCurrentTValue() {
         if (active == null || travSec <= 0) return 1.0;
-        double f = (clock.now() - startSec) / travSec;
+        double f = (clock.now() - startSec - turnSec) / travSec;
         if (f < 0) return 0;
         return f > 1 ? 1 : f;
     }
@@ -84,18 +92,37 @@ public final class SimFollower {
     public Pose2d getPose() {
         if (active == null) { lastSampleSec = clock.now(); return lastPose; }
         double elapsed = clock.now() - startSec;
-        double d = (elapsed >= travSec) ? length : distanceAt(elapsed);
-        Pt p = pointAtArcLength(active.polyline, d);
 
-        // Chase the commanded heading at TURN_RATE_DEG_S rather than snapping to it, so large
-        // heading changes (path start, or a mid-path thenConstant switch) play out as a fast
-        // turn concurrent with translation.
+        if (elapsed < turnSec) {
+            // Blocking in-place pivot to the path's initial commanded heading.
+            Pt p0 = pointAtArcLength(active.polyline, 0);
+            double dtSec = Math.max(0, clock.now() - lastSampleSec);
+            double maxStep = TURN_RATE_DEG_S * dtSec;
+            double delta = shortestDelta(lastPose.headingDeg, turnToDeg);
+            double step = Math.max(-maxStep, Math.min(maxStep, delta));
+            Pose2d pose = new Pose2d(p0.x, p0.y, lastPose.headingDeg + step);
+            lastPose = pose;
+            lastSampleSec = clock.now();
+            return pose;
+        }
+
+        double travElapsed = elapsed - turnSec;
+        double d = (travElapsed >= travSec) ? length : distanceAt(travElapsed);
+        Pt p = pointAtArcLength(active.polyline, d);
         double target = headingAt(active, d);
-        double dtSec = Math.max(0, clock.now() - lastSampleSec);
-        double maxStep = TURN_RATE_DEG_S * dtSec;
-        double delta = shortestDelta(lastPose.headingDeg, target);
-        double step = Math.max(-maxStep, Math.min(maxStep, delta));
-        double heading = lastPose.headingDeg + step;
+
+        double t = length <= 0 ? 1.0 : d / length;
+        double heading;
+        if (active.headingSwitchT >= 0 && t > active.headingSwitchT) {
+            // Mid-path thenConstant switch: chase the new heading concurrently with translation.
+            double dtSec = Math.max(0, clock.now() - lastSampleSec);
+            double maxStep = TURN_RATE_DEG_S * dtSec;
+            double delta = shortestDelta(lastPose.headingDeg, target);
+            double step = Math.max(-maxStep, Math.min(maxStep, delta));
+            heading = lastPose.headingDeg + step;
+        } else {
+            heading = target;
+        }
 
         Pose2d pose = new Pose2d(p.x, p.y, heading);
         lastPose = pose;

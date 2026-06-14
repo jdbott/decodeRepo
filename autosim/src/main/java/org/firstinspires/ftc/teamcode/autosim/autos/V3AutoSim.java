@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.autosim.autos;
 
+import org.firstinspires.ftc.teamcode.autoshared.V3AutoConfig;
 import org.firstinspires.ftc.teamcode.autosim.geom.Bezier;
 import org.firstinspires.ftc.teamcode.autosim.geom.Pose2d;
 import org.firstinspires.ftc.teamcode.autosim.geom.Pt;
@@ -24,8 +25,8 @@ import java.util.List;
 /**
  * Simulatable copy of V3Auto ("V3 Auto FSM", BLUE-NATIVE). The 25-state {@code AutoState} machine,
  * the {@code FeedState} machine, path geometry, and timing are reproduced from
- * {@code V3Auto.java} with its literal constants (V3Auto has no shared config — this sim does not
- * change or depend on the real opmode). See AUTOSIM_DESIGN.md §5/§9.
+ * {@code V3Auto.java}; constants come from the shared {@link V3AutoConfig} so the two stay in
+ * lockstep. See AUTOSIM_DESIGN.md §5/§9.
  *
  * <p>Deliberate simplifications (readouts only — path, state order, timing, intake, shot events,
  * and heading are faithful):
@@ -46,71 +47,48 @@ public final class V3AutoSim {
     private static final long MAX_MS = 60_000;
     private static final int CURVE_SEGMENTS = 40;
 
-    // Starting pose (blue-native)
-    private static final double START_X = 20.75;
-    private static final double START_Y = 128.1;
-    private static final double START_HEADING_DEG = -39.38;
-
-    // First shot fixed setup
-    private static final double FIRST_SHOT_HOOD_DEG = 37;
-    private static final double FIRST_SHOT_FLYWHEEL_RAD = 310;
-
-    // Goal position (blue-native)
-    private static final double BLUE_TARGET_X = 5.0;
-    private static final double TARGET_Y = 139.0;
-
-    // Turret center offset / limits / offset
-    private static final double TURRET_CENTER_OFFSET_IN = 1.5;
-    private static final double TURRET_MIN_DEG = -180.0;
-    private static final double TURRET_MAX_DEG = 180.0;
-    private static final double TURRET_OFFSET_DEG = 180.0;
-    private static final double INIT_TURRET_ANGLE_DEG = 90.0;
-
-    // Extra intake move after gate intake
-    private static final double EXTRA_GATE_INTAKE_Y_IN = 4.5;
-
-    // Feed timings
-    private static final double FEED_START_DELAY_SEC = 0.1;
-    private static final double FEED_TOTAL_TIME_SEC = 1.0;
-    private static final double REVERSE_TIME_SEC = 0.25;
+    // Shared geometry/tunables.
+    private static final double START_X = V3AutoConfig.START_X;
+    private static final double START_Y = V3AutoConfig.START_Y;
+    private static final double START_HEADING_DEG = V3AutoConfig.START_HEADING_DEG;
+    private static final double FIRST_SHOT_HOOD_DEG = V3AutoConfig.FIRST_SHOT_HOOD_DEG;
+    private static final double FIRST_SHOT_FLYWHEEL_RAD = V3AutoConfig.FIRST_SHOT_FLYWHEEL_RAD;
+    private static final double BLUE_TARGET_X = V3AutoConfig.BLUE_TARGET_X;
+    private static final double TARGET_Y = V3AutoConfig.TARGET_Y;
+    private static final double TURRET_CENTER_OFFSET_IN = V3AutoConfig.TURRET_CENTER_OFFSET_IN;
+    private static final double TURRET_MIN_DEG = V3AutoConfig.TURRET_MIN_DEG;
+    private static final double TURRET_MAX_DEG = V3AutoConfig.TURRET_MAX_DEG;
+    private static final double TURRET_OFFSET_DEG = V3AutoConfig.TURRET_OFFSET_DEG;
+    private static final double INIT_TURRET_ANGLE_DEG = V3AutoConfig.INIT_TURRET_ANGLE_DEG;
+    private static final double EXTRA_GATE_INTAKE_Y_IN = V3AutoConfig.EXTRA_GATE_INTAKE_Y_IN;
+    private static final double FEED_START_DELAY_SEC = V3AutoConfig.FEED_START_DELAY_SEC;
+    private static final double FEED_TOTAL_TIME_SEC = V3AutoConfig.FEED_TOTAL_TIME_SEC;
+    private static final double REVERSE_TIME_SEC = V3AutoConfig.REVERSE_TIME_SEC;
 
     // Headings
-    private static final double LINE_H = 180.0;
-    private static final double GATE_INTAKE_H = 135.0;
-    private static final double GATE_OPEN_H_START = 235.0;
-    private static final double GATE_OPEN_H_END = 170.0;
-    private static final double GATE_OPEN_H_T = 0.9;
+    private static final double LINE_H = V3AutoConfig.LINE_HEADING_DEG;
+    private static final double GATE_INTAKE_H = V3AutoConfig.GATE_INTAKE_HEADING_DEG;
+    private static final double GATE_OPEN_H_START = V3AutoConfig.GATE_OPEN_HEADING_START_DEG;
+    private static final double GATE_OPEN_H_END = V3AutoConfig.GATE_OPEN_HEADING_END_DEG;
+    private static final double GATE_OPEN_H_T = V3AutoConfig.GATE_OPEN_HEADING_T;
+    private static final double BACK_TO_SHOOT_LAST_H = V3AutoConfig.BACK_TO_SHOOT_LAST_HEADING_DEG;
 
     // t-value / timer gates
-    private static final double FIRST_SHOT_FEED_TVALUE = 0.9;
-    private static final double LINE2_SLOW_TVALUE = 0.35;
-    private static final double LINE2_SLOW_POWER = 0.8;
-    private static final double WAIT_AT_GATE_SEC = 0.1;
-    private static final double GATE_INTAKE_ON_TVALUE = 0.5;
-    private static final double GATE_INTAKE_SEC = 1.5;
-    private static final double EXTRA_MOVE_TIMEOUT_SEC = 1.0;
-    private static final double WAIT_AT_GATE_AGAIN_SEC = 0.25;
-    private static final double GATE_INTAKE_AGAIN_SEC = 1.3;
-    private static final double LAST_LINE_SLOW_TVALUE = 0.2;
-    private static final double LAST_LINE_SLOW_POWER = 0.8;
+    private static final double FIRST_SHOT_FEED_TVALUE = V3AutoConfig.FIRST_SHOT_FEED_TVALUE;
+    private static final double LINE2_SLOW_TVALUE = V3AutoConfig.LINE2_SLOW_TVALUE;
+    private static final double LINE2_SLOW_POWER = V3AutoConfig.LINE2_SLOW_POWER;
+    private static final double WAIT_AT_GATE_SEC = V3AutoConfig.WAIT_AT_GATE_SEC;
+    private static final double GATE_INTAKE_ON_TVALUE = V3AutoConfig.GATE_INTAKE_ON_TVALUE;
+    private static final double GATE_INTAKE_SEC = V3AutoConfig.GATE_INTAKE_SEC;
+    private static final double EXTRA_MOVE_TIMEOUT_SEC = V3AutoConfig.EXTRA_MOVE_TIMEOUT_SEC;
+    private static final double WAIT_AT_GATE_AGAIN_SEC = V3AutoConfig.WAIT_AT_GATE_AGAIN_SEC;
+    private static final double GATE_INTAKE_AGAIN_SEC = V3AutoConfig.GATE_INTAKE_AGAIN_SEC;
+    private static final double LAST_LINE_SLOW_TVALUE = V3AutoConfig.LAST_LINE_SLOW_TVALUE;
+    private static final double LAST_LINE_SLOW_POWER = V3AutoConfig.LAST_LINE_SLOW_POWER;
+    private static final double BACK_TO_SHOOT_LAST_SWITCH_TVALUE = V3AutoConfig.BACK_TO_SHOOT_LAST_SWITCH_TVALUE;
 
-    // Distance -> {hoodDeg, flywheelRad} (matches updateShotFromDistance's literal table)
-    private static final double[][] SHOT_TABLE = {
-            {37.0, 30.0, 267.0},
-            {43.0, 30.0, 267.0},
-            {50.0, 37.0, 277.0 + 5},
-            {57.0, 37.0, 282.0 + 5},
-            {63.5, 37.0, 292.0 + 5},
-            {71.0, 39.0, 307.0 + 5},
-            {77.0, 40.0, 312.0 + 5},
-            {82.0, 42.0, 327.0 + 5},
-            {88.0, 43.0, 332.0 + 5},
-            {93.0, 44.0, 347.0 + 5},
-            {99.0, 46.0, 364.0 + 5},
-            {104.0, 47.0, 374.0 + 5},
-            {110.0, 48.0, 389.0 + 5},
-            {122.0, 53.0, 409.5 + 5}
-    };
+    // Distance -> {hoodDeg, flywheelRad}
+    private static final double[][] SHOT_TABLE = V3AutoConfig.SHOT_TABLE;
 
     private enum FeedState { IDLE, WAIT_BEFORE_INTAKE, RUN_INTAKE, DONE }
     private enum AutoState {
@@ -170,7 +148,7 @@ public final class V3AutoSim {
 
         startPt = new Pt(START_X, START_Y);
         double hr = Math.toRadians(START_HEADING_DEG);
-        firstShot = new Pt(START_X + 35 * Math.cos(hr), START_Y + 55.0 * Math.sin(hr));
+        firstShot = new Pt(START_X + V3AutoConfig.FIRST_SHOT_FWD_IN * Math.cos(hr), START_Y + V3AutoConfig.FIRST_SHOT_SIDE_IN * Math.sin(hr));
         trace.meta.startPose = new Pose2d(START_X, START_Y, START_HEADING_DEG);
 
         follower.setStartingPose(trace.meta.startPose);
@@ -440,7 +418,7 @@ public final class V3AutoSim {
         follower.setMaxPower(1.0);
         Pose2d cur = follower.getPose();
         backToShootFromGate = curve("backFromGate",
-                Arrays.asList(new Pt(cur.x, cur.y), new Pt(42.0, 59.0), firstShot),
+                Arrays.asList(new Pt(cur.x, cur.y), new Pt(V3AutoConfig.RG1_C1X, V3AutoConfig.RG1_C1Y), firstShot),
                 tangentDeg(new Pt(cur.x, cur.y), firstShot)).reverseTangent();
         intake.setPower(1.0);
         feedState = FeedState.IDLE;
@@ -489,7 +467,7 @@ public final class V3AutoSim {
         follower.setMaxPower(1.0);
         Pose2d cur = follower.getPose();
         backToShootFromGate = curve("backFromGateAgain",
-                Arrays.asList(new Pt(cur.x, cur.y), new Pt(42.0, 62.0), firstShot),
+                Arrays.asList(new Pt(cur.x, cur.y), new Pt(V3AutoConfig.RG2_C1X, V3AutoConfig.RG2_C1Y), firstShot),
                 tangentDeg(new Pt(cur.x, cur.y), firstShot)).reverseTangent();
         intake.setPower(1.0);
         feedState = FeedState.IDLE;
@@ -600,34 +578,43 @@ public final class V3AutoSim {
         toFirstShot = line("toFirstShot", startPt, firstShot, tangentDeg(startPt, firstShot)).tangent();
 
         toLine2 = curve("toLine2", Arrays.asList(firstShot,
-                new Pt(48.0, 67.0), new Pt(40.0, 63.0), new Pt(12.5, 62.0)), LINE_H);
+                new Pt(V3AutoConfig.LINE2_C1X, V3AutoConfig.LINE2_C1Y),
+                new Pt(V3AutoConfig.LINE2_C2X, V3AutoConfig.LINE2_C2Y),
+                new Pt(V3AutoConfig.LINE2_ENDX, V3AutoConfig.LINE2_ENDY)), LINE_H);
 
         backToShoot = curve("backToShoot", Arrays.asList(
-                new Pt(11.0, 65.0), new Pt(30.0, 65.0), firstShot),
-                tangentDeg(new Pt(11.0, 65.0), firstShot)).reverseTangent();
+                new Pt(V3AutoConfig.BTS_STARTX, V3AutoConfig.BTS_STARTY),
+                new Pt(V3AutoConfig.BTS_C1X, V3AutoConfig.BTS_C1Y), firstShot),
+                tangentDeg(new Pt(V3AutoConfig.BTS_STARTX, V3AutoConfig.BTS_STARTY), firstShot)).reverseTangent();
 
         toGateOpenGate = curve("toGateOpenGate", Arrays.asList(firstShot,
-                new Pt(50.0, 66.326), new Pt(15.0, 67.5)), GATE_OPEN_H_END)
+                new Pt(V3AutoConfig.GATE_C1X, V3AutoConfig.GATE_C1Y),
+                new Pt(V3AutoConfig.GATE_ENDX, V3AutoConfig.GATE_ENDY)), GATE_OPEN_H_END)
                 .linear(GATE_OPEN_H_START, GATE_OPEN_H_END, GATE_OPEN_H_T);
 
-        toGateIntake = line("toGateIntake", new Pt(16.0, 69.5), new Pt(11.0, 59.0), GATE_INTAKE_H);
+        toGateIntake = line("toGateIntake", new Pt(V3AutoConfig.GI_STARTX, V3AutoConfig.GI_STARTY),
+                new Pt(V3AutoConfig.GI_ENDX, V3AutoConfig.GI_ENDY), GATE_INTAKE_H);
 
         toFourthPickup = curve("toFourthPickup", Arrays.asList(firstShot,
-                new Pt(40.0, 84.0), new Pt(20.0, 84.0)), LINE_H);
+                new Pt(V3AutoConfig.FP_C1X, V3AutoConfig.FP_C1Y),
+                new Pt(V3AutoConfig.FP_ENDX, V3AutoConfig.FP_ENDY)), LINE_H);
 
-        Pt fourthEnd = new Pt(20.0, 84.0);
+        Pt fourthEnd = new Pt(V3AutoConfig.FP_ENDX, V3AutoConfig.FP_ENDY);
         backToFinalShoot = line("backToFinalShoot", fourthEnd, firstShot, tangentDeg(fourthEnd, firstShot))
                 .reverseTangent();
 
         toLastLine = curve("toLastLine", Arrays.asList(firstShot,
-                new Pt(48.0, 43.0), new Pt(40.0, 36.0), new Pt(12.5, 35.0)),
+                new Pt(V3AutoConfig.LL_C1X, V3AutoConfig.LL_C1Y),
+                new Pt(V3AutoConfig.LL_C2X, V3AutoConfig.LL_C2Y),
+                new Pt(V3AutoConfig.LL_ENDX, V3AutoConfig.LL_ENDY)),
                 LINE_H).tangent().thenConstant(LAST_LINE_SLOW_TVALUE, LINE_H);
 
-        Pt lastReturnEnd = new Pt(firstShot.x + 10, firstShot.y + 18);
+        Pt lastReturnEnd = new Pt(firstShot.x + V3AutoConfig.LAST_RETURN_END_DX, firstShot.y + V3AutoConfig.LAST_RETURN_END_DY);
         backToShootFromLastLine = curve("backToShootFromLastLine", Arrays.asList(
-                new Pt(12.5, 35.0), new Pt(30.0, 41.0), lastReturnEnd),
-                tangentDeg(new Pt(11.0, 41.0), lastReturnEnd)).reverseTangent()
-                .thenConstant(0.8, -90.0);
+                new Pt(V3AutoConfig.LL_ENDX, V3AutoConfig.LL_ENDY),
+                new Pt(V3AutoConfig.BFLL_C1X, V3AutoConfig.BFLL_C1Y), lastReturnEnd),
+                tangentDeg(new Pt(V3AutoConfig.BFLL_STARTX, V3AutoConfig.BFLL_STARTY), lastReturnEnd)).reverseTangent()
+                .thenConstant(BACK_TO_SHOOT_LAST_SWITCH_TVALUE, BACK_TO_SHOOT_LAST_H);
     }
 
     private static double tangentDeg(Pt a, Pt b) {

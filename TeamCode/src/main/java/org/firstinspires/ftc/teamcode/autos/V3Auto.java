@@ -15,6 +15,7 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.AutoStartStore;
+import org.firstinspires.ftc.teamcode.autoshared.V3AutoConfig;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
@@ -37,36 +38,36 @@ public class V3Auto extends LinearOpMode {
 
     private boolean isRedAlliance = false;
 
-    // Starting pose (blue-native)
-    private static final double START_X = 20.75;
-    private static final double START_Y = 128.1;
-    private static final double START_HEADING_DEG = -39.38;
+    // ===== Tunables / geometry — single source of truth in V3AutoConfig =====
+    private static final double START_X = V3AutoConfig.START_X;
+    private static final double START_Y = V3AutoConfig.START_Y;
+    private static final double START_HEADING_DEG = V3AutoConfig.START_HEADING_DEG;
 
     // First shot fixed setup
-    private static double FIRST_SHOT_HOOD_DEG = 37;
-    private static double FIRST_SHOT_FLYWHEEL_RAD = 310;
+    private static double FIRST_SHOT_HOOD_DEG = V3AutoConfig.FIRST_SHOT_HOOD_DEG;
+    private static double FIRST_SHOT_FLYWHEEL_RAD = V3AutoConfig.FIRST_SHOT_FLYWHEEL_RAD;
 
-    // Goal psition in field coordinates (blue-native)
-    private static final double BLUE_TARGET_X = 5.0;
-    private static final double TARGET_Y = 139.0;
+    // Goal position in field coordinates (blue-native)
+    private static final double BLUE_TARGET_X = V3AutoConfig.BLUE_TARGET_X;
+    private static final double TARGET_Y = V3AutoConfig.TARGET_Y;
 
     // Turret center offset from robot center (inches)
-    private static final double TURRET_CENTER_OFFSET_IN = 1.5;
+    private static final double TURRET_CENTER_OFFSET_IN = V3AutoConfig.TURRET_CENTER_OFFSET_IN;
 
     // Turret limits / offset
-    private static final double TURRET_MIN_DEG = -180.0;
-    private static final double TURRET_MAX_DEG = 180.0;
-    private static final double TURRET_OFFSET_DEG = 180.0;
+    private static final double TURRET_MIN_DEG = V3AutoConfig.TURRET_MIN_DEG;
+    private static final double TURRET_MAX_DEG = V3AutoConfig.TURRET_MAX_DEG;
+    private static final double TURRET_OFFSET_DEG = V3AutoConfig.TURRET_OFFSET_DEG;
 
     // Extra intake move after gate intake
-    private static final double EXTRA_GATE_INTAKE_Y_IN = 4.5;
+    private static final double EXTRA_GATE_INTAKE_Y_IN = V3AutoConfig.EXTRA_GATE_INTAKE_Y_IN;
 
     // Dynamic shot control toggles
     private boolean enableDynamicShotControl = false;
     private boolean enableShotOnMoveComp = false;
 
     // Predicted distance smoothing
-    private static final double PREDICTED_DISTANCE_ALPHA = 0.45;
+    private static final double PREDICTED_DISTANCE_ALPHA = V3AutoConfig.PREDICTED_DISTANCE_ALPHA;
 
     // Shot state
     private double hoodAngleDeg = 50.0;
@@ -181,8 +182,8 @@ public class V3Auto extends LinearOpMode {
 
         turret = new Turret(hardwareMap, RobotConfig.TURRET_MOTOR, DcMotorSimple.Direction.REVERSE);
 
-        double blueFirstShotX = START_X + 35 * Math.cos(Math.toRadians(START_HEADING_DEG));
-        double blueFirstShotY = START_Y + 55.0 * Math.sin(Math.toRadians(START_HEADING_DEG));
+        double blueFirstShotX = START_X + V3AutoConfig.FIRST_SHOT_FWD_IN * Math.cos(Math.toRadians(START_HEADING_DEG));
+        double blueFirstShotY = START_Y + V3AutoConfig.FIRST_SHOT_SIDE_IN * Math.sin(Math.toRadians(START_HEADING_DEG));
         firstShotPose = AllianceMirror.mirrorPose(
                 new Pose(blueFirstShotX, blueFirstShotY, 0),
                 isRedAlliance
@@ -212,7 +213,7 @@ public class V3Auto extends LinearOpMode {
             }
             lastCross = crossPressed;
 
-            turret.setAngle(90.0);
+            turret.setAngle(V3AutoConfig.INIT_TURRET_ANGLE_DEG);
             turret.update();
 
             telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
@@ -316,17 +317,17 @@ public class V3Auto extends LinearOpMode {
         toLine2 = new Path(
                 new BezierCurve(
                         firstShotPose,
-                        p(48.0, 67.0),
-                        p(40.0, 63.0),
-                        p(12.5, 62.0)
+                        p(V3AutoConfig.LINE2_C1X, V3AutoConfig.LINE2_C1Y),
+                        p(V3AutoConfig.LINE2_C2X, V3AutoConfig.LINE2_C2Y),
+                        p(V3AutoConfig.LINE2_ENDX, V3AutoConfig.LINE2_ENDY)
                 )
         );
-        toLine2.setConstantHeadingInterpolation(h(180));
+        toLine2.setConstantHeadingInterpolation(h(V3AutoConfig.LINE_HEADING_DEG));
 
         backToShoot = new Path(
                 new BezierCurve(
-                        p(11.0, 65.0),
-                        p(30.0, 65.0),
+                        p(V3AutoConfig.BTS_STARTX, V3AutoConfig.BTS_STARTY),
+                        p(V3AutoConfig.BTS_C1X, V3AutoConfig.BTS_C1Y),
                         firstShotPose
                 )
         );
@@ -335,32 +336,35 @@ public class V3Auto extends LinearOpMode {
         toGateOpenGate = new Path(
                 new BezierCurve(
                         firstShotPose,
-                        p(50.0, 66.326),
-                        p(15.0, 67.5)
+                        p(V3AutoConfig.GATE_C1X, V3AutoConfig.GATE_C1Y),
+                        p(V3AutoConfig.GATE_ENDX, V3AutoConfig.GATE_ENDY)
                 )
         );
-        toGateOpenGate.setLinearHeadingInterpolation(h(235), h(170), 0.9);
+        toGateOpenGate.setLinearHeadingInterpolation(
+                h(V3AutoConfig.GATE_OPEN_HEADING_START_DEG),
+                h(V3AutoConfig.GATE_OPEN_HEADING_END_DEG),
+                V3AutoConfig.GATE_OPEN_HEADING_T);
 
         toGateIntake = new Path(
                 new BezierLine(
-                        p(16.0, 69.5),
-                        p(11.0, 59.0)
+                        p(V3AutoConfig.GI_STARTX, V3AutoConfig.GI_STARTY),
+                        p(V3AutoConfig.GI_ENDX, V3AutoConfig.GI_ENDY)
                 )
         );
-        toGateIntake.setConstantHeadingInterpolation(h(135));
+        toGateIntake.setConstantHeadingInterpolation(h(V3AutoConfig.GATE_INTAKE_HEADING_DEG));
 
         toFourthPickup = new Path(
                 new BezierCurve(
                         firstShotPose,
-                        p(40.0, 84.0),
-                        p(20.0, 84.0)
+                        p(V3AutoConfig.FP_C1X, V3AutoConfig.FP_C1Y),
+                        p(V3AutoConfig.FP_ENDX, V3AutoConfig.FP_ENDY)
                 )
         );
-        toFourthPickup.setConstantHeadingInterpolation(h(180));
+        toFourthPickup.setConstantHeadingInterpolation(h(V3AutoConfig.LINE_HEADING_DEG));
 
         backToFinalShoot = new Path(
                 new BezierLine(
-                        p(20.0, 84.0),
+                        p(V3AutoConfig.FP_ENDX, V3AutoConfig.FP_ENDY),
                         firstShotPose
                 )
         );
@@ -369,17 +373,17 @@ public class V3Auto extends LinearOpMode {
         toLastLine = new Path(
                 new BezierCurve(
                         firstShotPose,
-                        p(48.0, 43.0),
-                        p(40.0, 36.0),
-                        p(12.5, 35.0)
+                        p(V3AutoConfig.LL_C1X, V3AutoConfig.LL_C1Y),
+                        p(V3AutoConfig.LL_C2X, V3AutoConfig.LL_C2Y),
+                        p(V3AutoConfig.LL_ENDX, V3AutoConfig.LL_ENDY)
                 )
         );
         toLastLine.setTangentHeadingInterpolation();
 
         Pose lastReturnEndPose = AllianceMirror.mirrorPose(
                 new Pose(
-                        (START_X + 35 * Math.cos(Math.toRadians(START_HEADING_DEG))) + 10,
-                        (START_Y + 55.0 * Math.sin(Math.toRadians(START_HEADING_DEG))) + 18,
+                        (START_X + V3AutoConfig.FIRST_SHOT_FWD_IN * Math.cos(Math.toRadians(START_HEADING_DEG))) + V3AutoConfig.LAST_RETURN_END_DX,
+                        (START_Y + V3AutoConfig.FIRST_SHOT_SIDE_IN * Math.sin(Math.toRadians(START_HEADING_DEG))) + V3AutoConfig.LAST_RETURN_END_DY,
                         0
                 ),
                 isRedAlliance
@@ -387,8 +391,8 @@ public class V3Auto extends LinearOpMode {
 
         backToShootFromLastLine = new Path(
                 new BezierCurve(
-                        p(11.0, 41.0),
-                        p(30.0, 41.0),
+                        p(V3AutoConfig.BFLL_STARTX, V3AutoConfig.BFLL_STARTY),
+                        p(V3AutoConfig.BFLL_C1X, V3AutoConfig.BFLL_C1Y),
                         lastReturnEndPose
                 )
         );
@@ -398,7 +402,7 @@ public class V3Auto extends LinearOpMode {
     private void updateAutoState() {
         switch (autoState) {
             case DRIVE_TO_FIRST_SHOT:
-                if (feedState == FeedState.IDLE && follower.getCurrentTValue() > 0.9) {
+                if (feedState == FeedState.IDLE && follower.getCurrentTValue() > V3AutoConfig.FIRST_SHOT_FEED_TVALUE) {
                     startFeedSequence();
                 }
 
@@ -418,9 +422,9 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case DRIVE_TO_LINE2:
-                if (follower.getCurrentTValue() > 0.35) {
-                    follower.setMaxPower(0.8);
-                    toLine2.setConstantHeadingInterpolation(h(180));
+                if (follower.getCurrentTValue() > V3AutoConfig.LINE2_SLOW_TVALUE) {
+                    follower.setMaxPower(V3AutoConfig.LINE2_SLOW_POWER);
+                    toLine2.setConstantHeadingInterpolation(h(V3AutoConfig.LINE_HEADING_DEG));
                 }
                 if (!follower.isBusy()) {
                     follower.setMaxPower(1.0);
@@ -459,7 +463,7 @@ public class V3Auto extends LinearOpMode {
 
             case WAIT_AT_GATE:
                 intake.setPower(0.0);   // keep intake off while tapping/opening gate
-                if (autoTimer.seconds() >= 0.1) {
+                if (autoTimer.seconds() >= V3AutoConfig.WAIT_AT_GATE_SEC) {
                     follower.setMaxPower(1.0);
                     follower.followPath(toGateIntake, false);
                     autoTimer.reset();
@@ -468,15 +472,15 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case WAIT_FOR_GATE_INTAKE:
-                intake.setPower(follower.getCurrentTValue() >= 0.5 ? 1.0 : 0.0);
-                if (autoTimer.seconds() >= 1.5) {
+                intake.setPower(follower.getCurrentTValue() >= V3AutoConfig.GATE_INTAKE_ON_TVALUE ? 1.0 : 0.0);
+                if (autoTimer.seconds() >= V3AutoConfig.GATE_INTAKE_SEC) {
                     startExtraGateIntakeMove();
                 }
                 break;
 
             case DRIVE_EXTRA_INTAKE_AT_GATE:
                 intake.setPower(1.0);
-                if (!follower.isBusy() || autoTimer.seconds() >= 1) {
+                if (!follower.isBusy() || autoTimer.seconds() >= V3AutoConfig.EXTRA_MOVE_TIMEOUT_SEC) {
                     startReturnFromGateToShoot();
                 }
                 break;
@@ -530,7 +534,7 @@ public class V3Auto extends LinearOpMode {
 
             case WAIT_AT_GATE_AGAIN:
                 intake.setPower(0.0);
-                if (autoTimer.seconds() >= 0.25) {
+                if (autoTimer.seconds() >= V3AutoConfig.WAIT_AT_GATE_AGAIN_SEC) {
                     follower.setMaxPower(1.0);
                     follower.followPath(toGateIntake, true);
                     autoTimer.reset();
@@ -539,15 +543,15 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case WAIT_FOR_GATE_INTAKE_AGAIN:
-                intake.setPower(follower.getCurrentTValue() >= 0.5 ? 1.0 : 0.0);
-                if (autoTimer.seconds() >= 1.3) {
+                intake.setPower(follower.getCurrentTValue() >= V3AutoConfig.GATE_INTAKE_ON_TVALUE ? 1.0 : 0.0);
+                if (autoTimer.seconds() >= V3AutoConfig.GATE_INTAKE_AGAIN_SEC) {
                     startExtraGateIntakeMoveAgain();
                 }
                 break;
 
             case DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN:
                 intake.setPower(1.0);
-                if (!follower.isBusy() || autoTimer.seconds() >= 1) {
+                if (!follower.isBusy() || autoTimer.seconds() >= V3AutoConfig.EXTRA_MOVE_TIMEOUT_SEC) {
                     startReturnFromGateToShootAgain();
                 }
                 break;
@@ -569,9 +573,9 @@ public class V3Auto extends LinearOpMode {
                 break;
 
             case DRIVE_TO_LAST_LINE:
-                if (follower.getCurrentTValue() > 0.2) {
-                    follower.setMaxPower(0.8);
-                    toLastLine.setConstantHeadingInterpolation(h(180));
+                if (follower.getCurrentTValue() > V3AutoConfig.LAST_LINE_SLOW_TVALUE) {
+                    follower.setMaxPower(V3AutoConfig.LAST_LINE_SLOW_POWER);
+                    toLastLine.setConstantHeadingInterpolation(h(V3AutoConfig.LINE_HEADING_DEG));
                 }
                 if (!follower.isBusy()) {
                     intake.setPower(1.0);
@@ -586,8 +590,8 @@ public class V3Auto extends LinearOpMode {
 
             case DRIVE_BACK_TO_SHOOT_LAST:
                 intake.setPower(1.0);
-                if (follower.getCurrentTValue() > 0.8) {
-                    backToShootFromLastLine.setConstantHeadingInterpolation(Math.toRadians(-90));
+                if (follower.getCurrentTValue() > V3AutoConfig.BACK_TO_SHOOT_LAST_SWITCH_TVALUE) {
+                    backToShootFromLastLine.setConstantHeadingInterpolation(Math.toRadians(V3AutoConfig.BACK_TO_SHOOT_LAST_HEADING_DEG));
                 }
                 if (!follower.isBusy()) {
                     startFeedSequence();
@@ -648,7 +652,7 @@ public class V3Auto extends LinearOpMode {
                         new Pose(currentPose.getX(), currentPose.getY() + EXTRA_GATE_INTAKE_Y_IN)
                 )
         );
-        gateExtraIntakeMove.setConstantHeadingInterpolation(h(135));
+        gateExtraIntakeMove.setConstantHeadingInterpolation(h(V3AutoConfig.GATE_INTAKE_HEADING_DEG));
 
         follower.followPath(gateExtraIntakeMove, true);
         autoState = AutoState.DRIVE_EXTRA_INTAKE_AT_GATE;
@@ -660,7 +664,7 @@ public class V3Auto extends LinearOpMode {
         backToShootFromGate = new Path(
                 new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        p(42.0, 59.0),
+                        p(V3AutoConfig.RG1_C1X, V3AutoConfig.RG1_C1Y),
                         firstShotPose
                 )
         );
@@ -722,7 +726,7 @@ public class V3Auto extends LinearOpMode {
                         new Pose(currentPose.getX(), currentPose.getY() + EXTRA_GATE_INTAKE_Y_IN)
                 )
         );
-        gateExtraIntakeMoveAgain.setConstantHeadingInterpolation(h(135));
+        gateExtraIntakeMoveAgain.setConstantHeadingInterpolation(h(V3AutoConfig.GATE_INTAKE_HEADING_DEG));
 
         follower.followPath(gateExtraIntakeMoveAgain, true);
         autoState = AutoState.DRIVE_EXTRA_INTAKE_AT_GATE_AGAIN;
@@ -734,7 +738,7 @@ public class V3Auto extends LinearOpMode {
         backToShootFromGateAgain = new Path(
                 new BezierCurve(
                         new Pose(follower.getPose().getX(), follower.getPose().getY()),
-                        p(42.0, 62.0),
+                        p(V3AutoConfig.RG2_C1X, V3AutoConfig.RG2_C1Y),
                         firstShotPose
                 )
         );
@@ -771,7 +775,7 @@ public class V3Auto extends LinearOpMode {
     private void updateFeedSequence() {
 
         if (reversingIntake) {
-            if (reverseTimer.seconds() < 0.25) {
+            if (reverseTimer.seconds() < V3AutoConfig.REVERSE_TIME_SEC) {
                 intake.setPower(-1.0);
             } else {
                 intake.setPower(1.0);
@@ -787,14 +791,14 @@ public class V3Auto extends LinearOpMode {
                 feeder.clutchIn();
                 intake.setPower(0.0);
 
-                if (feedTimer.seconds() >= 0.1) {
+                if (feedTimer.seconds() >= V3AutoConfig.FEED_START_DELAY_SEC) {
                     intake.setPower(1.0);
                     feedState = FeedState.RUN_INTAKE;
                 }
                 break;
 
             case RUN_INTAKE:
-                if (feedTimer.seconds() >= 1.0) {
+                if (feedTimer.seconds() >= V3AutoConfig.FEED_TOTAL_TIME_SEC) {
                     reversingIntake = true;
                     reverseTimer.reset();
 
@@ -876,7 +880,7 @@ public class V3Auto extends LinearOpMode {
     }
 
     private double estimateShotTimeSec(double distanceInches) {
-        return 0.77;
+        return V3AutoConfig.SHOT_TIME_SEC;
     }
 
     private double normalize180(double a) {
@@ -903,22 +907,7 @@ public class V3Auto extends LinearOpMode {
     }
 
     private void updateShotFromDistance(double distance) {
-        double[][] shotTable = {
-                {37.0, 30.0, 267.0},
-                {43.0, 30.0, 267.0},
-                {50.0, 37.0, 277.0 + 5},
-                {57.0, 37.0, 282.0 + 5},
-                {63.5, 37.0, 292.0 + 5},
-                {71.0, 39.0, 307.0 + 5},
-                {77.0, 40.0, 312.0 + 5},
-                {82.0, 42.0, 327.0 + 5},
-                {88.0, 43.0, 332.0 + 5},
-                {93.0, 44.0, 347.0 + 5},
-                {99.0, 46.0, 364.0 + 5},
-                {104.0, 47.0, 374.0 + 5},
-                {110.0, 48.0, 389.0 + 5},
-                {122.0, 53.0, 409.5 + 5}
-        };
+        double[][] shotTable = V3AutoConfig.SHOT_TABLE;
 
         if (distance <= shotTable[0][0]) {
             hoodAngleDeg = shotTable[0][1];
