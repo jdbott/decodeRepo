@@ -24,7 +24,7 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "Yuvi Auto")
+@Autonomous(name = "V3 Far Auto: Yuvi Edition")
 public class V3FarAutoByYuvi extends LinearOpMode {
 
     private Hood hood;
@@ -58,11 +58,11 @@ public class V3FarAutoByYuvi extends LinearOpMode {
     // ===== Timing =====
     private static final double FIRST_SHOT_DELAY_SEC = 2.25;
     private static final double FEED_START_DELAY_SEC = 0.10;
-    private static final double FEED_TOTAL_TIME_SEC = 0.65;   // 3 preloaded balls ≈ 0.5–0.75 s
+    private static final double FEED_TOTAL_TIME_SEC = 0.93;   // 3 preloaded balls ≈ 0.5–0.75 s
     private static final double REVERSE_TIME_SEC = 0.25;
 
     private static final double FLYWHEEL_PREP_SEC = 1.25;     // spin up before each shot
-    private static final double INTAKE_DURATION_SEC = 3.00;   // total intake runtime per cycle
+    private static final double INTAKE_DURATION_SEC = 2.78;   // total intake runtime per cycle
     private static final double INTAKE_START_DIST = 30.0;     // inches before intake zone (~1 s)
     private static final double FLYWHEEL_PREP_DIST = 22.0;    // inches before shoot point (~0.75 s)
 
@@ -71,16 +71,16 @@ public class V3FarAutoByYuvi extends LinearOpMode {
 
     // ===== Key poses =====
     private Pose startPose;
-    private Pose intake1StartPose;   // (3.520, 16.562)
-    private Pose intake1EndPose;     // (2.343, 2.837)
-    private Pose shoot1Pose;       // (70.646, 20.581)
-    private Pose intake2StartPose; // (33.219, 35.214)
-    private Pose intake2EndPose;   // (18.290, 35.059)
-    private Pose shoot2Pose;       // (69.914, 75.762)
-    private Pose intake3StartPose; // (32.187, 59.918)
-    private Pose intake3EndPose;   // (16.285, 59.078)
-    private Pose shoot3Pose;       // (68.186, 78.109)
-    private Pose endPose;          // (68.963, 16.829)
+    private Pose intake1StartPose;
+    private Pose intake1EndPose;
+    private Pose shoot1Pose;
+    private Pose intake2StartPose;
+    private Pose intake2EndPose;
+    private Pose shoot2Pose;
+    private Pose intake3StartPose;
+    private Pose intake3EndPose;
+    private Pose shoot3Pose;
+    private Pose endPose;
 
     // ===== Paths =====
     private PathChain toIntake1Zone;
@@ -147,22 +147,21 @@ public class V3FarAutoByYuvi extends LinearOpMode {
         isRedAlliance = AllianceStore.isRed(hardwareMap.appContext);
         AutoStartStore.setFar(hardwareMap.appContext);
 
-        // ----- Poses -----
-        startPose = new Pose(START_X, START_Y, Math.toRadians(START_HEADING_DEG));
-        intake1StartPose = new Pose(3.520, 16.562, Math.toRadians(180));
-        intake1EndPose = new Pose(2.343, 2.837, Math.toRadians(180));
-        shoot1Pose = new Pose(70.646, 20.581, Math.toRadians(180));
-        intake2StartPose = new Pose(33.219, 35.214, Math.toRadians(180));
-        intake2EndPose = new Pose(18.290, 35.059, Math.toRadians(180));
-        shoot2Pose = new Pose(69.914, 75.762, Math.toRadians(180));
-        intake3StartPose = new Pose(32.187, 59.918, Math.toRadians(180));
-        intake3EndPose = new Pose(16.285, 59.078, Math.toRadians(180));
-        shoot3Pose = new Pose(68.186, 78.109, Math.toRadians(180));
-        endPose = new Pose(68.963, 16.829, Math.toRadians(180));
+        // ----- Mirror-wrapped Poses -----
+        startPose        = p(START_X, START_Y, START_HEADING_DEG);
+        intake1StartPose = p(3.520, 16.562, 180.0);
+        intake1EndPose   = p(2.343, 2.837, 180.0);
+        shoot1Pose       = p(70.646, 20.581, 180.0);
+        intake2StartPose = p(33.219, 35.214, 180.0);
+        intake2EndPose   = p(18.290, 35.059, 180.0);
+        shoot2Pose       = p(69.914, 75.762, 180.0);
+        intake3StartPose = p(32.187, 59.918, 180.0);
+        intake3EndPose   = p(16.285, 59.078, 180.0);
+        shoot3Pose       = p(68.186, 78.109, 180.0);
+        endPose          = p(68.963, 16.829, 180.0);
 
         // ----- Hardware -----
         intake = new Intake(hardwareMap);
-
         hood = new Hood(hardwareMap);
         feeder = new Feeder(hardwareMap);
 
@@ -185,7 +184,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
         feeder.armBlock();
         hood.setAngle(FIXED_HOOD_DEG);
 
-        telemetry.addLine("Yuvi Auto Initialized");
+        telemetry.addLine("Yuvi Auto Fixed Initialized");
         telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
         telemetry.addData("Start Pose", startPose);
         telemetry.update();
@@ -234,11 +233,9 @@ public class V3FarAutoByYuvi extends LinearOpMode {
             telemetry.addData("Alliance", isRedAlliance ? "RED" : "BLUE");
             telemetry.addData("Auto State", autoState);
             telemetry.addData("Feed State", feedState);
-            telemetry.addData("Cycle Count", extraCycleCount);
             telemetry.addData("Pose", follower.getPose());
             telemetry.addData("Follower Busy", follower.isBusy());
             telemetry.addData("Turret Angle", turret.getCurrentAngle());
-            telemetry.addData("Flywheel Target", FIXED_FLYWHEEL_RAD);
             telemetry.addData("Flywheel Actual", flywheel.getVelocityRadPerSec());
             telemetry.addData("Intake Running", intakeRunning);
             telemetry.addData("Flywheel Prepped", flywheelPrepped);
@@ -250,33 +247,24 @@ public class V3FarAutoByYuvi extends LinearOpMode {
     }
 
     // -------------------------------------------------------------------------
-    //  Path Building — exact coordinates from the Pedro Pathing file
+    //  Path Building — fully mirrored using the p() and h() helpers
     // -------------------------------------------------------------------------
     private void buildPaths() {
-        // Intake 1 chain: start -> (13.876, 18.959) -> (3.520, 16.562) -> (2.343, 2.837)
+        // Intake 1 chain
         toIntake1Zone = follower.pathBuilder()
-                .addPath(new BezierLine(
-                        startPose,
-                        new Pose(13.876, 18.959, Math.toRadians(180))
-                ))
-                .setLinearHeadingInterpolation(Math.toRadians(90), Math.toRadians(180))
-                .addPath(new BezierLine(
-                        new Pose(13.876, 18.959, Math.toRadians(180)),
-                        new Pose(3.520, 16.562, Math.toRadians(180))
-                ))
+                .addPath(new BezierLine(startPose, p(13.876, 18.959, 180.0)))
+                .setLinearHeadingInterpolation(h(START_HEADING_DEG), h(180.0))
+                .addPath(new BezierLine(p(13.876, 18.959, 180.0), intake1StartPose))
                 .setTangentHeadingInterpolation()
-                .addPath(new BezierLine(
-                        new Pose(3.520, 16.562, Math.toRadians(180)),
-                        intake1EndPose
-                ))
+                .addPath(new BezierLine(intake1StartPose, intake1EndPose))
                 .setTangentHeadingInterpolation()
                 .build();
 
-        // Shoot 1 path: (2.343, 2.837) -> (70.646, 20.581)
+        // Shoot 1 path
         toShoot1 = new Path(new BezierLine(intake1EndPose, shoot1Pose));
         toShoot1.setTangentHeadingInterpolation();
 
-        // Intake 2 chain: (70.646, 20.581) -> (33.219, 35.214) -> (18.290, 35.059)
+        // Intake 2 chain
         toIntake2Zone = follower.pathBuilder()
                 .addPath(new BezierLine(shoot1Pose, intake2StartPose))
                 .setTangentHeadingInterpolation()
@@ -284,11 +272,11 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 .setTangentHeadingInterpolation()
                 .build();
 
-        // Shoot 2 path: (18.290, 35.059) -> (69.914, 75.762)
+        // Shoot 2 path
         toShoot2 = new Path(new BezierLine(intake2EndPose, shoot2Pose));
         toShoot2.setTangentHeadingInterpolation();
 
-        // Intake 3 chain: (69.914, 75.762) -> (32.187, 59.918) -> (16.285, 59.078)
+        // Intake 3 chain
         toIntake3Zone = follower.pathBuilder()
                 .addPath(new BezierLine(shoot2Pose, intake3StartPose))
                 .setTangentHeadingInterpolation()
@@ -296,11 +284,11 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 .setTangentHeadingInterpolation()
                 .build();
 
-        // Shoot 3 path: (16.285, 59.078) -> (68.186, 78.109)
+        // Shoot 3 path
         toShoot3 = new Path(new BezierLine(intake3EndPose, shoot3Pose));
         toShoot3.setTangentHeadingInterpolation();
 
-        // End path: (68.186, 78.109) -> (68.963, 16.829)
+        // End path
         toEnd = new Path(new BezierLine(shoot3Pose, endPose));
         toEnd.setTangentHeadingInterpolation();
     }
@@ -332,19 +320,23 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_INTAKE1:
-                // Start intake ~1 second before reaching (3.520, 16.562)
                 if (!intakeRunning && distanceTo(intake1StartPose) < INTAKE_START_DIST) {
                     intakeTimer.reset();
                     intake.setPower(1.0);
                     intakeRunning = true;
                 }
                 if (!follower.isBusy()) {
+                    // Safe Fallback: if distance check missed, reset timer right now upon arrival
+                    if (!intakeRunning) {
+                        intakeTimer.reset();
+                        intake.setPower(1.0);
+                        intakeRunning = true;
+                    }
                     autoState = AutoState.INTAKE1;
                 }
                 break;
 
             case INTAKE1:
-                // Ensure intake runs full 2.75 seconds
                 if (intakeTimer.seconds() >= INTAKE_DURATION_SEC) {
                     intake.setPower(0.0);
                     intakeRunning = false;
@@ -356,14 +348,20 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_SHOOT1:
-                // Start flywheel prep 0.75 sec before arrival
                 if (!flywheelPrepped && distanceTo(shoot1Pose) < FLYWHEEL_PREP_DIST) {
                     flywheelPrepTimer.reset();
                     flywheelPrepped = true;
                 }
-                if (!follower.isBusy() && flywheelPrepped && flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
-                    startFeedSequence();
-                    autoState = AutoState.SHOOT1;
+                if (!follower.isBusy()) {
+                    // Safe Fallback: if arrival happens before the timer satisfies or triggers
+                    if (!flywheelPrepped) {
+                        flywheelPrepTimer.reset();
+                        flywheelPrepped = true;
+                    }
+                    if (flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
+                        startFeedSequence();
+                        autoState = AutoState.SHOOT1;
+                    }
                 }
                 break;
 
@@ -386,6 +384,11 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                     intakeRunning = true;
                 }
                 if (!follower.isBusy()) {
+                    if (!intakeRunning) {
+                        intakeTimer.reset();
+                        intake.setPower(1.0);
+                        intakeRunning = true;
+                    }
                     autoState = AutoState.INTAKE2;
                 }
                 break;
@@ -406,9 +409,15 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                     flywheelPrepTimer.reset();
                     flywheelPrepped = true;
                 }
-                if (!follower.isBusy() && flywheelPrepped && flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
-                    startFeedSequence();
-                    autoState = AutoState.SHOOT2;
+                if (!follower.isBusy()) {
+                    if (!flywheelPrepped) {
+                        flywheelPrepTimer.reset();
+                        flywheelPrepped = true;
+                    }
+                    if (flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
+                        startFeedSequence();
+                        autoState = AutoState.SHOOT2;
+                    }
                 }
                 break;
 
@@ -431,6 +440,11 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                     intakeRunning = true;
                 }
                 if (!follower.isBusy()) {
+                    if (!intakeRunning) {
+                        intakeTimer.reset();
+                        intake.setPower(1.0);
+                        intakeRunning = true;
+                    }
                     autoState = AutoState.INTAKE3;
                 }
                 break;
@@ -451,9 +465,15 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                     flywheelPrepTimer.reset();
                     flywheelPrepped = true;
                 }
-                if (!follower.isBusy() && flywheelPrepped && flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
-                    startFeedSequence();
-                    autoState = AutoState.SHOOT3;
+                if (!follower.isBusy()) {
+                    if (!flywheelPrepped) {
+                        flywheelPrepTimer.reset();
+                        flywheelPrepped = true;
+                    }
+                    if (flywheelPrepTimer.seconds() >= FLYWHEEL_PREP_SEC) {
+                        startFeedSequence();
+                        autoState = AutoState.SHOOT3;
+                    }
                 }
                 break;
 
@@ -545,6 +565,17 @@ public class V3FarAutoByYuvi extends LinearOpMode {
     // -------------------------------------------------------------------------
     private double getTargetX() {
         return AllianceMirror.mirrorX(BLUE_TARGET_X, isRedAlliance);
+    }
+
+    private Pose p(double x, double y, double headingDeg) {
+        return AllianceMirror.mirrorPose(
+                new Pose(x, y, Math.toRadians(headingDeg)),
+                isRedAlliance
+        );
+    }
+
+    private double h(double headingDeg) {
+        return Math.toRadians(AllianceMirror.mirrorHeadingDeg(headingDeg, isRedAlliance));
     }
 
     private double mirrorTurretCommand(double angleDeg) {
