@@ -27,18 +27,18 @@ import java.util.List;
  * {@code V3Auto.java} with its literal constants (V3Auto has no shared config — this sim does not
  * change or depend on the real opmode). See AUTOSIM_DESIGN.md §5/§9.
  *
- * <p>Deliberate simplifications (readouts/heading only — path, state order, timing, intake, and
- * shot events are faithful):
+ * <p>Deliberate simplifications (readouts only — path, state order, timing, intake, shot events,
+ * and heading are faithful):
  * <ul>
  *   <li>Shot-on-move turret/hood compensation ({@code trackGoalFromOdometry} with
  *       predicted-distance filtering) is reduced to straight-line goal tracking + the same shot
  *       table.</li>
- *   <li>{@code toLastLine} starts with {@code setTangentHeadingInterpolation()} but the real auto
- *       switches it to {@code setConstantHeadingInterpolation(180°)} once t &gt; 0.2; this sim
- *       keeps TANGENT for the whole path.</li>
- *   <li>{@code backToShootFromLastLine} starts as REVERSE_TANGENT but the real auto switches it to
- *       a constant -90° once t &gt; 0.8; this sim keeps REVERSE_TANGENT for the whole path.</li>
  * </ul>
+ *
+ * <p>{@code toLastLine} and {@code backToShootFromLastLine} reproduce the real auto's mid-path
+ * heading-mode switches ({@link PathSpec#thenConstant}): {@code toLastLine} starts TANGENT and
+ * switches to a constant 180° once {@code getCurrentTValue() > 0.2}; {@code backToShootFromLastLine}
+ * starts REVERSE_TANGENT and switches to a constant -90° once {@code getCurrentTValue() > 0.8}.
  */
 public final class V3AutoSim {
 
@@ -621,12 +621,13 @@ public final class V3AutoSim {
 
         toLastLine = curve("toLastLine", Arrays.asList(firstShot,
                 new Pt(48.0, 43.0), new Pt(40.0, 36.0), new Pt(12.5, 35.0)),
-                LINE_H).tangent();
+                LINE_H).tangent().thenConstant(LAST_LINE_SLOW_TVALUE, LINE_H);
 
         Pt lastReturnEnd = new Pt(firstShot.x + 10, firstShot.y + 18);
         backToShootFromLastLine = curve("backToShootFromLastLine", Arrays.asList(
                 new Pt(12.5, 35.0), new Pt(30.0, 41.0), lastReturnEnd),
-                tangentDeg(new Pt(11.0, 41.0), lastReturnEnd)).reverseTangent();
+                tangentDeg(new Pt(11.0, 41.0), lastReturnEnd)).reverseTangent()
+                .thenConstant(0.8, -90.0);
     }
 
     private static double tangentDeg(Pt a, Pt b) {

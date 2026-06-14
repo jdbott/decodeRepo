@@ -295,7 +295,33 @@ from a *stale* heading, producing a visible single-frame heading snap. If you ev
 heading "pop" at a path boundary in a new auto, this is the first thing to check — but
 it should already be fixed for all autos since `SimFollower` is shared.
 
-### 7.2 Adding a 5th heading mode (if a future season needs one)
+### 7.2 Mid-path heading-mode switches
+
+Some real paths re-call `setXxxHeadingInterpolation()` partway through, gated on
+`follower.getCurrentTValue() > X` (e.g. V3Auto's `toLastLine` is `TANGENT` until `t >
+0.2`, then a constant 180°). Model this with `.thenConstant(afterT, headingDeg)`,
+chained after the primary mode:
+
+```java
+toLastLine = curve("toLastLine", controlPts, LINE_H)
+        .tangent()
+        .thenConstant(0.2, LINE_H);
+
+backToShootFromLastLine = curve("backToShootFromLastLine", controlPts, 0)
+        .reverseTangent()
+        .thenConstant(0.8, -90.0);
+```
+
+`SimFollower.headingAt` computes the path fraction `t = d/length` and, once `t >
+headingSwitchT`, switches from `headingMode` to a constant `headingDegAfter`. This is an
+**instantaneous target snap** (matching what the real follower does when
+`setConstantHeadingInterpolation` is called mid-path — a sudden setpoint change, not a
+smooth pivot like the path-start turn in §7.1). If you find a real path that switches to
+something other than `CONSTANT` after the threshold (e.g. tangent → linear), you'll need
+to extend `headingModeAfter` to a full `HeadingMode` with its own start/end params rather
+than just `headingDegAfter` — `thenConstant` only covers the cases seen so far.
+
+### 7.3 Adding a 5th heading mode (if a future season needs one)
 
 1. Add the enum value to `HeadingMode.java`.
 2. Add a chained setter to `PathSpec.java` (follow `.linear()`'s pattern for any extra
@@ -367,20 +393,15 @@ substantial future work on V3Auto, consider promoting its constants to
 `autoshared/V3AutoConfig.java` (following `V3FarAutoConfig`'s pattern) as a first step —
 that converts this from "hand-sync forever" to "edit once."
 
-**Known, documented simplifications** (in the file's class Javadoc — re-state here so
-they're discoverable without opening the file):
+**Known, documented simplification** (in the file's class Javadoc — re-state here so
+it's discoverable without opening the file):
 1. Shot-on-the-move compensation is simplified to straight-line goal tracking + the
    literal shot table (same simplification as `V3ClosePartnerSim`).
-2. `toLastLine` is modeled as `TANGENT` for its entire length; the real auto switches to
-   `CONSTANT 180°` after `t > 0.2`. Not modeled.
-3. `backToShootFromLastLine` is modeled as `REVERSE_TANGENT` for its entire length; the
-   real auto switches to `CONSTANT -90°` after `t > 0.8`. Not modeled.
 
-These cause small heading discrepancies near the end of the last-line cycle only — not
-worth fixing unless someone's specifically debugging that cycle's heading behavior. If
-you do fix it, that's exactly the kind of thing `PathSpec`/`HeadingMode` would need a
-"mode switch partway through a path" feature for — currently each `PathSpec` has exactly
-one mode for its whole length.
+`toLastLine` and `backToShootFromLastLine` now reproduce their real mid-path
+heading-mode switches via `.thenConstant(...)` (§7.2) — `toLastLine` is TANGENT until
+`t > 0.2` then constant 180°; `backToShootFromLastLine` is REVERSE_TANGENT until `t >
+0.8` then constant -90°, matching `V3Auto.java` exactly.
 
 ---
 

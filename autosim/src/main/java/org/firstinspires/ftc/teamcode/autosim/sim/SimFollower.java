@@ -115,16 +115,24 @@ public final class SimFollower {
 
     /** Heading (deg) the path commands at arc-length {@code d} along its polyline. */
     private double headingAt(PathSpec s, double d) {
-        switch (s.headingMode) {
+        double t = length <= 0 ? 1.0 : d / length;
+        if (s.headingSwitchT >= 0 && t > s.headingSwitchT) {
+            return headingForMode(s.headingModeAfter, s, d, t, s.headingDegAfter);
+        }
+        return headingForMode(s.headingMode, s, d, t, s.headingDeg);
+    }
+
+    /** Heading (deg) {@code mode} commands at arc-length {@code d} (path fraction {@code t}). */
+    private double headingForMode(HeadingMode mode, PathSpec s, double d, double t, double constDeg) {
+        switch (mode) {
             case TANGENT:         return tangentAt(s.polyline, d);
             case REVERSE_TANGENT: return tangentAt(s.polyline, d) + 180.0;
             case LINEAR: {
-                double t = length <= 0 ? 1.0 : d / length;
                 double f = s.headingEndT <= 0 ? 1.0 : Math.min(1.0, t / s.headingEndT);
                 return s.headingStartDeg + shortestDelta(s.headingStartDeg, s.headingEndDeg) * f;
             }
             case CONSTANT:
-            default:              return s.headingDeg;
+            default:              return constDeg;
         }
     }
 
