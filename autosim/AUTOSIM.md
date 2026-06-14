@@ -267,35 +267,65 @@ private PathSpec toGateOpenGate() {
 ```
 
 For `CONSTANT` paths, `headingDeg` (passed to the `line()`/`curve()` constructor) is the
-target heading the robot snaps toward via the in-place pivot (§7.1) — pass the real
+target heading the robot's heading chases toward (§7.1) — pass the real
 value, not `0`, unless the mode is non-constant (in which case the constructor's
 `headingDeg` argument is ignored and `0` is conventional).
 
-### 7.1 "Turn, then move" and why durations grew
+### 7.1 Hybrid heading model: blocking start pivot + concurrent mid-path switches
 
-`SimFollower.followPath()` computes, at path-start, the heading the path will command at
-arc-length 0 (`headingAt(spec, 0.0)`). If that differs from the robot's current heading,
-the follower **pivots in place first** at `TURN_RATE_DEG_S = 270.0°/s`
-(`SimFollower.java`), THEN begins translating. This pivot **consumes real simulated
-time** — it's added to `tEndMs` and gates `isBusy()`. This is why every auto's total
-duration grew when this was introduced (documented in
-`AUTOSIM_DESIGN.md` §16): it's modeling Pedro's actual turn-then-drive behavior, not a
-bug.
+`followPath()` computes the path's initial commanded heading (`headingAt(spec, 0.0)`)
+and, if it differs from the robot's current heading, reserves a **blocking in-place
+pivot**: `turnSec = |shortestDelta(currentHeading, target0)| / TURN_RATE_DEG_S`
+(`TURN_RATE_DEG_S = 270.0°/s`), added on top of the trapezoidal drive time `travSec` for
+both `tEndMs` and `isBusy()`/`getCurrentTValue()`. While `elapsed < turnSec`,
+`getPose()` holds the robot at the path's start point and rotates it in place toward
+`target0` at up to `TURN_RATE_DEG_S`; `getCurrentTValue()` reports `t=0` throughout the
+pivot. This is the "turn, then move" behavior — matches the pre-§18 model and reflects
+how Pedro paths are normally driven: a sizeable heading error at a path's start is
+squared away before translation begins.
 
-`getCurrentTValue()` returns `0` during the pivot phase and only starts climbing once
-translation begins — so any FSM transition gated on a t-value (`getCurrentTValue() >=
-0.9`, etc.) fires on real path progress, matching the real robot.
+Once translation begins, heading normally snaps directly to `headingAt(active, d)` each
+frame (no further rate limiting needed — by construction the pivot already closed the
+gap to `target0`, and continuous interpolation modes like `TANGENT`/`LINEAR` don't jump).
+The exception is a mid-path `thenConstant` switch (§7.2): when `t` crosses
+`headingSwitchT`, the *target* heading can jump discontinuously, and that jump is **not**
+a pose snap — the robot's actual heading chases the new target at up to
+`TURN_RATE_DEG_S` while continuing to translate ("turn and move at the same time").
 
-**Lesson learned the hard way:** `SimFollower.getPose()` must update `lastPose`
-**unconditionally on every call** — including during the pivot phase and on every
-mid-translation frame — not just when a path completes. The original implementation only
-refreshed `lastPose` at move-completion, so an FSM that chains `followPath()` calls
-back-to-back with no idle frame in between would compute the next pivot's `turnFromDeg`
-from a *stale* heading, producing a visible single-frame heading snap. If you ever see a
-heading "pop" at a path boundary in a new auto, this is the first thing to check — but
-it should already be fixed for all autos since `SimFollower` is shared.
+**Lesson learned the hard way:** `SimFollower.getPose()` must update `lastPose` and
+`lastSampleSec` **unconditionally on every call** — including the `active == null`
+branch and the pivot branch — so that `dtSec` is always the true elapsed time since the
+last sample. If a call is skipped, the next `dtSec` is too large and the rate limiter
+allows an oversized single-frame heading jump.
 
-### 7.2 Adding a 5th heading mode (if a future season needs one)
+### 7.2 Mid-path heading-mode switches
+
+Some real paths re-call `setXxxHeadingInterpolation()` partway through, gated on
+`follower.getCurrentTValue() > X` (e.g. V3Auto's `toLastLine` is `TANGENT` until `t >
+0.2`, then a constant 180°). Model this with `.thenConstant(afterT, headingDeg)`,
+chained after the primary mode:
+
+```java
+toLastLine = curve("toLastLine", controlPts, LINE_H)
+        .tangent()
+        .thenConstant(0.2, LINE_H);
+
+backToShootFromLastLine = curve("backToShootFromLastLine", controlPts, 0)
+        .reverseTangent()
+        .thenConstant(0.8, -90.0);
+```
+
+`SimFollower.headingAt` computes the path fraction `t = d/length` and, once `t >
+headingSwitchT`, switches the *target* heading from `headingMode` to a constant
+`headingDegAfter`. This target change is **not** an instantaneous pose snap — it flows
+through the heading-chase rate limiter described in §7.1, so the robot's actual
+heading turns smoothly from the tangent direction to `headingDegAfter` over time, while
+continuing to translate. If you find a real path that switches to something other than
+`CONSTANT` after the threshold (e.g. tangent → linear), you'll need to extend
+`headingModeAfter` to a full `HeadingMode` with its own start/end params rather than just
+`headingDegAfter` — `thenConstant` only covers the cases seen so far.
+
+### 7.3 Adding a 5th heading mode (if a future season needs one)
 
 1. Add the enum value to `HeadingMode.java`.
 2. Add a chained setter to `PathSpec.java` (follow `.linear()`'s pattern for any extra
@@ -367,20 +397,41 @@ substantial future work on V3Auto, consider promoting its constants to
 `autoshared/V3AutoConfig.java` (following `V3FarAutoConfig`'s pattern) as a first step —
 that converts this from "hand-sync forever" to "edit once."
 
-**Known, documented simplifications** (in the file's class Javadoc — re-state here so
-they're discoverable without opening the file):
+**Known, documented simplification** (in the file's class Javadoc — re-state here so
+it's discoverable without opening the file):
 1. Shot-on-the-move compensation is simplified to straight-line goal tracking + the
    literal shot table (same simplification as `V3ClosePartnerSim`).
-2. `toLastLine` is modeled as `TANGENT` for its entire length; the real auto switches to
-   `CONSTANT 180°` after `t > 0.2`. Not modeled.
-3. `backToShootFromLastLine` is modeled as `REVERSE_TANGENT` for its entire length; the
-   real auto switches to `CONSTANT -90°` after `t > 0.8`. Not modeled.
 
-These cause small heading discrepancies near the end of the last-line cycle only — not
-worth fixing unless someone's specifically debugging that cycle's heading behavior. If
-you do fix it, that's exactly the kind of thing `PathSpec`/`HeadingMode` would need a
-"mode switch partway through a path" feature for — currently each `PathSpec` has exactly
-one mode for its whole length.
+`toLastLine` and `backToShootFromLastLine` now reproduce their real mid-path
+heading-mode switches via `.thenConstant(...)` (§7.2) — `toLastLine` is TANGENT until
+`t > 0.2` then constant 180°; `backToShootFromLastLine` is REVERSE_TANGENT until `t >
+0.8` then constant -90°, matching `V3Auto.java` exactly.
+
+### 9.4 Path discontinuity indicator
+
+For a path chain to be optimal, the last point of path *i*'s polyline should equal the
+first point of path *i+1*'s polyline — otherwise the robot has to cover an unplanned gap
+(Pedro will just drive straight there, but it's wasted motion/time that wasn't accounted
+for when the paths were authored).
+
+The viewer checks this automatically, purely client-side from the already-serialized
+`TRACE.paths[i].polyline` endpoints — no Java/schema changes needed. `bindAuto()` calls
+`computeDiscontinuities()` (in `viewer/autosim.template.html`), which compares
+consecutive paths' endpoint/start-point distance against `DISCONTINUITY_THRESHOLD_IN =
+0.5` (inches). Anything over that threshold is flagged — the threshold deliberately
+ignores sub-half-inch gaps (floating point / control-point rounding) so only real
+planning gaps show up.
+
+Flagged discontinuities render two ways:
+- **Canvas**: `drawDiscontinuities()` draws a red dashed line between the two endpoints
+  with pulsing rings and a "⚠" marker, on every frame (drawn just before the robot).
+- **Sidebar**: `buildDiscoList()` populates a "Discontinuities ⚠" section (hidden if
+  there are none) listing each gap as `fromPath → toPath (N.Nin)`.
+
+**To fix a flagged discontinuity**: edit the earlier path's end control point or the
+later path's start control point (in the real `...Auto.java` and the corresponding
+`...Sim.java`) so they coincide — this is a real path-planning improvement, not just a
+sim cosmetic fix.
 
 ---
 
@@ -412,7 +463,8 @@ one mode for its whole length.
    maxStep; // should be ~5.4, not e.g. 20
    ```
    Then `preview_screenshot` at a few `play.t` values spanning each cycle to eyeball
-   path shapes, robot orientation during pivots, and shot/intake overlays.
+   path shapes, robot orientation during heading changes, discontinuity markers (§9.4),
+   and shot/intake overlays.
 3. **Send the result**: `dist/autosim.html` is a single file — `SendUserFile` it after
    regenerating so the user can open it directly.
 
@@ -496,15 +548,18 @@ without rebuilding).
 
 ## 13. Things that look like bugs but aren't
 
-- **Auto durations are longer than you "expect"** — this is the in-place pivot (§7.1)
-  consuming time at every heading change. Compare against the previous committed
-  `dist/autosim.html`'s summary line if you need a before/after.
-- **`getCurrentTValue()` returns 0 for a while after a path starts** — that's the pivot
-  phase; FSM transitions gated on t-value are correctly waiting for it.
+- **The robot rotates in place before a path's translation visibly starts** —
+  intentional (§7.1), the blocking start-of-path pivot at `TURN_RATE_DEG_S=270°/s`.
+- **The robot's heading visibly lags a `thenConstant` switch's new target for a
+  moment** — intentional (§7.1/§7.2), the mid-path heading-chase rate limiter at
+  `TURN_RATE_DEG_S=270°/s`. It always catches up; if it doesn't, that's a bug (check
+  `lastSampleSec` is updated on every `getPose()` call).
 - **A SHOOT ring's ball keeps animating after the robot has visibly left the shooting
   spot** — intentional (§11.3), models the real flight time of a launched artifact.
-- **V3AutoSim's heading near the end of the last-line cycle doesn't exactly match
-  V3Auto** — documented simplification (§9.3), not a regression.
+- **Red dashed connectors / pulsing "⚠" markers between two paths** — the discontinuity
+  indicator (§9.4): the end of one path's polyline doesn't match the start of the next
+  by more than half an inch. This flags a real gap in the auto's path plan, not a sim
+  bug — see §9.4 for how to interpret and fix it.
 
 ---
 

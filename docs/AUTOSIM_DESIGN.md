@@ -14,7 +14,7 @@ events (shoot / intake / feed / hood / turret) surfaced on a scrubable timeline.
   a second engine. It also dovetails with the eventual auto-base refactor in
   [AUTO_BASE_DESIGN.md](AUTO_BASE_DESIGN.md) (see "Future convergence" below).
 
-> **Status: Phases 1–3 built + Phase 4 partial + fidelity tweaks** (see §12–§16). The `autosim/` module simulates
+> **Status: Phases 1–3 built + Phase 4 partial + fidelity tweaks** (see §12–§18). The `autosim/` module simulates
 > `V3FarAuto` and `V3ClosePartner` end-to-end and emits one standalone viewer (path render,
 > kinematic playback, data-driven action overlays, auto dropdown, 640p video export). Tier-1
 > single-source config is in place (§15). Replay mode + assertion overlay remain the stretch.
@@ -756,3 +756,117 @@ after the shot window / `SHOOT` state ends and the robot drives away — the sho
 muzzle flash still stop at the window end, but `drawEffects` extends the cull horizon to
 `dur + BALL_FLIGHT` for shooting events so in-flight artifacts aren't truncated. (Balls originate
 from the fixed shot pose, so they were already independent of the moving robot.)
+
+## 17. Mid-path heading-mode switches — as built (2026-06-14)
+
+Real autos sometimes re-call `setXxxHeadingInterpolation()` on an in-progress path once
+`follower.getCurrentTValue()` crosses a threshold — e.g. V3Auto's `toLastLine` starts
+`TANGENT` and switches to a constant 180° once `t > 0.2`, and `backToShootFromLastLine`
+starts `REVERSE_TANGENT` and switches to a constant -90° once `t > 0.8`. The sim
+previously approximated both paths as a single mode for their whole length (documented
+as a known simplification in `V3AutoSim`'s class Javadoc).
+
+- New [`PathSpec.thenConstant(afterT, headingDeg)`](../autosim/src/main/java/org/firstinspires/ftc/teamcode/autosim/model/PathSpec.java)
+  records an optional switch: once the path's fraction-by-arc-length `t` exceeds
+  `afterT`, `SimFollower.headingAt` switches from the path's primary `headingMode` to a
+  constant `headingDeg`. Defaults to "no switch" (`headingSwitchT = -1`), so every
+  existing path is unaffected.
+- `SimFollower.headingAt` was refactored into a small `headingForMode(mode, s, d, t,
+  constDeg)` helper so both the pre- and post-switch heading share the same
+  TANGENT/REVERSE_TANGENT/LINEAR/CONSTANT logic.
+- `V3AutoSim` now declares `.tangent().thenConstant(LAST_LINE_SLOW_TVALUE, LINE_H)` on
+  `toLastLine` and `.reverseTangent().thenConstant(0.8, -90.0)` on
+  `backToShootFromLastLine`, matching `V3Auto.java` exactly. Its class Javadoc no longer
+  lists these as simplifications.
+- The switch is an instantaneous target change (matching what the real follower does
+  when `setConstantHeadingInterpolation` is called mid-path — a sudden setpoint jump,
+  not a smooth pivot like the path-start turn in §16). Verified in-browser: `toLastLine`
+  holds its tangent heading (~258.8°→-92.5°) until ~20% of its travel time, then snaps to
+  180° for the remainder; `backToShootFromLastLine` holds its reverse-tangent heading
+  (~180°→246.7°) until ~80% of its travel time, then snaps to -90°.
+- V3FarAutoSim and V3ClosePartnerSim have no mid-path heading switches in their real
+  counterparts, so `headingSwitchT` stays at its default (-1) for all their paths — their
+  traces are byte-for-byte unchanged except V3Auto's total duration (28.92→29.06 s, +7
+  frames) from the two new snap-points slightly perturbing the trapezoidal timing.
+
+> **Superseded by §18:** the "turn-then-move" pivot (§16) and the "instantaneous target
+> snap" for mid-path switches (this section) were both replaced by a single continuous
+> heading-chase model. The mechanism and verified numbers above are now historical.
+
+## 18. Heading-chase rewrite + path discontinuity indicator — as built (2026-06-14)
+
+Two more captain-requested changes on top of §16/§17.
+
+### Rotate while driving (replaces turn-then-move)
+
+The §16 pivot — stopping to turn in place before translating — didn't match how Pedro's
+`Follower` actually behaves (heading control and translation run concurrently). It's
+removed:
+
+- `SimFollower` drops `turnSec`/`turnFromDeg`/`turnToDeg` entirely. `followPath()` no
+  longer reserves any turn time: `travSec`/`tEndMs` are purely the trapezoidal drive
+  time, and `isBusy()`/`getCurrentTValue()` are driven by that drive time from `t=0`.
+- `getPose()` instead computes the path's *commanded* heading at the current
+  arc-length (`headingAt(active, d)` — unchanged from §17, including `thenConstant`
+  switches) and rate-limits the robot's *actual* heading toward it: `step =
+  clamp(delta, ±TURN_RATE_DEG_S * dtSec)`, where `dtSec` is the time since the previous
+  `getPose()` call (`lastSampleSec`, now updated unconditionally on every call including
+  the idle/`active==null` branch). `TURN_RATE_DEG_S` stays `270°/s`, repurposed from "pivot
+  speed" to "max heading slew rate while driving."
+- This applies uniformly to path-start heading changes AND `thenConstant` mid-path
+  switches — no special-casing needed, both are just "target changed, chase it."
+- **Durations**, with no reserved turn time, drop back close to the pre-§16 baseline:
+  V3FarAuto 29480→28880 ms, V3ClosePartner 29560→27920 ms, V3Auto 29060→27540 ms.
+- Verified in-browser: max per-frame heading step remains capped at 5.4°/frame (=270°/s
+  × 20 ms) for all three autos; V3Auto's `toLastLine` and `backToShootFromLastLine` now
+  show a gradual heading ramp through their `thenConstant` switch points instead of a
+  snap.
+
+### Path discontinuity indicator
+
+Added a viewer-only check (no schema/Java changes — operates on the already-serialized
+`polyline` endpoints): for each consecutive path pair, if the distance between path
+*i*'s last polyline point and path *i+1*'s first polyline point exceeds
+`DISCONTINUITY_THRESHOLD_IN = 0.5` inches, it's flagged as a gap in the path plan.
+
+- `computeDiscontinuities()` runs once per `bindAuto()` call and produces a list of
+  `{a, b, gap, from, to}`.
+- `drawDiscontinuities()` renders each flagged gap as a red dashed line with pulsing
+  rings and a "⚠" marker on the canvas, every frame.
+- `buildDiscoList()` populates a "Discontinuities ⚠" sidebar section (hidden if empty)
+  listing `fromPath → toPath (N.Nin)`.
+- V3Auto has several real flagged gaps (e.g. `toLine2 → backToShoot` 3.4in,
+  `toGateOpenGate → toGateIntake` 2.2in, `gateExtra → backFromGate` 4.5in and its
+  "Again" duplicates) — these are genuine path-planning gaps in `V3Auto.java`'s control
+  points, not sim artifacts. V3FarAuto and V3ClosePartner have none above threshold.
+
+See `autosim/AUTOSIM.md` §7.1, §7.2, and §9.4 for the maintainer-facing description of
+both changes.
+
+## 19. Hybrid heading model — as built (2026-06-14)
+
+Captain feedback on §18: the "rotate while driving" model was too broad. Smooth
+concurrent rotation is correct for `thenConstant` mid-path switches, but path-*start*
+heading changes should still be a blocking pivot, as in §16.
+
+- `SimFollower` reinstates `turnSec`/`turnFromDeg`/`turnToDeg`. `followPath()` computes
+  `target0 = headingAt(spec, 0.0)` and `turnSec = |shortestDelta(currentHeading,
+  target0)| / TURN_RATE_DEG_S`, added on top of `travSec` for `tEndMs`,
+  `isBusy()`, and `getCurrentTValue()` (which reports `t=0` during the pivot).
+- During the pivot (`elapsed < turnSec`), `getPose()` holds position at the path's
+  start point and rate-limits heading toward `target0` — unchanged blocking
+  turn-then-move from §16.
+- During translation, heading snaps directly to `headingAt(active, d)` each frame,
+  *except* once `t > headingSwitchT` (a `thenConstant` switch fires), where it falls
+  back to the §18 rate-limited chase from `lastPose.headingDeg` toward the new target —
+  concurrent with translation, no reserved time.
+- Durations partially revert toward the §16/pre-§18 baseline (path-start pivots are
+  reserved again): V3FarAuto 28880→29480 ms, V3ClosePartner 27920→29560 ms, V3Auto
+  27540→29060 ms. `toLastLine`/`backToShootFromLastLine`'s `thenConstant` switches
+  remain smooth, as in §18.
+- As part of the same change, V3Auto's tunables/path geometry/shot table were extracted
+  into a new `autoshared/V3AutoConfig.java` (mirroring `V3FarAutoConfig`/
+  `V3ClosePartnerConfig`), and both `autos/V3Auto.java` and `autosim/.../V3AutoSim.java`
+  now read from it instead of duplicating literals.
+
+See `autosim/AUTOSIM.md` §7.1 for the updated maintainer-facing description.

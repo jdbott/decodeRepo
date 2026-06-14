@@ -21,6 +21,14 @@ public final class PathSpec {
     public double headingEndDeg;       // LINEAR only
     public double headingEndT = 1.0;   // LINEAR only: path fraction over which the slew completes
 
+    // Mid-path mode switch (Pedro paths sometimes re-call setXxxHeadingInterpolation() partway
+    // through, e.g. once getCurrentTValue() crosses a threshold). headingSwitchT < 0 means no
+    // switch; once the path fraction t exceeds headingSwitchT, headingModeAfter/headingDegAfter
+    // take over from headingMode/headingDeg.
+    public double headingSwitchT = -1.0;
+    public HeadingMode headingModeAfter = HeadingMode.CONSTANT;
+    public double headingDegAfter;
+
     public PathSpec(String id, String kind, List<Pt> controlPoints, List<Pt> polyline, double headingDeg) {
         this.id = id;
         this.kind = kind;
@@ -41,6 +49,18 @@ public final class PathSpec {
         headingStartDeg = startDeg;
         headingEndDeg = endDeg;
         headingEndT = endT;
+        return this;
+    }
+
+    /**
+     * Once the path is more than {@code afterT} complete (by arc length), switch to a constant
+     * heading of {@code headingDeg} — mirrors a real auto re-calling
+     * {@code setConstantHeadingInterpolation(...)} after {@code getCurrentTValue() > afterT}.
+     */
+    public PathSpec thenConstant(double afterT, double headingDeg) {
+        headingSwitchT = afterT;
+        headingModeAfter = HeadingMode.CONSTANT;
+        headingDegAfter = headingDeg;
         return this;
     }
 }
