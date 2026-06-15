@@ -45,13 +45,13 @@ public final class V3AutoConfig {
     public static final double LINE2_C1X = 48.0, LINE2_C1Y = 67.0;
     public static final double LINE2_C2X = 40.0, LINE2_C2Y = 63.0;
     public static final double LINE2_ENDX = 12.5, LINE2_ENDY = 62.0;
-    public static final double BTS_STARTX = 11.0, BTS_STARTY = 65.0;
+    public static final double BTS_STARTX = 12.5, BTS_STARTY = 62.0;
     public static final double BTS_C1X = 30.0, BTS_C1Y = 65.0;
 
     // Gate approach + intake.
     public static final double GATE_C1X = 50.0, GATE_C1Y = 66.326;
     public static final double GATE_ENDX = 15.0, GATE_ENDY = 67.5;
-    public static final double GI_STARTX = 16.0, GI_STARTY = 69.5;
+    public static final double GI_STARTX = 15, GI_STARTY = 67.5;
     public static final double GI_ENDX = 11.0, GI_ENDY = 59.0;
     public static final double RG1_C1X = 42.0, RG1_C1Y = 59.0;   // return-from-gate cycle 1
     public static final double RG2_C1X = 42.0, RG2_C1Y = 62.0;   // return-from-gate cycle 2
