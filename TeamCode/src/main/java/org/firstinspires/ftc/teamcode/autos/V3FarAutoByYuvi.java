@@ -38,7 +38,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
     private boolean isRedAlliance = false;
 
     // ===== Fixed shot settings =====
-    private static double FIXED_HOOD_DEG = 53.5;
+    private static double FIXED_HOOD_DEG = 55.5;
     private static double FIXED_FLYWHEEL_RAD = 480;
 
     // ===== Field positions (BLUE-NATIVE) =====
@@ -61,8 +61,8 @@ public class V3FarAutoByYuvi extends LinearOpMode {
     private static final double FEED_TOTAL_TIME_SEC = 0.93;   // 3 preloaded balls ≈ 0.5–0.75 s
     private static final double REVERSE_TIME_SEC = 0.25;
 
-    private static final double FLYWHEEL_PREP_SEC = 1.67;     // spin up before each shot
-    private static final double INTAKE_DURATION_SEC = 2.95;   // total intake runtime per cycle
+    private static final double FLYWHEEL_PREP_SEC = 1.4;     // spin up before each shot
+    private static final double INTAKE_DURATION_SEC = 1.25;   // total intake runtime per cycle
     private static final double INTAKE_START_DIST = 30.0;     // inches before intake zone (~1 s)
     private static final double FLYWHEEL_PREP_DIST = 22.0;    // inches before shoot point (~0.75 s)
 
@@ -150,7 +150,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
         // ----- Mirror-wrapped Poses -----
         startPose        = p(START_X, START_Y, START_HEADING_DEG);
         intake1StartPose = p(12.520, 16.562, 180.0);
-        intake1EndPose   = p(15.343, 15.837, 180.0);
+        intake1EndPose   = p(15.343, 4.837, 180.0);
         shoot1Pose       = p(70.646, 20.581, 180.0);
         intake2StartPose = p(33.219, 35.214, 180.0);
         intake2EndPose   = p(18.290, 35.059, 180.0);
@@ -321,29 +321,17 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_INTAKE1:
-                if (!intakeRunning && distanceTo(intake1StartPose) < INTAKE_START_DIST) {
+                // Transition to intake state when close to the target coordinates
+                if (distanceTo(intake1EndPose) < 3.0) {
                     intakeTimer.reset();
-                    intake.setPower(1.0);
-                    intakeRunning = true;
-                }
-                if (!follower.isBusy()) {
-                    // Safe Fallback: if distance check missed, reset timer right now upon arrival
-                    if (!intakeRunning) {
-                        intakeTimer.reset();
-                        intake.setPower(1.0);
-                        intakeRunning = true;
-                    }
                     autoState = AutoState.INTAKE1;
                 }
                 break;
 
             case INTAKE1:
-                if (intakeTimer.seconds() >= INTAKE_DURATION_SEC) {
-                    intake.setPower(0.0);
-                    intakeRunning = false;
-
+                // Intake stays running globally; we just wait 1 second to clear the physical zone
+                if (intakeTimer.seconds() >= 1.0) {
                     follower.followPath(toShoot1, true);
-                    flywheelPrepped = false;
                     autoState = AutoState.DRIVE_TO_SHOOT1;
                 }
                 break;
@@ -354,7 +342,6 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                     flywheelPrepped = true;
                 }
                 if (!follower.isBusy()) {
-                    // Safe Fallback: if arrival happens before the timer satisfies or triggers
                     if (!flywheelPrepped) {
                         flywheelPrepTimer.reset();
                         flywheelPrepped = true;
@@ -374,33 +361,20 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                     follower.followPath(toIntake2Zone, false);
                     FIXED_HOOD_DEG = 40;
                     FIXED_FLYWHEEL_RAD = 317;
-                    intakeRunning = false;
                     flywheelPrepped = false;
                     autoState = AutoState.DRIVE_TO_INTAKE2;
                 }
                 break;
 
             case DRIVE_TO_INTAKE2:
-                if (!intakeRunning && distanceTo(intake2StartPose) < INTAKE_START_DIST) {
+                if (distanceTo(intake2EndPose) < 3.0) {
                     intakeTimer.reset();
-                    intake.setPower(1.0);
-                    intakeRunning = true;
-                }
-                if (!follower.isBusy()) {
-                    if (!intakeRunning) {
-                        intakeTimer.reset();
-                        intake.setPower(1.0);
-                        intakeRunning = true;
-                    }
                     autoState = AutoState.INTAKE2;
                 }
                 break;
 
             case INTAKE2:
-                if (intakeTimer.seconds() >= INTAKE_DURATION_SEC) {
-                    intake.setPower(0.0);
-                    intakeRunning = false;
-
+                if (intakeTimer.seconds() >= 1.0) {
                     follower.followPath(toShoot2, true);
                     flywheelPrepped = false;
                     autoState = AutoState.DRIVE_TO_SHOOT2;
@@ -430,33 +404,20 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                     feeder.armBlock();
 
                     follower.followPath(toIntake3Zone, false);
-                    intakeRunning = false;
                     flywheelPrepped = false;
                     autoState = AutoState.DRIVE_TO_INTAKE3;
                 }
                 break;
 
             case DRIVE_TO_INTAKE3:
-                if (!intakeRunning && distanceTo(intake3StartPose) < INTAKE_START_DIST) {
+                if (distanceTo(intake3EndPose) < 3.0) {
                     intakeTimer.reset();
-                    intake.setPower(1.0);
-                    intakeRunning = true;
-                }
-                if (!follower.isBusy()) {
-                    if (!intakeRunning) {
-                        intakeTimer.reset();
-                        intake.setPower(1.0);
-                        intakeRunning = true;
-                    }
                     autoState = AutoState.INTAKE3;
                 }
                 break;
 
             case INTAKE3:
-                if (intakeTimer.seconds() >= INTAKE_DURATION_SEC) {
-                    intake.setPower(0.0);
-                    intakeRunning = false;
-
+                if (intakeTimer.seconds() >= 1.0) {
                     follower.followPath(toShoot3, true);
                     flywheelPrepped = false;
                     autoState = AutoState.DRIVE_TO_SHOOT3;
