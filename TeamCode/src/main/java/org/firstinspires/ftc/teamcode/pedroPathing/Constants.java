@@ -4,6 +4,7 @@ import org.firstinspires.ftc.teamcode.RobotConfig;
 
 import com.pedropathing.control.FilteredPIDFCoefficients;
 import com.pedropathing.control.PIDFCoefficients;
+import com.pedropathing.control.PredictiveBrakingCoefficients;
 import com.pedropathing.follower.Follower;
 import com.pedropathing.follower.FollowerConstants;
 import com.pedropathing.ftc.FollowerBuilder;
@@ -19,20 +20,24 @@ import org.firstinspires.ftc.robotcore.external.navigation.DistanceUnit;
 public class Constants {
 
     public static FollowerConstants followerConstants = new FollowerConstants()
-            .mass(10.46)
-            .forwardZeroPowerAcceleration(-33.7)
-            .lateralZeroPowerAcceleration(-60.9)
-            .useSecondaryTranslationalPIDF(false)
-            .useSecondaryHeadingPIDF(false)
-            .useSecondaryDrivePIDF(false)
-            .drivePIDFSwitch(8)
-            .centripetalScaling(0)
-            .translationalPIDFCoefficients(new PIDFCoefficients(0.15, 0, 0.02, 0))
-            .headingPIDFCoefficients(new PIDFCoefficients(1, 0, 0.05, 0))
-            .drivePIDFCoefficients(
-                    new FilteredPIDFCoefficients(0.018, 0, 0.0025, 0.6, 0.1)
-            );
-    //.predictiveBrakingCoefficients(new PredictiveBrakingCoefficients(0.15, 0.146551085, 0.000622545779));
+            .headingPIDFCoefficients(new PIDFCoefficients(1, 0, 0.05, 0)) // tuned constants
+            .predictiveBrakingCoefficients(new PredictiveBrakingCoefficients(0.08, 0.14555, 0.00080012)) // (kP, kLinear, kQuadratic)
+            .centripetalScaling(0);
+
+//    public static FollowerConstants followerConstants = new FollowerConstants()
+//            .mass(10.46)
+//            .forwardZeroPowerAcceleration(-33.7)
+//            .lateralZeroPowerAcceleration(-60.9)
+//            .useSecondaryTranslationalPIDF(false)
+//            .useSecondaryHeadingPIDF(false)
+//            .useSecondaryDrivePIDF(false)
+//            .drivePIDFSwitch(8)
+//            .centripetalScaling(0)
+//            .translationalPIDFCoefficients(new PIDFCoefficients(0.15, 0, 0.02, 0))
+//            .headingPIDFCoefficients(new PIDFCoefficients(1, 0, 0.05, 0))
+//            .drivePIDFCoefficients(
+//                    new FilteredPIDFCoefficients(0.018, 0, 0.0025, 0.6, 0.1)
+//            );
 
     public static MecanumConstants driveConstants = new MecanumConstants()
             .leftFrontMotorName(RobotConfig.DRIVE_LEFT_FRONT)
@@ -62,7 +67,7 @@ public class Constants {
             .strafeEncoderDirection(GoBildaPinpointDriver.EncoderDirection.REVERSED);
 
     public static PathConstraints pathConstraints = new PathConstraints(
-            0.99,
+            0.95,
             50,
             1.25,
             1.25

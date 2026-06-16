@@ -25,7 +25,7 @@ public final class V3ClosePartnerConfig {
 
     // ===== Goal (BLUE-NATIVE) =====
     public static final double BLUE_TARGET_X = 5.0;
-    public static final double TARGET_Y = 139.0;
+    public static final double TARGET_Y = 126.0;
 
     // ===== Turret =====
     public static final double TURRET_CENTER_OFFSET_IN = 1.5;

@@ -1,6 +1,6 @@
 /*
  * ============================================================
- * Decode Near Auto - Rapid Fire
+ * Decode Near Auto
  * ============================================================
  * STARTING POSE:    (33.11118657953564, 133.85974018244295)
  * STARTING HEADING: 90 degrees (Math.toRadians(90))
@@ -130,16 +130,16 @@ public class NearAutoByYuvi extends LinearOpMode {
     private FeedState feedState = FeedState.IDLE;
 
     // ===== Timing Constants =====
-    private static final double FLYWHEEL_SPIN_UP_SEC = 1.5;
-    private static final double SHOT_DWELL_SEC       = 1.5;
-    private static final double INTAKE_3_DWELL_SEC   = 3.0;
-    private static final double INTAKE_4_DWELL_SEC   = 3.0;
+    private static final double FLYWHEEL_SPIN_UP_SEC = 1.2;
+    private static final double SHOT_DWELL_SEC       = 1;
+    private static final double INTAKE_3_DWELL_SEC   = 2.25;
+    private static final double INTAKE_4_DWELL_SEC   = 2.25;
     private static final double FEED_START_DELAY_SEC = 0.08;
     private static final double FEED_TOTAL_SEC       = 0.75;
 
     // ===== Shot Control =====
     private boolean enableDynamicShotControl = true;
-    private double hoodAngleDeg = 50.0;
+    private double hoodAngleDeg = 48.0;
     private double targetVelocityRad = 0.0;
 
     // ===== Paths =====
@@ -675,15 +675,15 @@ public class NearAutoByYuvi extends LinearOpMode {
     // POSE / PATH / HARDWARE INIT
     // -------------------------------------------------------------------------
     private void initPoses() {
-        startPose       = p(33.11118657953564, 125.85974018244295, 90.0);
-        shot1Pose       = p(33.0, 141.0, 90.0);
+        startPose       = p(33.11118657953564, 125.85974018244295, 180.0);
+        shot1Pose       = p(43.0, 110.0, 90.0);
         shot2Pose       = p(48.0, 99.4, 90.0);
-        intake1Control  = p(35.0, 85.0, 90.0);
-        intake1End      = p(18.0, 82.0, 90.0);
+        intake1Control  = p(45.0, 83.0, 90.0);
+        intake1End      = p(18.3, 82.2, 90.0);
         shot3Pose       = p(54.0, 93.0, 90.0);
         intake2Control  = p(33.0, 60.0, 90.0);
         intake2End      = p(18.0, 59.0, 90.0);
-        shot4Pose       = p(53.0, 90.0, 90.0);
+        shot4Pose       = p(30.0, 75.0, 90.0);
         intake3Pose     = p(8.0, 67.0, 90.0);
         shot5Pose       = p(63.0, 82.0, 90.0);
         parkPose        = p(56.0, 129.0, 270.0);
