@@ -50,7 +50,7 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
 import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
 
-@Autonomous(name = "Decode Near Auto - Rapid Fire", group = "Autonomous")
+@Autonomous(name = "Near Auto: Yuvi", group = "Autonomous")
 public class NearAutoByYuvi extends LinearOpMode {
 
     // ===== Hardware =====
@@ -675,7 +675,7 @@ public class NearAutoByYuvi extends LinearOpMode {
     // POSE / PATH / HARDWARE INIT
     // -------------------------------------------------------------------------
     private void initPoses() {
-        startPose       = p(33.11118657953564, 133.85974018244295, 90.0);
+        startPose       = p(33.11118657953564, 125.85974018244295, 90.0);
         shot1Pose       = p(33.0, 141.0, 90.0);
         shot2Pose       = p(48.0, 99.4, 90.0);
         intake1Control  = p(35.0, 85.0, 90.0);
