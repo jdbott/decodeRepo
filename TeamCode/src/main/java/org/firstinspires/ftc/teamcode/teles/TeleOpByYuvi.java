@@ -254,7 +254,7 @@ public class TeleOpByYuvi extends LinearOpMode {
         speedMod = Range.clip(speedMod, 0.25, 1.0);
 
         // Read sticks and apply deadzone to prevent drift
-        double forward = applyDeadzone(gamepad1.left_stick_y);
+        double forward = -applyDeadzone(gamepad1.left_stick_y);
         double strafe  =  applyDeadzone(gamepad1.left_stick_x);
         double turn    = -applyDeadzone(gamepad1.right_stick_x);
 
@@ -262,12 +262,6 @@ public class TeleOpByYuvi extends LinearOpMode {
         forward *= speedMod;
         strafe  *= speedMod;
         turn    *= speedMod;
-
-        // Field-centric: flip translation for red alliance
-        if (isRedAlliance) {
-            forward = -forward;
-            strafe  = -strafe;
-        }
 
         follower.setTeleOpDrive(forward, strafe, turn, false);
     }
