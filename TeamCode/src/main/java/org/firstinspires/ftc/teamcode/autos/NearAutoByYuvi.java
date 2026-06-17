@@ -234,15 +234,18 @@ public class NearAutoByYuvi extends LinearOpMode {
             // ---------------------------------------------------------
             // SHOT 1: (33, 141)
             // ---------------------------------------------------------
+            // ---------------------------------------------------------
+// SHOT 1
+// ---------------------------------------------------------
             case DRIVE_TO_SHOT_1:
-                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
+                if (!follower.isBusy()) {
+                    stateTimer.reset(); // Reset to accurately track spin-up at the spot
                     autoState = AutoState.PREPARE_SHOT_1;
-                    stateTimer.reset();
                 }
                 break;
 
             case PREPARE_SHOT_1:
-                if (!follower.isBusy()) {
+                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
                     autoState = AutoState.SHOOT_1;
@@ -250,23 +253,23 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_1:
-                if (feedState == FeedState.DONE && stateTimer.seconds() >= SHOT_DWELL_SEC) {
+                if (feedState == FeedState.DONE) {
                     endShotAndDriveToShot2();
                 }
                 break;
 
-            // ---------------------------------------------------------
-            // SHOT 2: (48, 99.4)
-            // ---------------------------------------------------------
+// ---------------------------------------------------------
+// SHOT 2
+// ---------------------------------------------------------
             case DRIVE_TO_SHOT_2:
-                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
-                    autoState = AutoState.PREPARE_SHOT_2;
+                if (!follower.isBusy()) {
                     stateTimer.reset();
+                    autoState = AutoState.PREPARE_SHOT_2;
                 }
                 break;
 
             case PREPARE_SHOT_2:
-                if (!follower.isBusy()) {
+                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
                     autoState = AutoState.SHOOT_2;
@@ -274,41 +277,41 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_2:
-                if (feedState == FeedState.DONE && stateTimer.seconds() >= SHOT_DWELL_SEC) {
-                    endShotAndDriveToIntake1();
+                if (feedState == FeedState.DONE) {
+                    endShotAndDriveToIntake1(); // Advanced to Intake 1
                 }
                 break;
 
-            // ---------------------------------------------------------
-            // INTAKE 1: through (35,85) -> (18,82)
-            // Path throttled to 0.5 so transit >2 s; intake runs whole path
-            // ---------------------------------------------------------
+// ---------------------------------------------------------
+// INTAKE 1
+// ---------------------------------------------------------
             case DRIVE_TO_INTAKE_1:
                 if (!follower.isBusy()) {
-                    intakeMotor.setPower(0.0);
                     stateTimer.reset();
                     autoState = AutoState.INTAKE_1;
                 }
                 break;
 
             case INTAKE_1:
-                if (stateTimer.seconds() >= 0.25) {
+                intakeMotor.setPower(1.0);
+                if (stateTimer.seconds() >= 0.4) {
+                    intakeMotor.setPower(0.0);
                     driveToShot3();
                 }
                 break;
 
-            // ---------------------------------------------------------
-            // SHOT 3: (54, 93)
-            // ---------------------------------------------------------
+// ---------------------------------------------------------
+// SHOT 3
+// ---------------------------------------------------------
             case DRIVE_TO_SHOT_3:
-                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
-                    autoState = AutoState.PREPARE_SHOT_3;
+                if (!follower.isBusy()) {
                     stateTimer.reset();
+                    autoState = AutoState.PREPARE_SHOT_3;
                 }
                 break;
 
             case PREPARE_SHOT_3:
-                if (!follower.isBusy()) {
+                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
                     autoState = AutoState.SHOOT_3;
@@ -316,40 +319,41 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_3:
-                if (feedState == FeedState.DONE && stateTimer.seconds() >= SHOT_DWELL_SEC) {
-                    endShotAndDriveToIntake2();
+                if (feedState == FeedState.DONE) {
+                    endShotAndDriveToIntake2(); // Advanced to Intake 2
                 }
                 break;
 
-            // ---------------------------------------------------------
-            // INTAKE 2: through (33,60) -> (18,59)
-            // ---------------------------------------------------------
+// ---------------------------------------------------------
+// INTAKE 2
+// ---------------------------------------------------------
             case DRIVE_TO_INTAKE_2:
                 if (!follower.isBusy()) {
-                    intakeMotor.setPower(0.0);
                     stateTimer.reset();
                     autoState = AutoState.INTAKE_2;
                 }
                 break;
 
             case INTAKE_2:
-                if (stateTimer.seconds() >= 0.25) {
+                intakeMotor.setPower(1.0);
+                if (stateTimer.seconds() >= 0.4) {
+                    intakeMotor.setPower(0.0);
                     driveToShot4();
                 }
                 break;
 
-            // ---------------------------------------------------------
-            // SHOT 4: (53, 90)
-            // ---------------------------------------------------------
+// ---------------------------------------------------------
+// SHOT 4
+// ---------------------------------------------------------
             case DRIVE_TO_SHOT_4:
-                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
-                    autoState = AutoState.PREPARE_SHOT_4;
+                if (!follower.isBusy()) {
                     stateTimer.reset();
+                    autoState = AutoState.PREPARE_SHOT_4;
                 }
                 break;
 
             case PREPARE_SHOT_4:
-                if (!follower.isBusy()) {
+                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
                     autoState = AutoState.SHOOT_4;
@@ -357,14 +361,14 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_4:
-                if (feedState == FeedState.DONE && stateTimer.seconds() >= SHOT_DWELL_SEC) {
-                    endShotAndDriveToIntake3();
+                if (feedState == FeedState.DONE) {
+                    endShotAndDriveToIntake3(); // Dropped the unnecessary standalone SHOT_DWELL_SEC
                 }
                 break;
 
-            // ---------------------------------------------------------
-            // INTAKE 3: at (8, 67) - 3 s dwell
-            // ---------------------------------------------------------
+// ---------------------------------------------------------
+// INTAKE 3
+// ---------------------------------------------------------
             case DRIVE_TO_INTAKE_3:
                 if (!follower.isBusy()) {
                     stateTimer.reset();
@@ -380,18 +384,18 @@ public class NearAutoByYuvi extends LinearOpMode {
                 }
                 break;
 
-            // ---------------------------------------------------------
-            // SHOT 5: (63, 82)
-            // ---------------------------------------------------------
+// ---------------------------------------------------------
+// SHOT 5
+// ---------------------------------------------------------
             case DRIVE_TO_SHOT_5:
-                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
-                    autoState = AutoState.PREPARE_SHOT_5;
+                if (!follower.isBusy()) {
                     stateTimer.reset();
+                    autoState = AutoState.PREPARE_SHOT_5;
                 }
                 break;
 
             case PREPARE_SHOT_5:
-                if (!follower.isBusy()) {
+                if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
                     autoState = AutoState.SHOOT_5;
@@ -399,8 +403,8 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_5:
-                if (feedState == FeedState.DONE && stateTimer.seconds() >= SHOT_DWELL_SEC) {
-                    endShotAndDriveToIntake4();
+                if (feedState == FeedState.DONE) {
+                    endShotAndDriveToIntake4(); // Advanced to final Intake 4 visit
                 }
                 break;
 
@@ -460,7 +464,7 @@ public class NearAutoByYuvi extends LinearOpMode {
         enableDynamicShotControl = false;
 
         // Throttle speed so path takes >2 s; intake starts now
-        follower.setMaxPower(0.5);
+        follower.setMaxPower(1.0);
         follower.followPath(toIntake1, false);
         intakeMotor.setPower(1.0);
 
@@ -487,7 +491,7 @@ public class NearAutoByYuvi extends LinearOpMode {
         armBlock();
         enableDynamicShotControl = false;
 
-        follower.setMaxPower(0.5);
+        follower.setMaxPower(1.0);
         follower.followPath(toIntake2, false);
         intakeMotor.setPower(1.0);
 
@@ -722,14 +726,14 @@ public class NearAutoByYuvi extends LinearOpMode {
         toShot2 = new Path(new BezierLine(shot1Pose, shot2Pose));
         toShot2.setTangentHeadingInterpolation();
 
-        toIntake1 = new Path(new BezierCurve(shot2Pose, intake1Control, intake1End));
-        toIntake1.setTangentHeadingInterpolation();
+        toIntake1 = new Path(new BezierLine(shot2Pose, intake1End));
+        toIntake1.setConstantHeadingInterpolation(Math.toRadians(90));
 
         toShot3 = new Path(new BezierLine(intake1End, shot3Pose));
-        toShot3.setTangentHeadingInterpolation();
+        toShot3.setConstantHeadingInterpolation(Math.toRadians(90));
 
-        toIntake2 = new Path(new BezierCurve(shot3Pose, intake2Control, intake2End));
-        toIntake2.setTangentHeadingInterpolation();
+        toIntake2 = new Path(new BezierLine(shot3Pose, intake2End));
+        toIntake2.setConstantHeadingInterpolation(Math.toRadians(90));
 
         toShot4 = new Path(new BezierLine(intake2End, shot4Pose));
         toShot4.setTangentHeadingInterpolation();
