@@ -321,6 +321,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_INTAKE1:
+                intake.setPower(1.0);
                 // Transition to intake state when close to the target coordinates
                 if (distanceTo(intake1EndPose) < 3.0) {
                     intakeTimer.reset();
@@ -337,6 +338,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_SHOOT1:
+                intake.setPower(0.0);
                 if (!flywheelPrepped && distanceTo(shoot1Pose) < FLYWHEEL_PREP_DIST) {
                     flywheelPrepTimer.reset();
                     flywheelPrepped = true;
@@ -367,6 +369,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_INTAKE2:
+                intake.setPower(1.0);
                 if (distanceTo(intake2EndPose) < 3.0) {
                     intakeTimer.reset();
                     autoState = AutoState.INTAKE2;
@@ -382,6 +385,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_SHOOT2:
+                intake.setPower(0.0);
                 if (!flywheelPrepped && distanceTo(shoot2Pose) < FLYWHEEL_PREP_DIST) {
                     flywheelPrepTimer.reset();
                     flywheelPrepped = true;
@@ -410,6 +414,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_INTAKE3:
+                intake.setPower(1.0);
                 if (distanceTo(intake3EndPose) < 3.0) {
                     intakeTimer.reset();
                     autoState = AutoState.INTAKE3;
@@ -425,6 +430,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_SHOOT3:
+                intake.setPower(0.0);
                 if (!flywheelPrepped && distanceTo(shoot3Pose) < FLYWHEEL_PREP_DIST) {
                     flywheelPrepTimer.reset();
                     flywheelPrepped = true;

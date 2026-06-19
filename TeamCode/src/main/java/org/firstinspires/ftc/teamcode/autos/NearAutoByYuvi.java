@@ -2,8 +2,8 @@
  * ============================================================
  * Decode Near Auto
  * ============================================================
- * STARTING POSE:    (33.11118657953564, 133.85974018244295)
- * STARTING HEADING: 90 degrees (Math.toRadians(90))
+ * STARTING POSE:    (33.11118657953564, 125.85974018244295)
+ * STARTING HEADING: 180 degrees (Math.toRadians(90))
  * ============================================================
  * SHOOTING COORDINATES (5 stops):
  *   1. (33.0, 141.0)
@@ -238,6 +238,7 @@ public class NearAutoByYuvi extends LinearOpMode {
 // SHOT 1
 // ---------------------------------------------------------
             case DRIVE_TO_SHOT_1:
+                intakeMotor.setPower(0.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset(); // Reset to accurately track spin-up at the spot
                     autoState = AutoState.PREPARE_SHOT_1;
@@ -262,6 +263,7 @@ public class NearAutoByYuvi extends LinearOpMode {
 // SHOT 2
 // ---------------------------------------------------------
             case DRIVE_TO_SHOT_2:
+                intakeMotor.setPower(0.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset();
                     autoState = AutoState.PREPARE_SHOT_2;
@@ -286,6 +288,7 @@ public class NearAutoByYuvi extends LinearOpMode {
 // INTAKE 1
 // ---------------------------------------------------------
             case DRIVE_TO_INTAKE_1:
+                intakeMotor.setPower(1.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset();
                     autoState = AutoState.INTAKE_1;
@@ -304,6 +307,7 @@ public class NearAutoByYuvi extends LinearOpMode {
 // SHOT 3
 // ---------------------------------------------------------
             case DRIVE_TO_SHOT_3:
+                intakeMotor.setPower(0.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset();
                     autoState = AutoState.PREPARE_SHOT_3;
@@ -328,6 +332,7 @@ public class NearAutoByYuvi extends LinearOpMode {
 // INTAKE 2
 // ---------------------------------------------------------
             case DRIVE_TO_INTAKE_2:
+                intakeMotor.setPower(1.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset();
                     autoState = AutoState.INTAKE_2;
@@ -346,6 +351,7 @@ public class NearAutoByYuvi extends LinearOpMode {
 // SHOT 4
 // ---------------------------------------------------------
             case DRIVE_TO_SHOT_4:
+                intakeMotor.setPower(0.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset();
                     autoState = AutoState.PREPARE_SHOT_4;
@@ -370,6 +376,7 @@ public class NearAutoByYuvi extends LinearOpMode {
 // INTAKE 3
 // ---------------------------------------------------------
             case DRIVE_TO_INTAKE_3:
+                intakeMotor.setPower(1.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset();
                     autoState = AutoState.WAIT_AT_INTAKE_3;
@@ -388,6 +395,7 @@ public class NearAutoByYuvi extends LinearOpMode {
 // SHOT 5
 // ---------------------------------------------------------
             case DRIVE_TO_SHOT_5:
+                intakeMotor.setPower(0.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset();
                     autoState = AutoState.PREPARE_SHOT_5;
@@ -412,6 +420,7 @@ public class NearAutoByYuvi extends LinearOpMode {
             // INTAKE 4: at (8, 67) again - 3 s dwell
             // ---------------------------------------------------------
             case DRIVE_TO_INTAKE_4:
+                intakeMotor.setPower(1.0);
                 if (!follower.isBusy()) {
                     stateTimer.reset();
                     autoState = AutoState.WAIT_AT_INTAKE_4;
