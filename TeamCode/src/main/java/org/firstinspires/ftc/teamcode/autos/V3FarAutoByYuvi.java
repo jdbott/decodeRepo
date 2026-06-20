@@ -356,6 +356,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT1:
+                intake.setPower(0.5);
                 if (feedState == FeedState.DONE) {
                     feeder.clutchOut();
                     feeder.armBlock();
@@ -403,6 +404,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT2:
+                intake.setPower(0.5);
                 if (feedState == FeedState.DONE) {
                     feeder.clutchOut();
                     feeder.armBlock();
@@ -448,6 +450,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT3:
+                intake.setPower(0.5);
                 if (feedState == FeedState.DONE) {
                     feeder.clutchOut();
                     feeder.armBlock();
@@ -459,6 +462,7 @@ public class V3FarAutoByYuvi extends LinearOpMode {
                 break;
 
             case DRIVE_TO_END:
+                intake.setPower(0.0);
                 if (!follower.isBusy()) {
                     autoState = AutoState.DONE;
                 }

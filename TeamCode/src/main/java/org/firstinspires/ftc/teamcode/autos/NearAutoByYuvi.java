@@ -246,6 +246,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case PREPARE_SHOT_1:
+                intakeMotor.setPower(0.5);
                 if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
@@ -254,6 +255,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_1:
+                intakeMotor.setPower(0.5);
                 if (feedState == FeedState.DONE) {
                     endShotAndDriveToShot2();
                 }
@@ -271,6 +273,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case PREPARE_SHOT_2:
+                intakeMotor.setPower(0.5);
                 if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
@@ -279,6 +282,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_2:
+                intakeMotor.setPower(0.5);
                 if (feedState == FeedState.DONE) {
                     endShotAndDriveToIntake1(); // Advanced to Intake 1
                 }
@@ -315,6 +319,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case PREPARE_SHOT_3:
+                intakeMotor.setPower(0.5);
                 if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
@@ -323,6 +328,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_3:
+                intakeMotor.setPower(0.5);
                 if (feedState == FeedState.DONE) {
                     endShotAndDriveToIntake2(); // Advanced to Intake 2
                 }
@@ -359,6 +365,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case PREPARE_SHOT_4:
+                intakeMotor.setPower(0.5);
                 if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
@@ -367,6 +374,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_4:
+                intakeMotor.setPower(0.5);
                 if (feedState == FeedState.DONE) {
                     endShotAndDriveToIntake3(); // Dropped the unnecessary standalone SHOT_DWELL_SEC
                 }
@@ -403,6 +411,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case PREPARE_SHOT_5:
+                intakeMotor.setPower(0.5);
                 if (stateTimer.seconds() >= FLYWHEEL_SPIN_UP_SEC) {
                     startFeedSequence();
                     stateTimer.reset();
@@ -411,6 +420,7 @@ public class NearAutoByYuvi extends LinearOpMode {
                 break;
 
             case SHOOT_5:
+                intakeMotor.setPower(0.5);
                 if (feedState == FeedState.DONE) {
                     endShotAndDriveToIntake4(); // Advanced to final Intake 4 visit
                 }
@@ -439,6 +449,7 @@ public class NearAutoByYuvi extends LinearOpMode {
             // PARK
             // ---------------------------------------------------------
             case DRIVE_TO_PARK:
+                intakeMotor.setPower(0.0);
                 if (!follower.isBusy()) {
                     autoState = AutoState.DONE;
                 }
@@ -692,11 +703,11 @@ public class NearAutoByYuvi extends LinearOpMode {
         shot1Pose       = p(43.0, 110.0, 90.0);
         shot2Pose       = p(48.0, 99.4, 90.0);
         intake1Control  = p(45.0, 83.0, 90.0);
-        intake1End      = p(18.3, 82.2, 90.0);
+        intake1End      = p(18.3, 79.2, 90.0);
         shot3Pose       = p(54.0, 93.0, 90.0);
         intake2Control  = p(33.0, 60.0, 90.0);
-        intake2End      = p(18.0, 59.0, 90.0);
-        shot4Pose       = p(30.0, 75.0, 90.0);
+        intake2End      = p(18.0, 54.0, 90.0);
+        shot4Pose       = p(45.0, 75.0, 90.0);
         intake3Pose     = p(8.0, 67.0, 90.0);
         shot5Pose       = p(63.0, 82.0, 90.0);
         parkPose        = p(56.0, 129.0, 270.0);
