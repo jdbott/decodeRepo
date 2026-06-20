@@ -1,3 +1,5 @@
+//Starting Point/position: (56,8) facing 90
+
 package org.firstinspires.ftc.teamcode.autos;
 
 import org.firstinspires.ftc.teamcode.RobotConfig;
