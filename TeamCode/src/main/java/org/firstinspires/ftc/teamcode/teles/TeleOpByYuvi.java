@@ -1,5 +1,3 @@
-//FIX CONTROLS
-
 package org.firstinspires.ftc.teamcode.teles;
 
 import com.pedropathing.follower.Follower;
@@ -416,21 +414,19 @@ public class TeleOpByYuvi extends LinearOpMode {
 
         if (!triggerLocked && triggerValue > TRIGGER_ON_THRESHOLD) {
             triggerLocked = true;
+            rapidFireActive = true;          // Always rapid-fire; no 500 ms wait
             startShot();
             triggerHoldTimer.reset();
-            rapidFireActive = false;
             rapidFireRumbled = false;
         } else if (triggerLocked) {
-            if (!rapidFireActive && triggerHoldTimer.milliseconds() > 500) {
-                rapidFireActive = true;
-                // Rumble exactly once per activation to avoid spamming the DS thread
-                if (!rapidFireRumbled) {
-                    try {
-                        gamepad1.rumble(150);
-                    } catch (Exception ignored) {}
-                    rapidFireRumbled = true;
-                }
+            // Rumble once per activation to indicate rapid fire
+            if (!rapidFireRumbled) {
+                try {
+                    gamepad1.rumble(150);
+                } catch (Exception ignored) {}
+                rapidFireRumbled = true;
             }
+
             if (feedState == FeedState.IDLE && rapidFireActive) {
                 startShot();
             }
