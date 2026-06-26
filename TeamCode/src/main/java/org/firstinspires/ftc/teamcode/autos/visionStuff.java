@@ -1,4 +1,4 @@
-//lot of issues btw, js ignore them all, its gonna go in the limelight software
+//lot of issues btw, js ignore them all, (python) its gonna go in the limelight software
 
 
 
