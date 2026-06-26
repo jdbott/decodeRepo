@@ -4,25 +4,23 @@ import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 
-import org.firstinspires.ftc.teamcode.RobotConfig;
-
 public class offSeasonIntake {
+
+    private static final String LEFT_MOTOR_NAME = "intake_left";
+    private static final String RIGHT_MOTOR_NAME = "intake_right";
 
     private final DcMotorEx leftMotor;
     private final DcMotorEx rightMotor;
 
     public offSeasonIntake(HardwareMap hardwareMap) {
-        leftMotor = hardwareMap.get(DcMotorEx.class, RobotConfig.INTAKE_LEFT_MOTOR);
-        rightMotor = hardwareMap.get(DcMotorEx.class, RobotConfig.INTAKE_RIGHT_MOTOR);
+        leftMotor = hardwareMap.get(DcMotorEx.class, LEFT_MOTOR_NAME);
+        rightMotor = hardwareMap.get(DcMotorEx.class, RIGHT_MOTOR_NAME);
 
         leftMotor.setDirection(DcMotorSimple.Direction.FORWARD);
         rightMotor.setDirection(DcMotorSimple.Direction.REVERSE);
 
         leftMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
         rightMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
-
-        leftMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
-        rightMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
     }
 
     public void setPower(double power) {
