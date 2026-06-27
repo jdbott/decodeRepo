@@ -11,7 +11,7 @@ public class offLinearSlides {
 
     // Mechanical constants — tune for your spool / lead screw
     // goBILDA 435 RPM = 384.5 ticks/rev; 117 RPM = 1425.1 ticks/rev
-    private static final double TICKS_PER_REV = 384.5;
+    private static final double TICKS_PER_REV = 537.7;
     private static final double SPOOL_DIAMETER_IN = 2.0;
     private static final double INCHES_PER_REV = Math.PI * SPOOL_DIAMETER_IN;
     private static final double TICKS_PER_INCH = TICKS_PER_REV / INCHES_PER_REV;
