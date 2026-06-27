@@ -38,7 +38,7 @@ public class offLinearSlides {
 
     /** Default constructor. Change "linearSlide" to match your robot config name. */
     public offLinearSlides(HardwareMap hardwareMap) {
-        this(hardwareMap, "linearSlide", false);
+        this(hardwareMap, "cool", false);
     }
 
     /** Configurable constructor. */
