@@ -6,8 +6,8 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
 
 public class offSeasonIntake {
 
-    private static final String LEFT_MOTOR_NAME = "intake_left";
-    private static final String RIGHT_MOTOR_NAME = "intake_right";
+    private static final String LEFT_MOTOR_NAME = "cool";
+    private static final String RIGHT_MOTOR_NAME = "cool";
 
     private final DcMotorEx leftMotor;
     private final DcMotorEx rightMotor;
