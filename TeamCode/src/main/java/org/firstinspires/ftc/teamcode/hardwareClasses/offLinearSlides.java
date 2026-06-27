@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.Range;
 
-public class LinearSlides {
+public class offLinearSlides {
 
     private DcMotorEx slideMotor;
 
@@ -37,12 +37,12 @@ public class LinearSlides {
     public static final double HIGH = 18.0;
 
     /** Default constructor. Change "linearSlide" to match your robot config name. */
-    public LinearSlides(HardwareMap hardwareMap) {
+    public offLinearSlides(HardwareMap hardwareMap) {
         this(hardwareMap, "linearSlide", false);
     }
 
     /** Configurable constructor. */
-    public LinearSlides(HardwareMap hardwareMap, String motorName, boolean reversed) {
+    public offLinearSlides(HardwareMap hardwareMap, String motorName, boolean reversed) {
         slideMotor = hardwareMap.get(DcMotorEx.class, motorName);
         slideMotor.setDirection(reversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         slideMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
