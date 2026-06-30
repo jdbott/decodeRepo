@@ -105,20 +105,27 @@ public class offLinearSlides {
         double current = getCurrentPositionInches();
         double error = targetPositionInches - current;
 
+        // DEADBAND: stop completely when close enough
         if (Math.abs(error) < 0.15) {
             slideMotor.setPower(0);
             slideBusy = false;
+            positionMode = false;  // CRITICAL: stop hunting
             return;
         }
 
         double power = kP * error;
 
-        if (kF != 0) {
+        // Feedforward only helps overcome static friction;
+        // remove it near the target to reduce overshoot
+        if (Math.abs(error) > 1.0) {
             power += Math.signum(error) * kF;
         }
 
-        if (power > 0 && power < minPower) power = minPower;
-        if (power < 0 && power > -minPower) power = -minPower;
+        // Only enforce minPower for moves larger than deadband;
+        // use a much smaller floor or none at all
+        if (Math.abs(power) < minPower && Math.abs(error) > 0.5) {
+            power = Math.signum(power) * minPower;
+        }
 
         slideMotor.setPower(Range.clip(power, -1.0, 1.0));
         slideBusy = true;

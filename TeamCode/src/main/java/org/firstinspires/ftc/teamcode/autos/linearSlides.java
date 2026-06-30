@@ -19,15 +19,21 @@ public class linearSlides extends LinearOpMode {
         for (int i = 0; i < 3; i++) {
             // Go up
             slides.goToPreset(offLinearSlides.HIGH);
-            while (opModeIsActive() && !slides.isAtTarget()) {
+            while (opModeIsActive() && slides.isBusy()) {
                 slides.update();
+                telemetry.addData("Error", slides.getError());
+                telemetry.update();
             }
+            sleep(200); // pause AFTER reaching target, inside the loop
 
             // Go down
             slides.goToPreset(offLinearSlides.RETRACTED);
-            while (opModeIsActive() && !slides.isAtTarget()) {
+            while (opModeIsActive() && slides.isBusy()) {  // fixed: isBusy(), not !isAtTarget()
                 slides.update();
+                telemetry.addData("Error", slides.getError());
+                telemetry.update();
             }
+            sleep(200); // pause after retraction too
         }
 
         slides.stop();
