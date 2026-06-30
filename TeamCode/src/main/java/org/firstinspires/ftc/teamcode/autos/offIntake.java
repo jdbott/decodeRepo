@@ -6,7 +6,7 @@ import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import org.firstinspires.ftc.teamcode.hardwareClasses.offSeasonIntake;
 
 @Autonomous(name = "Intake Run 5s", group = "Autonomous")//runs for 5 seconds.
-public class basicIntakeAuto extends LinearOpMode {
+public class offIntake extends LinearOpMode {
 
     private offSeasonIntake intake;
 

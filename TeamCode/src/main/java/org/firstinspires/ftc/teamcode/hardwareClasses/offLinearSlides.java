@@ -105,23 +105,19 @@ public class offLinearSlides {
         double current = getCurrentPositionInches();
         double error = targetPositionInches - current;
 
-        // DEADBAND: fully exit position mode when close enough
+        // DEADBAND: fully disarm the controller
         if (Math.abs(error) < 0.15) {
             slideMotor.setPower(0);
             slideBusy = false;
-            positionMode = false;  // CRITICAL: prevents re-engagement
+            positionMode = false;  // THIS IS THE FIX
             return;
         }
 
-        double power = kP * error;
+        // Simple P-control with feedforward
+        double power = (kP * error) + (Math.signum(error) * kF);
 
-        // Feedforward only on large moves to prevent overshoot
-        if (Math.abs(error) > 1.0) {
-            power += Math.signum(error) * kF;
-        }
-
-        // Only apply minPower when we're clearly outside the deadband
-        if (Math.abs(power) < minPower && Math.abs(error) > 0.5) {
+        // Only enforce minimum power when we're clearly outside deadband
+        if (Math.abs(error) > 0.5 && Math.abs(power) < minPower) {
             power = Math.signum(power) * minPower;
         }
 

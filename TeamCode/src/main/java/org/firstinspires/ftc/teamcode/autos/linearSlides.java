@@ -36,6 +36,15 @@ public class linearSlides extends LinearOpMode {
             sleep(200); // pause after retraction too
         }
 
+        while (opModeIsActive() && slides.isBusy()) {
+            slides.update();
+            telemetry.addData("pos", "%.2f", slides.getCurrentPositionInches());
+            telemetry.addData("target", "%.2f", slides.getTargetPosition());
+            telemetry.addData("error", "%.3f", slides.getError());
+            telemetry.addData("busy", slides.isBusy());
+            telemetry.update();
+        }
+
         slides.stop();
     }
 }
