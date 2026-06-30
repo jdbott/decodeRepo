@@ -7,28 +7,17 @@ import com.qualcomm.robotcore.util.Range;
 
 public class offLinearSlides {
 
-    private DcMotorEx slideMotor;
+    private final DcMotorEx slideMotor;
 
-    // Mechanical constants — tune for your spool / lead screw
-    // goBILDA 435 RPM = 384.5 ticks/rev; 117 RPM = 1425.1 ticks/rev
+    // goBILDA 312 RPM = 537.7 ticks/rev.
     private static final double TICKS_PER_REV = 537.7;
     private static final double SPOOL_DIAMETER_IN = 2.0;
     private static final double INCHES_PER_REV = Math.PI * SPOOL_DIAMETER_IN;
     private static final double TICKS_PER_INCH = TICKS_PER_REV / INCHES_PER_REV;
 
-    // Control tunables
-    private double kP = 0.008;
-    private double kF = 0.03;
-    private double minPower = 0.04;
-
-    // Soft limits
     private double maxExtensionInches = 24.0;
     private double minExtensionInches = 0.0;
-
-    // State
-    private double targetPositionInches = 0.0;
-    private boolean positionMode = false;
-    private boolean slideBusy = false;
+    private double maxPower = 1.0;
 
     // Presets
     public static final double RETRACTED = 0.0;
@@ -36,41 +25,37 @@ public class offLinearSlides {
     public static final double MID = 12.0;
     public static final double HIGH = 18.0;
 
-    /** Default constructor. Change "linearSlide" to match your robot config name. */
     public offLinearSlides(HardwareMap hardwareMap) {
         this(hardwareMap, "cool", false);
     }
 
-    /** Configurable constructor. */
     public offLinearSlides(HardwareMap hardwareMap, String motorName, boolean reversed) {
         slideMotor = hardwareMap.get(DcMotorEx.class, motorName);
         slideMotor.setDirection(reversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
-        slideMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
-        slideMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
         slideMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
+
+        // Reset and prepare for hardware position control
+        slideMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
+        slideMotor.setTargetPosition(0);
+        slideMotor.setMode(DcMotorEx.RunMode.RUN_TO_POSITION);
     }
 
-    // =========================
-    // Configuration
-    // =========================
-    public void setKP(double kP) { this.kP = kP; }
-    public void setKF(double kF) { this.kF = kF; }
-    public void setMinPower(double power) { this.minPower = Math.abs(power); }
+    public void setMaxPower(double power) {
+        this.maxPower = Range.clip(Math.abs(power), 0.0, 1.0);
+    }
 
     public void setLimits(double minInches, double maxInches) {
         this.minExtensionInches = minInches;
         this.maxExtensionInches = maxInches;
     }
 
-    // =========================
-    // Manual control
-    // =========================
+    /** Manual control. Switches out of position mode. */
     public void setPower(double power) {
-        positionMode = false;
-        slideBusy = false;
+        if (slideMotor.getMode() == DcMotorEx.RunMode.RUN_TO_POSITION) {
+            slideMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
+        }
 
         double current = getCurrentPositionInches();
-
         if ((current >= maxExtensionInches && power > 0) ||
                 (current <= minExtensionInches && power < 0)) {
             slideMotor.setPower(0);
@@ -80,79 +65,48 @@ public class offLinearSlides {
         slideMotor.setPower(Range.clip(power, -1.0, 1.0));
     }
 
-    public void up()   { setPower(1.0); }
-    public void down() { setPower(-1.0); }
+    public void up()   { setPower(maxPower); }
+    public void down() { setPower(-maxPower); }
 
-    // =========================
-    // Position control
-    // =========================
+    /** Set target position in inches. Motor controller handles PID internally. */
     public void setTargetPosition(double inches) {
-        targetPositionInches = Range.clip(inches, minExtensionInches, maxExtensionInches);
-        positionMode = true;
-        slideBusy = true;
+        inches = Range.clip(inches, minExtensionInches, maxExtensionInches);
+        int targetTicks = (int) Math.round(inches * TICKS_PER_INCH);
+
+        slideMotor.setTargetPosition(targetTicks);
+        slideMotor.setMode(DcMotorEx.RunMode.RUN_TO_POSITION);
+        slideMotor.setPower(maxPower);
     }
 
     public void goToPreset(double presetInches) {
         setTargetPosition(presetInches);
     }
 
-    // =========================
-    // Main update loop
-    // =========================
+    /** Legacy no-op. Position control is now handled by the motor controller at ~1kHz. */
     public void update() {
-        if (!positionMode) return;
-
-        double current = getCurrentPositionInches();
-        double error = targetPositionInches - current;
-
-        // DEADBAND: fully disarm the controller
-        if (Math.abs(error) < 0.15) {
-            slideMotor.setPower(0);
-            slideBusy = false;
-            positionMode = false;  // THIS IS THE FIX
-            return;
-        }
-
-        // Simple P-control with feedforward
-        double power = (kP * error) + (Math.signum(error) * kF);
-
-        // Only enforce minimum power when we're clearly outside deadband
-        if (Math.abs(error) > 0.5 && Math.abs(power) < minPower) {
-            power = Math.signum(power) * minPower;
-        }
-
-        slideMotor.setPower(Range.clip(power, -1.0, 1.0));
-        slideBusy = true;
+        // Nothing needed — the REV hub PID runs in hardware.
     }
 
-    // =========================
-    // Zeroing / reset
-    // =========================
     public void zeroSlide() {
         slideMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
-        slideMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
-        targetPositionInches = 0.0;
-        positionMode = false;
-        slideBusy = false;
+        slideMotor.setTargetPosition(0);
+        slideMotor.setMode(DcMotorEx.RunMode.RUN_TO_POSITION);
     }
 
-    // =========================
-    // Accessors
-    // =========================
     public double getCurrentPositionInches() {
         return slideMotor.getCurrentPosition() / TICKS_PER_INCH;
     }
 
     public double getTargetPosition() {
-        return targetPositionInches;
+        return slideMotor.getTargetPosition() / TICKS_PER_INCH;
     }
 
     public double getError() {
-        return targetPositionInches - getCurrentPositionInches();
+        return getTargetPosition() - getCurrentPositionInches();
     }
 
     public boolean isBusy() {
-        return slideBusy;
+        return slideMotor.isBusy();
     }
 
     public boolean isAtTarget() {
@@ -161,7 +115,5 @@ public class offLinearSlides {
 
     public void stop() {
         slideMotor.setPower(0);
-        positionMode = false;
-        slideBusy = false;
     }
 }

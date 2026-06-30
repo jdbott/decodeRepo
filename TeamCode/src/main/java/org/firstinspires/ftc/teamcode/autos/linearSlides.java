@@ -13,6 +13,7 @@ public class linearSlides extends LinearOpMode {
     @Override
     public void runOpMode() {
         slides = new offLinearSlides(hardwareMap);
+        slides.setMaxPower(0.8); // Optional: cap speed for smoother motion
 
         waitForStart();
 
@@ -20,29 +21,24 @@ public class linearSlides extends LinearOpMode {
             // Go up
             slides.goToPreset(offLinearSlides.HIGH);
             while (opModeIsActive() && slides.isBusy()) {
-                slides.update();
-                telemetry.addData("Error", slides.getError());
+                telemetry.addData("Loop", i + 1);
+                telemetry.addData("Target", "%.2f", slides.getTargetPosition());
+                telemetry.addData("Current", "%.2f", slides.getCurrentPositionInches());
+                telemetry.addData("Error", "%.3f", slides.getError());
                 telemetry.update();
             }
-            sleep(200); // pause AFTER reaching target, inside the loop
+            sleep(200);
 
             // Go down
             slides.goToPreset(offLinearSlides.RETRACTED);
-            while (opModeIsActive() && slides.isBusy()) {  // fixed: isBusy(), not !isAtTarget()
-                slides.update();
-                telemetry.addData("Error", slides.getError());
+            while (opModeIsActive() && slides.isBusy()) {
+                telemetry.addData("Loop", i + 1);
+                telemetry.addData("Target", "%.2f", slides.getTargetPosition());
+                telemetry.addData("Current", "%.2f", slides.getCurrentPositionInches());
+                telemetry.addData("Error", "%.3f", slides.getError());
                 telemetry.update();
             }
-            sleep(200); // pause after retraction too
-        }
-
-        while (opModeIsActive() && slides.isBusy()) {
-            slides.update();
-            telemetry.addData("pos", "%.2f", slides.getCurrentPositionInches());
-            telemetry.addData("target", "%.2f", slides.getTargetPosition());
-            telemetry.addData("error", "%.3f", slides.getError());
-            telemetry.addData("busy", slides.isBusy());
-            telemetry.update();
+            sleep(200);
         }
 
         slides.stop();
