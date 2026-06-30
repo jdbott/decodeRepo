@@ -11,7 +11,7 @@ import com.qualcomm.robotcore.hardware.HardwareMap;
  * Use unique names like "coolSlide", "coolDeposit", "coolLeft", "coolRight"
  * and update the strings below accordingly.
  */
-public class MasterRobot {
+public class offMasterRobot {
 
     /** Stored reference to the hardware map */
     public HardwareMap hardwareMap;
@@ -31,7 +31,7 @@ public class MasterRobot {
      * Initializes all subsystems.
      * @param hwMap The hardwareMap from your OpMode
      */
-    public MasterRobot(HardwareMap hwMap) {
+    public offMasterRobot(HardwareMap hwMap) {
         this.hardwareMap = hwMap;
 
         // All motors use the name "cool" as requested
