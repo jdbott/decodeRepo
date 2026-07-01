@@ -16,7 +16,7 @@ public class offOuttake extends LinearOpMode {
 
         waitForStart();
 
-        intake.out();//using intake hardware class
+        intake.in();//using intake hardware class (ik in sounds weird but js look at the outtake cad and ull understand)
         sleep(5000);
         intake.stop();
     }
