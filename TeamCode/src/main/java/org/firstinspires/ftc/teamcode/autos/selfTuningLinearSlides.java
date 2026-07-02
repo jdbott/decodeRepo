@@ -15,7 +15,8 @@ public class selfTuningLinearSlides extends LinearOpMode {
         slides = new offLinearSlides(hardwareMap);
         slides.setMaxPower(1.0);
         slides.setLimits(0.0, 26.0);
-        slides.setProfileConstraints(40.0, 90.0); // aggressive for tuning
+        slides.setProfileConstraints(40.0, 90.0);
+        slides.setkS(0.15); // Ensure validation step can break static friction
 
         telemetry.addLine("=== SLIDE AUTO-TUNER ===");
         telemetry.addLine("Make sure the slide area is clear!");
@@ -24,7 +25,6 @@ public class selfTuningLinearSlides extends LinearOpMode {
 
         waitForStart();
 
-        // Begin self-tuning
         slides.startAutoTune();
 
         while (opModeIsActive() && !slides.isTuningComplete()) {
@@ -35,17 +35,15 @@ public class selfTuningLinearSlides extends LinearOpMode {
             telemetry.update();
         }
 
-        // Tuning complete
         telemetry.addLine();
         telemetry.addLine("=== TUNING COMPLETE ===");
-        telemetry.addLine("Copy this into your code:");
+        telemetry.addLine("Copy this into your hardware class:");
         telemetry.addLine(slides.getTunedGainsString());
         telemetry.addLine();
         telemetry.addLine("Press STOP to end.");
         slides.addTelemetry(telemetry);
         telemetry.update();
 
-        // Hold telemetry on screen
         while (opModeIsActive()) {
             idle();
         }

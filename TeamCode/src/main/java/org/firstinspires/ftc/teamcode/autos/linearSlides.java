@@ -17,14 +17,12 @@ public class linearSlides extends LinearOpMode {
         slides.setLimits(0.0, 26.0);
         slides.setProfileConstraints(35, 80);
 
-        // IF SLIDES GO THE WRONG WAY, UNCOMMENT THE NEXT LINE:
+        // If slides go the wrong way, uncomment this:
         // slides.reverseMotorDirection();
 
-        // Static friction compensation — start at 0.15, increase if it still stalls
         slides.setkS(0.15);
 
         telemetry.addLine("Ready. Press START.");
-        telemetry.addLine("If direction is wrong, uncomment reverseMotorDirection()");
         telemetry.update();
 
         waitForStart();
@@ -40,7 +38,7 @@ public class linearSlides extends LinearOpMode {
                 telemetry.addData("Target", "%.2f", slides.getTargetPosition());
                 telemetry.addData("Current", "%.2f", slides.getCurrentPositionInches());
                 telemetry.addData("Error", "%.3f", slides.getError());
-                telemetry.addData("Power", "%.3f", telemetry); // shows actual commanded power
+                slides.addTelemetry(telemetry); // Shows Power, kP, kS, etc.
                 telemetry.update();
             }
             sleep(200);
@@ -55,6 +53,7 @@ public class linearSlides extends LinearOpMode {
                 telemetry.addData("Target", "%.2f", slides.getTargetPosition());
                 telemetry.addData("Current", "%.2f", slides.getCurrentPositionInches());
                 telemetry.addData("Error", "%.3f", slides.getError());
+                slides.addTelemetry(telemetry);
                 telemetry.update();
             }
             sleep(200);
