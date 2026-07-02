@@ -38,10 +38,10 @@ public class offLinearSlides {  //SELF TUNING
     public static final double HIGH = 26.0;
 
     /* ================= PID & FEEDFORWARD ================= */
-    private double kP = 0.0;
-    private double kI = 0.0;
-    private double kD = 0.0;
-    private double kV = 0.0;  // velocity feedforward
+    private double kP = 0.08;
+    private double kI = 0.00000;
+    private double kD = 0.004;
+    private double kV = 0.0366;  // velocity feedforward
     private double kA = 0.0;  // acceleration feedforward
     private double kG = 0.0;  // gravity feedforward (set if vertical)
 

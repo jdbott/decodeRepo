@@ -17,8 +17,6 @@ public class linearSlides extends LinearOpMode {
         slides.setLimits(0.0, 26.0);          // Allow full 26" height
         slides.setProfileConstraints(35, 80); // Max speed / accel
 
-        // If you already ran the tuner and have values, paste them here:
-        // slides.setPID(0.045, 0.012, 0.008);
 
         waitForStart();
 
