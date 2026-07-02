@@ -21,9 +21,9 @@ public class offLinearSlides {
 
     // Presets
     public static final double RETRACTED = 0.0;
-    public static final double LOW = 6.0;
-    public static final double MID = 12.0;
-    public static final double HIGH = 18.0;
+    public static final double LOW = 8.5;
+    public static final double MID = 17.0;
+    public static final double HIGH = 26.0;
 
     public offLinearSlides(HardwareMap hardwareMap) {
         this(hardwareMap, "cool", false);

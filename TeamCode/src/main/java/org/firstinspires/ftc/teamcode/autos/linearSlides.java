@@ -13,13 +13,21 @@ public class linearSlides extends LinearOpMode {
     @Override
     public void runOpMode() {
         slides = new offLinearSlides(hardwareMap);
-        slides.setMaxPower(0.8); // Optional: cap speed for smoother motion
+
+        // 1. MAX MOTOR POWER
+        slides.setMaxPower(1.0);
+
+        // 2. SET FULL HEIGHT LIMIT
+        // Your class defaults to maxExtensionInches = 24.0, but HIGH = 26.0.
+        // If your slides physically reach 26 inches, raise the limit:
+        slides.setLimits(0.0, 22.0);
 
         waitForStart();
 
         for (int i = 0; i < 3; i++) {
-            // Go up
+            // Go to FULL HEIGHT (26.0 inches)
             slides.goToPreset(offLinearSlides.HIGH);
+
             while (opModeIsActive() && slides.isBusy()) {
                 telemetry.addData("Loop", i + 1);
                 telemetry.addData("Target", "%.2f", slides.getTargetPosition());
@@ -29,7 +37,7 @@ public class linearSlides extends LinearOpMode {
             }
             sleep(200);
 
-            // Go down
+            // Go down to RETRACTED
             slides.goToPreset(offLinearSlides.RETRACTED);
             while (opModeIsActive() && slides.isBusy()) {
                 telemetry.addData("Loop", i + 1);
