@@ -14,14 +14,11 @@ import java.util.ArrayList;
  * Self-tuning linear slides with trapezoidal motion profiling.
  * Uses a software PID + feedforward controller for maximum performance.
  */
-public class offLinearSlides {  //SELF TUNING
+public class offLinearSlides {
 
     private final DcMotorEx slideMotor;
 
     /* ================= HARDWARE CONSTANTS ================= */
-    // goBILDA 5202 Series (5.2:1) = 1150 RPM = 145.1 ticks/rev
-    // goBILDA 5202 Series (19.2:1) = 312 RPM = 537.7 ticks/rev
-    // Change this to match your motor!
     private static final double TICKS_PER_REV = 145.1;
     private static final double SPOOL_DIAMETER_IN = 1.504;
     private static final double INCHES_PER_REV = Math.PI * SPOOL_DIAMETER_IN;
@@ -41,17 +38,17 @@ public class offLinearSlides {  //SELF TUNING
     private double kP = 0.08;
     private double kI = 0.00000;
     private double kD = 0.004;
-    private double kV = 0.0366;  // velocity feedforward
-    private double kA = 0.0;  // acceleration feedforward
-    private double kG = 0.0;  // gravity feedforward (set if vertical)
+    private double kV = 0.0366;
+    private double kA = 0.008;
+    private double kG = 0.0;
 
     private double integralSum = 0.0;
     private double lastPosition = 0.0;
     private double lastTime = 0.0;
 
     /* ================= MOTION PROFILE ================= */
-    private double profileMaxVel = 35.0;   // in/s
-    private double profileMaxAccel = 80.0; // in/s^2
+    private double profileMaxVel = 35.0;
+    private double profileMaxAccel = 80.0;
     private double profileStartTime = 0.0;
     private double profileStartPos = 0.0;
     private double profileTargetPos = 0.0;
@@ -73,7 +70,7 @@ public class offLinearSlides {  //SELF TUNING
 
     private static final double TUNE_POWER = 0.7;
     private static final int REQUIRED_CYCLES = 4;
-    private static final double TUNE_DEADBAND = 0.15; // inches
+    private static final double TUNE_DEADBAND = 0.15;
 
     /* ================= RUNTIME ================= */
     private final ElapsedTime runtime = new ElapsedTime();
@@ -88,12 +85,8 @@ public class offLinearSlides {  //SELF TUNING
         slideMotor.setDirection(reversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         slideMotor.setZeroPowerBehavior(DcMotorEx.ZeroPowerBehavior.BRAKE);
 
-        // Use RUN_WITHOUT_ENCODER so we command power directly every loop
         slideMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
         slideMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
-
-        // Rough initial kV guess: if max speed is ~30 in/s at 1.0 power, kV ≈ 1/30
-        kV = 1.0 / 30.0;
     }
 
     /* ================= CONFIGURATION ================= */
@@ -110,17 +103,19 @@ public class offLinearSlides {  //SELF TUNING
         kG = kg;
     }
 
-    /** Set motion profile constraints. Higher = faster but more aggressive. */
     public void setProfileConstraints(double maxVelInPerSec, double maxAccelInPerSecSq) {
         profileMaxVel = maxVelInPerSec;
         profileMaxAccel = maxAccelInPerSecSq;
     }
 
-    /** Set PID gains manually (if you already know them). */
     public void setPID(double p, double i, double d) {
         kP = p;
         kI = i;
         kD = d;
+    }
+
+    public void setkA(double ka) {
+        this.kA = ka;
     }
 
     /* ================= MANUAL CONTROL ================= */
@@ -163,14 +158,12 @@ public class offLinearSlides {  //SELF TUNING
     }
 
     /* ================= MAIN UPDATE LOOP ================= */
-    /** MUST be called every OpMode loop (e.g., inside your while(opModeIsActive())). */
     public void update() {
         double now = runtime.seconds();
         double dt = now - lastTime;
-        if (dt <= 0 || dt > 0.5) dt = 0.001; // safety clamp
+        if (dt <= 0 || dt > 0.5) dt = 0.001;
         lastTime = now;
 
-        // Auto-tuner takes over the motor during tuning
         if (tuneState != TuneState.IDLE) {
             updateTuner(dt);
             return;
@@ -178,7 +171,6 @@ public class offLinearSlides {  //SELF TUNING
 
         if (!profileActive) return;
 
-        // 1. Generate trapezoidal setpoint
         double[] setpoint = calculateTrapezoidalProfile(
                 profileStartPos, profileTargetPos,
                 profileMaxVel, profileMaxAccel,
@@ -188,19 +180,16 @@ public class offLinearSlides {  //SELF TUNING
         double targetVel = setpoint[1];
         double targetAccel = setpoint[2];
 
-        // 2. Read sensors
         double currentPos = getCurrentPositionInches();
         double currentVel = getCurrentVelocityInches();
 
-        // 3. PID (derivative on measurement for smoother output)
         double error = targetPos - currentPos;
         integralSum += error * dt;
 
-        // Anti-windup: clamp integral term
         double maxIntegral = (kI > 0.001) ? (maxPower / kI) : 0.0;
         integralSum = Range.clip(integralSum, -maxIntegral, maxIntegral);
 
-        double derivative = (currentPos - lastPosition) / dt; // d/dt of measurement
+        double derivative = (currentPos - lastPosition) / dt;
         lastPosition = currentPos;
 
         double pidOutput = (kP * error) + (kI * integralSum) - (kD * derivative);
@@ -211,7 +200,6 @@ public class offLinearSlides {  //SELF TUNING
 
         slideMotor.setPower(output);
 
-        // 4. Check if settled
         if (Math.abs(error) < 0.05 && Math.abs(currentVel) < 0.1) {
             profileActive = false;
         }
@@ -228,13 +216,11 @@ public class offLinearSlides {  //SELF TUNING
 
         double cruiseTime, totalTime;
         if (2.0 * accelDist >= dist) {
-            // Triangle profile (not enough room to reach maxV)
             accelTime = Math.sqrt(dist / maxA);
             accelDist = 0.5 * maxA * accelTime * accelTime;
             cruiseTime = 0.0;
             totalTime = 2.0 * accelTime;
         } else {
-            // Trapezoid profile
             cruiseTime = (dist - 2.0 * accelDist) / maxV;
             totalTime = 2.0 * accelTime + cruiseTime;
         }
@@ -263,7 +249,6 @@ public class offLinearSlides {  //SELF TUNING
     }
 
     /* ================= AUTO-TUNER ================= */
-    /** Begins the self-tuning sequence. Call this in init(), then call update() every loop. */
     public void startAutoTune() {
         tuneState = TuneState.CALIBRATE_FF;
         tuneTimer.reset();
@@ -290,7 +275,6 @@ public class offLinearSlides {  //SELF TUNING
         return tuneState;
     }
 
-    /** Returns the tuned gains as a formatted string for hardcoding. */
     public String getTunedGainsString() {
         return String.format("setPID(%.5f, %.5f, %.5f); // kV=%.5f", kP, kI, kD, kV);
     }
@@ -301,15 +285,12 @@ public class offLinearSlides {  //SELF TUNING
 
         switch (tuneState) {
             case CALIBRATE_FF:
-                // Run open-loop at fixed power to measure steady-state velocity
                 double calPower = 0.5 * maxPower;
                 slideMotor.setPower(calPower);
                 if (tuneTimer.seconds() > 0.75) {
-                    // kV = power / velocity (use average of last few readings)
                     if (Math.abs(currentVel) > 1.0) {
                         kV = calPower / Math.abs(currentVel);
                     }
-                    // Move to relay test target (mid-range)
                     tuneTargetPos = (maxExtensionInches + minExtensionInches) / 2.0;
                     tuneTimer.reset();
                     tuneState = TuneState.RELAY;
@@ -317,7 +298,6 @@ public class offLinearSlides {  //SELF TUNING
                 break;
 
             case RELAY:
-                // Relay feedback controller: bang-bang with deadband
                 double error = tuneTargetPos - currentPos;
                 double relayPower;
                 if (Math.abs(error) < TUNE_DEADBAND) {
@@ -327,16 +307,14 @@ public class offLinearSlides {  //SELF TUNING
                 }
                 slideMotor.setPower(relayPower);
 
-                // Track oscillation extrema
                 if (currentPos > tuneMaxPos) tuneMaxPos = currentPos;
                 if (currentPos < tuneMinPos) tuneMinPos = currentPos;
 
-                // Detect zero crossings to measure period
                 if (tuneLastError != 0.0 && Math.signum(error) != Math.signum(tuneLastError)) {
                     double now = tuneTimer.seconds();
                     if (tuneLastCrossingTime > 0.0) {
                         double period = now - tuneLastCrossingTime;
-                        if (period > 0.1) { // sanity filter
+                        if (period > 0.1) {
                             tunePeriods.add(period);
                             tuneCycleCount++;
                         }
@@ -345,11 +323,9 @@ public class offLinearSlides {  //SELF TUNING
                 }
                 tuneLastError = error;
 
-                // Timeout or enough cycles
                 if (tuneCycleCount >= REQUIRED_CYCLES) {
                     tuneState = TuneState.CALCULATE;
                 } else if (tuneTimer.seconds() > 10.0) {
-                    // Fallback conservative gains
                     kP = 0.08; kI = 0.0; kD = 0.004;
                     tuneState = TuneState.DONE;
                 }
@@ -357,33 +333,26 @@ public class offLinearSlides {  //SELF TUNING
 
             case CALCULATE:
                 if (tunePeriods.size() >= 2) {
-                    // Average period
                     double avgPeriod = 0.0;
                     for (double p : tunePeriods) avgPeriod += p;
                     avgPeriod /= tunePeriods.size();
 
-                    // Oscillation amplitude
                     double amplitude = (tuneMaxPos - tuneMinPos) / 2.0;
                     if (amplitude < 0.1) amplitude = 0.1;
 
-                    // Ultimate gain via describing function
                     double Ku = (4.0 * TUNE_POWER * maxPower) / (Math.PI * amplitude);
 
-                    // Ziegler-Nichols "no overshoot" variant (best for mechanisms)
                     kP = Ku / 3.0;
                     kI = 2.0 * kP / avgPeriod;
                     kD = kP * avgPeriod / 3.0;
 
-                    // Safety clamps
                     kP = Range.clip(kP, 0.0, 2.0);
                     kI = Range.clip(kI, 0.0, 1.0);
                     kD = Range.clip(kD, 0.0, 0.5);
                 } else {
-                    // Not enough data: use conservative defaults
                     kP = 0.08; kI = 0.0; kD = 0.004;
                 }
 
-                // Prepare validation step
                 tuneTimer.reset();
                 profileStartPos = currentPos;
                 profileTargetPos = Range.clip(tuneTargetPos + 6.0, minExtensionInches, maxExtensionInches);
@@ -393,7 +362,6 @@ public class offLinearSlides {  //SELF TUNING
                 break;
 
             case VALIDATE:
-                // Run a PID-controlled step to verify the new gains
                 double err = profileTargetPos - currentPos;
                 integralSum += err * dt;
                 double maxInt = (kI > 0.001) ? (0.5 / kI) : 0.0;
@@ -406,7 +374,6 @@ public class offLinearSlides {  //SELF TUNING
                 out = Range.clip(out, -maxPower, maxPower);
                 slideMotor.setPower(out);
 
-                // Track overshoot
                 double direction = Math.signum(profileTargetPos - profileStartPos);
                 if (direction > 0 && currentPos > profileTargetPos) {
                     tuneValidatedOvershoot = Math.max(tuneValidatedOvershoot, currentPos - profileTargetPos);
@@ -414,9 +381,7 @@ public class offLinearSlides {  //SELF TUNING
                     tuneValidatedOvershoot = Math.max(tuneValidatedOvershoot, profileTargetPos - currentPos);
                 }
 
-                // End validation after settling or timeout
                 if (tuneTimer.seconds() > 2.5 || (Math.abs(err) < 0.1 && Math.abs(currentVel) < 0.2)) {
-                    // If too much overshoot, dial back gains
                     if (tuneValidatedOvershoot > 0.5) {
                         kP *= 0.7;
                         kI *= 0.7;
@@ -439,7 +404,6 @@ public class offLinearSlides {  //SELF TUNING
     }
 
     public double getCurrentVelocityInches() {
-        // DcMotorEx.getVelocity() returns ticks per second
         return slideMotor.getVelocity() / TICKS_PER_INCH;
     }
 
