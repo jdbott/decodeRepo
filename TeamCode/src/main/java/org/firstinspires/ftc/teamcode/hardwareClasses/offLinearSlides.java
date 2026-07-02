@@ -11,8 +11,7 @@ import org.firstinspires.ftc.robotcore.external.Telemetry;
 import java.util.ArrayList;
 
 /**
- * Self-tuning linear slides with trapezoidal motion profiling.
- * Uses a software PID + feedforward controller for maximum performance.
+ * Robust self-tuning linear slides with trapezoidal motion profiling.
  */
 public class offLinearSlides {
 
@@ -35,12 +34,14 @@ public class offLinearSlides {
     public static final double HIGH = 26.0;
 
     /* ================= PID & FEEDFORWARD ================= */
+    // TUNED VALUES — paste your own here after running the tuner
     private double kP = 0.08;
     private double kI = 0.00000;
     private double kD = 0.004;
     private double kV = 0.0366;
     private double kA = 0.008;
-    private double kG = 0.0;
+    private double kS = 0.15;  // STATIC FRICTION — critical for startup!
+    private double kG = 0.0;   // gravity (vertical slides only)
 
     private double integralSum = 0.0;
     private double lastPosition = 0.0;
@@ -77,7 +78,7 @@ public class offLinearSlides {
 
     /* ================= CONSTRUCTORS ================= */
     public offLinearSlides(HardwareMap hardwareMap) {
-        this(hardwareMap, "cool", true);
+        this(hardwareMap, "cool", false);
     }
 
     public offLinearSlides(HardwareMap hardwareMap, String motorName, boolean reversed) {
@@ -116,6 +117,22 @@ public class offLinearSlides {
 
     public void setkA(double ka) {
         this.kA = ka;
+    }
+
+    public void setkS(double ks) {
+        this.kS = ks;
+    }
+
+    /** Flip motor direction if slides move the wrong way. Call before waitForStart(). */
+    public void reverseMotorDirection() {
+        if (slideMotor.getDirection() == DcMotorSimple.Direction.FORWARD) {
+            slideMotor.setDirection(DcMotorSimple.Direction.REVERSE);
+        } else {
+            slideMotor.setDirection(DcMotorSimple.Direction.FORWARD);
+        }
+        // Reset encoder to keep sign consistent
+        slideMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
+        slideMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
     }
 
     /* ================= MANUAL CONTROL ================= */
@@ -171,6 +188,7 @@ public class offLinearSlides {
 
         if (!profileActive) return;
 
+        // 1. Motion profile setpoint
         double[] setpoint = calculateTrapezoidalProfile(
                 profileStartPos, profileTargetPos,
                 profileMaxVel, profileMaxAccel,
@@ -180,26 +198,33 @@ public class offLinearSlides {
         double targetVel = setpoint[1];
         double targetAccel = setpoint[2];
 
+        // 2. Sensor readings (manual velocity = derivative of position)
         double currentPos = getCurrentPositionInches();
-        double currentVel = getCurrentVelocityInches();
+        double currentVel = (currentPos - lastPosition) / dt;
+        lastPosition = currentPos;
 
+        // 3. PID (derivative on measurement)
         double error = targetPos - currentPos;
         integralSum += error * dt;
 
         double maxIntegral = (kI > 0.001) ? (maxPower / kI) : 0.0;
         integralSum = Range.clip(integralSum, -maxIntegral, maxIntegral);
 
-        double derivative = (currentPos - lastPosition) / dt;
-        lastPosition = currentPos;
+        double pidOutput = (kP * error) + (kI * integralSum) - (kD * currentVel);
 
-        double pidOutput = (kP * error) + (kI * integralSum) - (kD * derivative);
-        double ffOutput = (kV * targetVel) + (kA * targetAccel) + kG;
+        // 4. Feedforward (CRITICAL: kS breaks static friction!)
+        double staticFF = 0.0;
+        if (Math.abs(targetVel) > 0.01) {
+            staticFF = kS * Math.signum(targetVel);
+        }
+        double ffOutput = staticFF + (kV * targetVel) + (kA * targetAccel) + kG;
 
         double output = pidOutput + ffOutput;
         output = Range.clip(output, -maxPower, maxPower);
 
         slideMotor.setPower(output);
 
+        // 5. Settle check
         if (Math.abs(error) < 0.05 && Math.abs(currentVel) < 0.1) {
             profileActive = false;
         }
@@ -276,12 +301,13 @@ public class offLinearSlides {
     }
 
     public String getTunedGainsString() {
-        return String.format("setPID(%.5f, %.5f, %.5f); // kV=%.5f", kP, kI, kD, kV);
+        return String.format("setPID(%.5f, %.5f, %.5f); // kV=%.5f kA=%.5f kS=%.5f", kP, kI, kD, kV, kA, kS);
     }
 
     private void updateTuner(double dt) {
         double currentPos = getCurrentPositionInches();
-        double currentVel = getCurrentVelocityInches();
+        double currentVel = (currentPos - lastPosition) / dt;
+        lastPosition = currentPos;
 
         switch (tuneState) {
             case CALIBRATE_FF:
@@ -404,7 +430,8 @@ public class offLinearSlides {
     }
 
     public double getCurrentVelocityInches() {
-        return slideMotor.getVelocity() / TICKS_PER_INCH;
+        // Manual calculation is more reliable than motor.getVelocity()
+        return (getCurrentPositionInches() - lastPosition) / 0.02; // approx
     }
 
     public double getTargetPosition() {
@@ -429,18 +456,19 @@ public class offLinearSlides {
     public double getkI() { return kI; }
     public double getkD() { return kD; }
     public double getkV() { return kV; }
+    public double getkS() { return kS; }
 
     public void addTelemetry(Telemetry telemetry) {
         telemetry.addData("Slide Pos",  "%.2f in", getCurrentPositionInches());
-        telemetry.addData("Slide Vel",  "%.2f in/s", getCurrentVelocityInches());
         telemetry.addData("Slide Target", "%.2f in", getTargetPosition());
-        telemetry.addData("Slide Error", "%.3f in", getError());
-        telemetry.addData("Slide Power", "%.3f", slideMotor.getPower());
+        telemetry.addData("Slide Error",  "%.3f in", getError());
+        telemetry.addData("Slide Power",  "%.3f", slideMotor.getPower());
         telemetry.addLine()
                 .addData("kP", "%.4f", kP)
                 .addData("kI", "%.4f", kI)
                 .addData("kD", "%.4f", kD)
-                .addData("kV", "%.4f", kV);
+                .addData("kV", "%.4f", kV)
+                .addData("kS", "%.4f", kS);
         if (isTuning()) {
             telemetry.addData("TUNER", "%s | cycles=%d", tuneState, tuneCycleCount);
         }

@@ -13,10 +13,19 @@ public class linearSlides extends LinearOpMode {
     @Override
     public void runOpMode() {
         slides = new offLinearSlides(hardwareMap);
-        slides.setMaxPower(1.0);              // MAX motor power
-        slides.setLimits(0.0, 26.0);          // Allow full 26" height
-        slides.setProfileConstraints(35, 80); // Max speed / accel
+        slides.setMaxPower(1.0);
+        slides.setLimits(0.0, 26.0);
+        slides.setProfileConstraints(35, 80);
 
+        // IF SLIDES GO THE WRONG WAY, UNCOMMENT THE NEXT LINE:
+        // slides.reverseMotorDirection();
+
+        // Static friction compensation — start at 0.15, increase if it still stalls
+        slides.setkS(0.15);
+
+        telemetry.addLine("Ready. Press START.");
+        telemetry.addLine("If direction is wrong, uncomment reverseMotorDirection()");
+        telemetry.update();
 
         waitForStart();
 
@@ -25,13 +34,13 @@ public class linearSlides extends LinearOpMode {
             slides.goToPreset(offLinearSlides.HIGH);
 
             while (opModeIsActive() && slides.isBusy()) {
-                slides.update(); // CRITICAL: must call every loop
+                slides.update();
 
                 telemetry.addData("Loop", i + 1);
                 telemetry.addData("Target", "%.2f", slides.getTargetPosition());
                 telemetry.addData("Current", "%.2f", slides.getCurrentPositionInches());
                 telemetry.addData("Error", "%.3f", slides.getError());
-                telemetry.addData("Vel", "%.2f", slides.getCurrentVelocityInches());
+                telemetry.addData("Power", "%.3f", telemetry); // shows actual commanded power
                 telemetry.update();
             }
             sleep(200);
