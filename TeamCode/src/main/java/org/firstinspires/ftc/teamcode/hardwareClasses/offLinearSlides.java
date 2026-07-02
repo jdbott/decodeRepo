@@ -41,7 +41,7 @@ public class offLinearSlides {
     private double kV = 0.0366;
     private double kA = 0.008;
     private double kS = 0.15;  // STATIC FRICTION — critical for startup!
-    private double kG = 0.0;   // gravity (vertical slides only)
+    private double kG = 0.008;   // gravity (vertical slides only)
 
     private double integralSum = 0.0;
     private double lastPosition = 0.0;
