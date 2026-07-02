@@ -77,7 +77,7 @@ public class offLinearSlides {
 
     /* ================= CONSTRUCTORS ================= */
     public offLinearSlides(HardwareMap hardwareMap) {
-        this(hardwareMap, "cool", false);
+        this(hardwareMap, "cool", true);
     }
 
     public offLinearSlides(HardwareMap hardwareMap, String motorName, boolean reversed) {
