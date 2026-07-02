@@ -10,8 +10,8 @@ public class offLinearSlides {
     private final DcMotorEx slideMotor;
 
     // goBILDA 312 RPM = 537.7 ticks/rev.
-    private static final double TICKS_PER_REV = 537.7;
-    private static final double SPOOL_DIAMETER_IN = 2.0;
+    private static final double TICKS_PER_REV = 145.1;
+    private static final double SPOOL_DIAMETER_IN = 1.504;
     private static final double INCHES_PER_REV = Math.PI * SPOOL_DIAMETER_IN;
     private static final double TICKS_PER_INCH = TICKS_PER_REV / INCHES_PER_REV;
 
