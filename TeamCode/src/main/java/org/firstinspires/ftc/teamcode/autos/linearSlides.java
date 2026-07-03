@@ -13,13 +13,14 @@ public class linearSlides extends LinearOpMode {
     @Override
     public void runOpMode() {
         slides = new offLinearSlides(hardwareMap);
-        slides.setMaxPower(1.0);
-        slides.setLimits(0.0, 26.0);
-        slides.setProfileConstraints(35, 80);
+        slides.setMaxPower(1.0);              // MAX motor speed
+        slides.setLimits(0.0, 26.0);          // Full height range
+        slides.setProfileConstraints(35, 80); // Aggressive but smooth
 
-        // If slides go the wrong way, uncomment this:
+        // If slides move the wrong way, uncomment this:
         // slides.reverseMotorDirection();
 
+        // Static friction boost — needed to start moving from rest
         slides.setkS(0.15);
 
         telemetry.addLine("Ready. Press START.");
@@ -27,36 +28,40 @@ public class linearSlides extends LinearOpMode {
 
         waitForStart();
 
+        // Run 3 cycles: up to 26in, down to 0in, 200ms between each
         for (int i = 0; i < 3; i++) {
-            // Go to FULL HEIGHT
+
+            // --- GO UP to 26 inches ---
             slides.goToPreset(offLinearSlides.HIGH);
 
             while (opModeIsActive() && slides.isBusy()) {
-                slides.update();
+                slides.update(); // MUST call every loop
 
                 telemetry.addData("Loop", i + 1);
-                telemetry.addData("Target", "%.2f", slides.getTargetPosition());
-                telemetry.addData("Current", "%.2f", slides.getCurrentPositionInches());
-                telemetry.addData("Error", "%.3f", slides.getError());
-                slides.addTelemetry(telemetry); // Shows Power, kP, kS, etc.
-                telemetry.update();
-            }
-            sleep(200);
-
-            // Go down
-            slides.goToPreset(offLinearSlides.RETRACTED);
-
-            while (opModeIsActive() && slides.isBusy()) {
-                slides.update();
-
-                telemetry.addData("Loop", i + 1);
+                telemetry.addData("Direction", "UP");
                 telemetry.addData("Target", "%.2f", slides.getTargetPosition());
                 telemetry.addData("Current", "%.2f", slides.getCurrentPositionInches());
                 telemetry.addData("Error", "%.3f", slides.getError());
                 slides.addTelemetry(telemetry);
                 telemetry.update();
             }
-            sleep(200);
+            sleep(200); // 200ms pause at top
+
+            // --- GO DOWN to 0 inches ---
+            slides.goToPreset(offLinearSlides.RETRACTED);
+
+            while (opModeIsActive() && slides.isBusy()) {
+                slides.update(); // MUST call every loop
+
+                telemetry.addData("Loop", i + 1);
+                telemetry.addData("Direction", "DOWN");
+                telemetry.addData("Target", "%.2f", slides.getTargetPosition());
+                telemetry.addData("Current", "%.2f", slides.getCurrentPositionInches());
+                telemetry.addData("Error", "%.3f", slides.getError());
+                slides.addTelemetry(telemetry);
+                telemetry.update();
+            }
+            sleep(200); // 200ms pause at bottom
         }
 
         slides.stop();
