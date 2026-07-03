@@ -12,6 +12,7 @@ import java.util.ArrayList;
 
 /**
  * Robust self-tuning linear slides with trapezoidal motion profiling.
+ * Tuned for vertical slides — kG counters gravity.
  */
 public class offLinearSlides {
 
@@ -40,11 +41,13 @@ public class offLinearSlides {
     private double kD = 0.004;
     private double kV = 0.0366;
     private double kA = 0.008;
-    private double kS = 0.15;  // STATIC FRICTION — critical for startup!
-    private double kG = 0.008;   // gravity (vertical slides only)
+    private double kS = 0.15;  // static friction breakaway
+    private double kG = 0.15;  // GRAVITY — critical for vertical slides! (was 0.008)
+    // Increase if slides sag, decrease if they drift up
 
     private double integralSum = 0.0;
     private double lastPosition = 0.0;
+    private double lastVelocity = 0.0;
     private double lastTime = 0.0;
 
     /* ================= MOTION PROFILE ================= */
@@ -130,7 +133,6 @@ public class offLinearSlides {
         } else {
             slideMotor.setDirection(DcMotorSimple.Direction.FORWARD);
         }
-        // Reset encoder to keep sign consistent
         slideMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
         slideMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
     }
@@ -198,10 +200,11 @@ public class offLinearSlides {
         double targetVel = setpoint[1];
         double targetAccel = setpoint[2];
 
-        // 2. Sensor readings (manual velocity = derivative of position)
+        // 2. Sensor readings
         double currentPos = getCurrentPositionInches();
         double currentVel = (currentPos - lastPosition) / dt;
         lastPosition = currentPos;
+        lastVelocity = currentVel;
 
         // 3. PID (derivative on measurement)
         double error = targetPos - currentPos;
@@ -212,7 +215,8 @@ public class offLinearSlides {
 
         double pidOutput = (kP * error) + (kI * integralSum) - (kD * currentVel);
 
-        // 4. Feedforward (CRITICAL: kS breaks static friction!)
+        // 4. Feedforward
+        // kG always fights gravity (positive = up). For vertical slides this is critical.
         double staticFF = 0.0;
         if (Math.abs(targetVel) > 0.01) {
             staticFF = kS * Math.signum(targetVel);
@@ -301,7 +305,7 @@ public class offLinearSlides {
     }
 
     public String getTunedGainsString() {
-        return String.format("setPID(%.5f, %.5f, %.5f); // kV=%.5f kA=%.5f kS=%.5f", kP, kI, kD, kV, kA, kS);
+        return String.format("setPID(%.5f, %.5f, %.5f); // kV=%.5f kA=%.5f kS=%.5f kG=%.5f", kP, kI, kD, kV, kA, kS, kG);
     }
 
     private void updateTuner(double dt) {
@@ -430,8 +434,7 @@ public class offLinearSlides {
     }
 
     public double getCurrentVelocityInches() {
-        // Manual calculation is more reliable than motor.getVelocity()
-        return (getCurrentPositionInches() - lastPosition) / 0.02; // approx
+        return lastVelocity; // now returns actual calculated velocity
     }
 
     public double getTargetPosition() {
@@ -460,6 +463,7 @@ public class offLinearSlides {
 
     public void addTelemetry(Telemetry telemetry) {
         telemetry.addData("Slide Pos",  "%.2f in", getCurrentPositionInches());
+        telemetry.addData("Slide Vel",  "%.2f in/s", getCurrentVelocityInches());
         telemetry.addData("Slide Target", "%.2f in", getTargetPosition());
         telemetry.addData("Slide Error",  "%.3f in", getError());
         telemetry.addData("Slide Power",  "%.3f", slideMotor.getPower());
@@ -468,7 +472,8 @@ public class offLinearSlides {
                 .addData("kI", "%.4f", kI)
                 .addData("kD", "%.4f", kD)
                 .addData("kV", "%.4f", kV)
-                .addData("kS", "%.4f", kS);
+                .addData("kS", "%.4f", kS)
+                .addData("kG", "%.4f", kG);
         if (isTuning()) {
             telemetry.addData("TUNER", "%s | cycles=%d", tuneState, tuneCycleCount);
         }
