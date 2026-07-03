@@ -25,7 +25,8 @@ public class offLinearSlides {
     private static final double TICKS_PER_INCH = TICKS_PER_REV / INCHES_PER_REV;
 
     /* ================= LIMITS & PRESETS ================= */
-    private double maxExtensionInches = 24.0;
+    // CRITICAL FIX: was 24.0, so HIGH=26.0 was getting clipped. Now 26.0.
+    private double maxExtensionInches = 26.0;
     private double minExtensionInches = 0.0;
     private double maxPower = 1.0;
 
@@ -35,15 +36,13 @@ public class offLinearSlides {
     public static final double HIGH = 26.0;
 
     /* ================= PID & FEEDFORWARD ================= */
-    // TUNED VALUES — paste your own here after running the tuner
     private double kP = 0.08;
     private double kI = 0.00000;
     private double kD = 0.004;
     private double kV = 0.0366;
     private double kA = 0.008;
-    private double kS = 0.15;  // static friction breakaway
-    private double kG = 0.15;  // GRAVITY — critical for vertical slides! (was 0.008)
-    // Increase if slides sag, decrease if they drift up
+    private double kS = 0.15;
+    private double kG = 0.15;  // gravity compensation. Assumes positive motor power = UP.
 
     private double integralSum = 0.0;
     private double lastPosition = 0.0;
@@ -80,6 +79,8 @@ public class offLinearSlides {
     private final ElapsedTime runtime = new ElapsedTime();
 
     /* ================= CONSTRUCTORS ================= */
+    // CRITICAL: changed back to false (original). If your slides still go the wrong way,
+    // call slides.setDirectionReversed(true) in your OpMode, OR change this to true.
     public offLinearSlides(HardwareMap hardwareMap) {
         this(hardwareMap, "cool", false);
     }
@@ -126,13 +127,9 @@ public class offLinearSlides {
         this.kS = ks;
     }
 
-    /** Flip motor direction if slides move the wrong way. Call before waitForStart(). */
-    public void reverseMotorDirection() {
-        if (slideMotor.getDirection() == DcMotorSimple.Direction.FORWARD) {
-            slideMotor.setDirection(DcMotorSimple.Direction.REVERSE);
-        } else {
-            slideMotor.setDirection(DcMotorSimple.Direction.FORWARD);
-        }
+    /** Flip motor direction. Call this BEFORE waitForStart() if up/down are reversed. */
+    public void setDirectionReversed(boolean reversed) {
+        slideMotor.setDirection(reversed ? DcMotorSimple.Direction.REVERSE : DcMotorSimple.Direction.FORWARD);
         slideMotor.setMode(DcMotorEx.RunMode.STOP_AND_RESET_ENCODER);
         slideMotor.setMode(DcMotorEx.RunMode.RUN_WITHOUT_ENCODER);
     }
@@ -216,7 +213,6 @@ public class offLinearSlides {
         double pidOutput = (kP * error) + (kI * integralSum) - (kD * currentVel);
 
         // 4. Feedforward
-        // kG always fights gravity (positive = up). For vertical slides this is critical.
         double staticFF = 0.0;
         if (Math.abs(targetVel) > 0.01) {
             staticFF = kS * Math.signum(targetVel);
@@ -434,7 +430,17 @@ public class offLinearSlides {
     }
 
     public double getCurrentVelocityInches() {
-        return lastVelocity; // now returns actual calculated velocity
+        return lastVelocity;
+    }
+
+    // NEW: raw encoder for debugging direction
+    public int getRawEncoder() {
+        return slideMotor.getCurrentPosition();
+    }
+
+    // NEW: actual power being sent to motor
+    public double getMotorPower() {
+        return slideMotor.getPower();
     }
 
     public double getTargetPosition() {
@@ -463,10 +469,11 @@ public class offLinearSlides {
 
     public void addTelemetry(Telemetry telemetry) {
         telemetry.addData("Slide Pos",  "%.2f in", getCurrentPositionInches());
+        telemetry.addData("Raw Encoder", getRawEncoder()); // DEBUG: should increase when slide goes UP
         telemetry.addData("Slide Vel",  "%.2f in/s", getCurrentVelocityInches());
         telemetry.addData("Slide Target", "%.2f in", getTargetPosition());
         telemetry.addData("Slide Error",  "%.3f in", getError());
-        telemetry.addData("Slide Power",  "%.3f", slideMotor.getPower());
+        telemetry.addData("Motor Power",  "%.3f", getMotorPower()); // DEBUG: positive when going UP?
         telemetry.addLine()
                 .addData("kP", "%.4f", kP)
                 .addData("kI", "%.4f", kI)
