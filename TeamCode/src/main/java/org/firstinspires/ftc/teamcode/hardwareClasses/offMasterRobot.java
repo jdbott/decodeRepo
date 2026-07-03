@@ -41,11 +41,13 @@ public class offMasterRobot {
     }
 
     /**
-     * Call this every loop() so the slide PID controller runs.
+     * REMOVED: No longer needed. The new offLinearSlides uses RUN_TO_POSITION
+     * which handles PID internally in the REV hub hardware at 1kHz.
+     * You do NOT need to call update() every loop anymore.
      */
-    public void update() {
-        slides.update();
-    }
+    // public void update() {
+    //     slides.update();
+    // }
 
     /**
      * Emergency stop for all subsystems.
