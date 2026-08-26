@@ -36,4 +36,7 @@ public final class RobotConfig {
 
     // Localizer
     public static final String PINPOINT = "pinpoint";
+
+    // goBILDA Prism RGB LED driver
+    public static final String PRISM_LED = "prism";
 }
