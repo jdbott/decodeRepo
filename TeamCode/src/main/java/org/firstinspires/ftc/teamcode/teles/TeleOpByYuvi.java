@@ -261,12 +261,6 @@ public class TeleOpByYuvi extends LinearOpMode {
         strafe  *= speedMod;
         turn    *= speedMod;
 
-        // Field-centric: flip translation for red alliance
-        if (isRedAlliance) {
-            forward = -forward;
-            strafe  = -strafe;
-        }
-
         follower.setTeleOpDrive(forward, strafe, turn, false);
     }
 
@@ -420,21 +414,19 @@ public class TeleOpByYuvi extends LinearOpMode {
 
         if (!triggerLocked && triggerValue > TRIGGER_ON_THRESHOLD) {
             triggerLocked = true;
+            rapidFireActive = true;          // Always rapid-fire; no 500 ms wait
             startShot();
             triggerHoldTimer.reset();
-            rapidFireActive = false;
             rapidFireRumbled = false;
         } else if (triggerLocked) {
-            if (!rapidFireActive && triggerHoldTimer.milliseconds() > 500) {
-                rapidFireActive = true;
-                // Rumble exactly once per activation to avoid spamming the DS thread
-                if (!rapidFireRumbled) {
-                    try {
-                        gamepad1.rumble(150);
-                    } catch (Exception ignored) {}
-                    rapidFireRumbled = true;
-                }
+            // Rumble once per activation to indicate rapid fire
+            if (!rapidFireRumbled) {
+                try {
+                    gamepad1.rumble(150);
+                } catch (Exception ignored) {}
+                rapidFireRumbled = true;
             }
+
             if (feedState == FeedState.IDLE && rapidFireActive) {
                 startShot();
             }
