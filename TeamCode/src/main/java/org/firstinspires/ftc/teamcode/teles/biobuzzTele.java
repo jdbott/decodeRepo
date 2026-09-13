@@ -25,7 +25,7 @@ public class biobuzzTele extends LinearOpMode {
 
     // Shooter: 4000 RPM target, fixed ~70 deg mechanical launch angle
     private static final double SHOOTER_TARGET_RPM = 4000.0;
-    private static final double SHOOTER_TICKS_PER_REV = 28.0; // TODO: set to shooter motor CPR
+    private static final double SHOOTER_TICKS_PER_REV = 28.0; 
     private static final double LAUNCH_ANGLE_DEG = 70.0;
 
     // Box lift presets (ticks) — tune to mechanism
