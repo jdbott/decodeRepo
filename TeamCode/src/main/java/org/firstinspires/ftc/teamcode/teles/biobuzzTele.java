@@ -13,6 +13,10 @@ import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 @TeleOp(name = "BioBuzz Tele", group = "TeleOp")
 public class biobuzzTele extends LinearOpMode {
 
+    // PS5 (DualSense) mapping: Cross = a, Circle = b, Square = x, Triangle = y,
+    // R2 = right_trigger, L2 = left_trigger, D-pad = dpad_up/down/left/right.
+    // Sticks: left stick drive/strafe, right stick X turn.
+
     // TODO: replace with real Control Hub config names once ports are assigned
     private static final String BOX_LIFT_NAME = "boxLift";
     private static final String CANISTER_SERVO_NAME = "canisterServo";
@@ -110,7 +114,7 @@ public class biobuzzTele extends LinearOpMode {
             }
             prevDpadRight = gamepad1.dpad_right;
 
-            // Shoot held -> gate up (open) so balls feed the shooter
+            // Shoot held (R2 or Cross) -> gate up (open) so balls feed the shooter
             boolean shooting = gamepad1.right_trigger > 0.3 || gamepad1.a;
             gateServo.setPosition(shooting ? GATE_OPEN_POS : GATE_CLOSED_POS);
 
