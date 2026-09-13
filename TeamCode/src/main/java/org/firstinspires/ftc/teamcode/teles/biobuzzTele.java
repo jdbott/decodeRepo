@@ -18,14 +18,14 @@ public class biobuzzTele extends LinearOpMode {
     // Sticks: left stick drive/strafe, right stick X turn.
 
     // TODO: replace with real Control Hub config names once ports are assigned
-    private static final String BOX_LIFT_NAME = "boxLift";
+    private static final String BOX_LIFT_NAME = "box";
     private static final String CANISTER_SERVO_NAME = "canisterServo";
     private static final String GATE_SERVO_NAME = "gateServo";
     private static final String SHOOTER_NAME = "shooter";
 
     // Shooter: 4000 RPM target, fixed ~70 deg mechanical launch angle
     private static final double SHOOTER_TARGET_RPM = 4000.0;
-    private static final double SHOOTER_TICKS_PER_REV = 28.0; 
+    private static final double SHOOTER_TICKS_PER_REV = 28.0;
     private static final double LAUNCH_ANGLE_DEG = 70.0;
 
     // Box lift presets (ticks) — tune to mechanism
