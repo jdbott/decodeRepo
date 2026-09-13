@@ -1,5 +1,6 @@
 package org.firstinspires.ftc.teamcode.hardwareClasses;
 
+import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
@@ -8,6 +9,9 @@ import com.qualcomm.robotcore.util.Range;
 
 import org.firstinspires.ftc.teamcode.RobotConfig;
 
+// Gains are public static so they can be tuned live from FTC Dashboard (Configuration tab).
+// Static values persist across opmodes until the app restarts, so the setters change them globally.
+@Config
 public class Flywheel {
 
     private final DcMotorEx flywheelTop;      // no encoder (or ignored)
@@ -18,13 +22,13 @@ public class Flywheel {
     private double targetVelocity = 0.0;
 
     // Proportional gain
-    private double kP = 0.0019;
+    public static double kP = 0.0019;
 
     // Feedforward parameters
     // power_ff = (kV * ω + kS) * (V_tuned / V_batt)
-    private double kV = 0.0016;
-    private double kS = 0.0988;
-    private double tunedVoltage = 13.726;
+    public static double kV = 0.0016;
+    public static double kS = 0.0988;
+    public static double tunedVoltage = 13.726; // volts
 
     // Encoder conversion
     private static final double TICKS_PER_REV = 28.0;
@@ -94,14 +98,14 @@ public class Flywheel {
 
     /** Set feedforward values and tuned voltage. */
     public void setFeedforward(double kV, double kS, double tunedVoltage) {
-        this.kV = kV;
-        this.kS = kS;
-        this.tunedVoltage = tunedVoltage;
+        Flywheel.kV = kV;
+        Flywheel.kS = kS;
+        Flywheel.tunedVoltage = tunedVoltage;
     }
 
     /** Set proportional gain. */
     public void setKP(double kP) {
-        this.kP = kP;
+        Flywheel.kP = kP;
     }
 
     /** Set target velocity in rad/s. */

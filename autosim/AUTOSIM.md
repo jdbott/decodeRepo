@@ -54,7 +54,7 @@ Optional: `./gradlew :autosim:autosim -Pauto=V3ClosePartner` makes a different a
 
 ```
 autosim/
-  build.gradle                 plain-java module; pulls in autoshared/ from TeamCode (see §5)
+  build.gradle                 plain-java module (autoshared/ lives in this module's src/, see §5)
   AUTOSIM.md                   this file
   fields/decode.svg            field background image (embedded as base64 into the HTML)
   viewer/autosim.template.html the entire viewer UI — HTML/CSS/JS in one file, with
@@ -73,7 +73,7 @@ autosim/
                                  (SimFlywheel, SimTurret, SimHood, SimIntake, SimFeeder)
     json/TraceWriter.java        dependency-free JSON serializer for SimTrace
 
-TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autoshared/
+autosim/src/main/java/org/firstinspires/ftc/teamcode/autoshared/
   V3FarAutoConfig.java          shared blue-native constants for V3FarAuto (Tier 1, §5)
   V3ClosePartnerConfig.java     same, for V3ClosePartner
   (V3Auto has no config yet — its Sim copy is fully self-contained, see §9.3)
@@ -118,14 +118,20 @@ The single biggest risk in this project is **drift**: the `...Sim.java` FSM is a
 
 To reduce (not eliminate) this risk, **numeric tunables and field geometry** for
 V3FarAuto and V3ClosePartner live in a shared, plain-Java config class under
-`TeamCode/src/main/java/org/firstinspires/ftc/teamcode/autoshared/`:
+`autoshared/`:
 
 - `V3FarAutoConfig.java`
 - `V3ClosePartnerConfig.java`
 
-**Why this works:** `autosim/build.gradle` adds a second source directory —
+> **Post-DECODE note:** the real DECODE autos were archived under `archive/decode-2025/` during
+> the Pedro Pathing 3 migration, so `autoshared/` moved into this module
+> (`autosim/src/main/java/.../autoshared/`) and is no longer compiled into TeamCode. The rest of
+> this section describes the setup while the season was live. To share configs with a live auto
+> again, move the package back into TeamCode and re-add the filtered `srcDir` described below.
+
+**Why this worked:** `autosim/build.gradle` added a second source directory —
 `../TeamCode/src/main/java`, filtered to **only** `autosim/**` and `autoshared/**`. So
-these config classes get compiled *both* into the Android/TeamCode build *and* into the
+these config classes got compiled *both* into the Android/TeamCode build *and* into the
 plain-Java `:autosim` module, from the same file. The real opmode and the `...Sim.java`
 copy both read `V3FarAutoConfig.START_X`, `V3FarAutoConfig.FIXED_HOOD_DEG`, etc. — one
 edit updates both.

@@ -11,7 +11,8 @@ buildscript {
     }
     dependencies {
         // Note for FTC Teams: Do not modify this yourself.
-        classpath 'com.android.tools.build:gradle:8.13.1'
+        // Bumped from 8.13.1 to match the AGP that the Sloth Load 0.3.0 plugin is built against.
+        classpath 'com.android.tools.build:gradle:8.13.2'
     }
 }
 

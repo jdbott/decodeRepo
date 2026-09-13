@@ -39,4 +39,10 @@ public final class RobotConfig {
 
     // goBILDA Prism RGB LED driver
     public static final String PRISM_LED = "prism";
+
+    // Offseason robot (name taken from the existing IntakeTest / IntakeHopperTest config)
+    public static final String OFFSEASON_INTAKE_MOTOR = "intake";
+
+    // Box 2 cascade extension, stage 1 drive motor
+    public static final String BOX2_EXTENSION_MOTOR = "boxTube";
 }

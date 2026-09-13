@@ -1,10 +1,17 @@
 package org.firstinspires.ftc.teamcode.teles;
 
+import static com.pedropathing.api.Paths.line;
+
 import org.firstinspires.ftc.teamcode.RobotConfig;
 
+import com.acmerobotics.dashboard.FtcDashboard;
+import com.acmerobotics.dashboard.config.Config;
+import com.acmerobotics.dashboard.telemetry.MultipleTelemetry;
+import com.pedropathing.drivetrain.DrivePowers;
 import com.pedropathing.follower.Follower;
-import com.pedropathing.geometry.BezierLine;
-import com.pedropathing.geometry.Pose;
+import com.pedropathing.follower.ManualDrive;
+import com.pedropathing.math.Pose;
+import com.pedropathing.math.Velocity;
 import com.pedropathing.paths.Path;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
@@ -13,16 +20,18 @@ import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
 
-import org.firstinspires.ftc.teamcode.AllianceMirror;
-import org.firstinspires.ftc.teamcode.AllianceStore;
-import org.firstinspires.ftc.teamcode.AutoStartStore;
+import org.firstinspires.ftc.teamcode.alliance.AllianceMirror;
+import org.firstinspires.ftc.teamcode.alliance.AllianceStore;
+import org.firstinspires.ftc.teamcode.alliance.AutoStartStore;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Hood;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Turret;
-import org.firstinspires.ftc.teamcode.pedroPathing.Constants;
+import org.firstinspires.ftc.teamcode.pedro.Constants;
+import org.firstinspires.ftc.teamcode.pedro.PathModifiers;
 
+@Config
 @TeleOp(name = "A V3 Tele")
 public class V3Tele extends LinearOpMode {
 
@@ -62,7 +71,7 @@ public class V3Tele extends LinearOpMode {
 
     // Very light smoothing for predicted shot distance
     private static final double PREDICTED_DISTANCE_ALPHA = 0.45;
-    private static double TIME_TUNER = 0.77;
+    public static double TIME_TUNER = 0.77; // tunable from FTC Dashboard
 
     // Intake toggle
     private boolean lastX = false;
@@ -180,6 +189,8 @@ public class V3Tele extends LinearOpMode {
 
     @Override
     public void runOpMode() {
+        telemetry = new MultipleTelemetry(telemetry, FtcDashboard.getInstance().getTelemetry());
+
         intake = new Intake(hardwareMap);
 
         hood = new Hood(hardwareMap);
@@ -191,7 +202,7 @@ public class V3Tele extends LinearOpMode {
         isRedAlliance = AllianceStore.isRed(hardwareMap.appContext);
         boolean isCloseAuto = AutoStartStore.isClose(hardwareMap.appContext);
 
-        follower = Constants.createFollower(hardwareMap);
+        follower = Constants.create(hardwareMap);
 
         Pose blueTeleopStartPose = isCloseAuto
                 ? CLOSE_AUTO_TELEOP_START_BLUE
@@ -199,10 +210,8 @@ public class V3Tele extends LinearOpMode {
 
         Pose startPose = AllianceMirror.mirrorPose(blueTeleopStartPose, isRedAlliance);
 
-        follower.setStartingPose(startPose);
-        follower.updatePose();
-        follower.setMaxPower(1);
-        follower.startTeleOpDrive();
+        follower.setPose(startPose);
+        follower.update();
 
         turret = new Turret(hardwareMap, RobotConfig.TURRET_MOTOR, DcMotorSimple.Direction.REVERSE);
 
@@ -244,19 +253,19 @@ public class V3Tele extends LinearOpMode {
 
         while (opModeIsActive()) {
             follower.update();
-            Pose pose = follower.getPose();
+            Pose pose = follower.pose();
 
-            fieldVxInPerSec = follower.getVelocity().getXComponent();
-            fieldVyInPerSec = follower.getVelocity().getYComponent();
-            double robotAngularVelRadPerSec = follower.getAngularVelocity();
+            Velocity velocity = follower.velocity(); // field frame, in/s and rad/s
+            fieldVxInPerSec = velocity.vx;
+            fieldVyInPerSec = velocity.vy;
+            double robotAngularVelRadPerSec = velocity.omega;
 
             updateAutoFarOverride(pose);
 
             handleAutoPark(pose);
 
             if (!autoParkActive) {
-                double robotHeadingDeg = Math.toDegrees(pose.getHeading());
-                drive(robotHeadingDeg);
+                drive(pose);
             }
 
             handleTurretZeroingMode();
@@ -298,7 +307,7 @@ public class V3Tele extends LinearOpMode {
             } else {
                 double lookupDistance = predictedDistanceInitialized
                         ? filteredPredictedShotDistance
-                        : Math.hypot(getTargetX() - pose.getX(), TARGET_Y - pose.getY());
+                        : Math.hypot(getTargetX() - pose.x(), TARGET_Y - pose.y());
                 updateShotFromDistance(lookupDistance);
                 baseTurretAngleOffsetDeg = 1;
             }
@@ -325,7 +334,8 @@ public class V3Tele extends LinearOpMode {
             telemetry.addData("Turret Offset (deg)", turretAngleOffsetDeg);
             telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
             telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
-            telemetry.addData("Pose", follower.getPose().toString());
+            telemetry.addData("Flywheel Actual (rad/s)", flywheel.getVelocityRadPerSec());
+            telemetry.addData("Pose", pose.toString());
             telemetry.update();
         }
 
@@ -342,8 +352,8 @@ public class V3Tele extends LinearOpMode {
     }
 
     private void updateAutoFarOverride(Pose pose) {
-        double distanceToGoal = Math.hypot(getTargetX() - pose.getX(), TARGET_Y - pose.getY());
-        autoFarOverride = distanceToGoal > 120.0 && pose.getY() < 48.0;
+        double distanceToGoal = Math.hypot(getTargetX() - pose.x(), TARGET_Y - pose.y());
+        autoFarOverride = distanceToGoal > 120.0 && pose.y() < 48.0;
     }
 
     private boolean getZeroingTogglePressed() {
@@ -401,37 +411,25 @@ public class V3Tele extends LinearOpMode {
             autoParkSettleTimer.reset();
         }
 
-        // Stay in auto-park for a bit longer so the robot can settle.
-        if (autoParkSettling) {
-            if (autoParkSettleTimer.seconds() >= AUTO_PARK_SETTLE_TIME_SEC) {
-                autoParkActive = false;
-                autoParkSettling = false;
-                follower.startTeleOpDrive();
-            }
+        // Stay in auto-park for a bit longer so the robot can settle. drive() takes back over after.
+        if (autoParkSettling && autoParkSettleTimer.seconds() >= AUTO_PARK_SETTLE_TIME_SEC) {
+            autoParkActive = false;
+            autoParkSettling = false;
         }
     }
 
     private void startAutoPark(Pose currentPose) {
         Pose parkPose = getAutoParkPose();
 
-        autoParkPath = new Path(
-                new BezierLine(
-                        currentPose,
-                        parkPose
-                )
-        );
-
-        autoParkPath.setLinearHeadingInterpolation(
-                currentPose.getHeading(),
-                parkPose.getHeading()
-        );
-        autoParkPath.setBrakingStrength(0.5);
+        autoParkPath = line(currentPose, parkPose)
+                .linear(currentPose, parkPose)
+                .with(PathModifiers.softBraking(0.5));
 
         autoParkActive = true;
         autoParkSettling = false;
         autoParkSettleTimer.reset();
 
-        follower.followPath(autoParkPath, true);
+        follower.follow(autoParkPath);
 
         if (oneDriver) {
             gamepad1.rumble(300);
@@ -446,8 +444,7 @@ public class V3Tele extends LinearOpMode {
         autoParkSettling = false;
         autoParkSettleTimer.reset();
 
-        follower.startTeleOpDrive();
-        follower.setTeleOpDrive(0, 0, 0, false);
+        follower.manual(0, 0, 0);
 
         if (oneDriver) {
             gamepad1.rumble(500);
@@ -457,7 +454,7 @@ public class V3Tele extends LinearOpMode {
         }
     }
 
-    private void drive(double robotHeadingDeg) {
+    private void drive(Pose pose) {
         double trigger = Range.clip(1 - gamepad1.right_trigger, 0.2, 1);
 
         double forward = gamepad1.left_stick_y * trigger;
@@ -471,19 +468,14 @@ public class V3Tele extends LinearOpMode {
         }
 
         if (!(gamepad1.left_trigger > 0.5)) {
-            follower.setTeleOpDrive(
-                    forward,
-                    strafe,
-                    turn,
-                    false
-            );
+            // Field-centric: (forward, strafe) are field x/y, same as Pedro 2's setTeleOpDrive(..., false)
+            follower.manual(ManualDrive.fieldCentric(capTranslation(forward, strafe, turn), pose.heading()));
         } else {
-            follower.setTeleOpDrive(
+            follower.manual(capTranslation(
                     -gamepad1.left_stick_y * trigger,
                     -gamepad1.left_stick_x * trigger,
-                    -gamepad1.right_stick_x * trigger,
-                    true
-            );
+                    -gamepad1.right_stick_x * trigger
+            ));
         }
 
         // Disable driver pose reset during zeroing only in one-driver mode.
@@ -498,6 +490,13 @@ public class V3Tele extends LinearOpMode {
             follower.setPose(resetPose);
             gamepad1.rumble(500);
         }
+    }
+
+    /** Pedro 2 capped the translation vector at magnitude 1; kept so diagonals feel the same. */
+    private static DrivePowers capTranslation(double forward, double strafe, double turn) {
+        double magnitude = Math.hypot(forward, strafe);
+        double scale = magnitude > 1 ? 1 / magnitude : 1;
+        return new DrivePowers(forward * scale, strafe * scale, turn);
     }
 
     private void handleShotModeToggle() {
@@ -722,9 +721,9 @@ public class V3Tele extends LinearOpMode {
     private void trackGoalFromOdometry(Pose pose, double robotAngularVelRadPerSec) {
         double targetX = getTargetX();
 
-        double robotX = pose.getX();
-        double robotY = pose.getY();
-        double robotHeadingRad = pose.getHeading();
+        double robotX = pose.x();
+        double robotY = pose.y();
+        double robotHeadingRad = pose.heading();
         double robotHeadingDeg = Math.toDegrees(robotHeadingRad);
 
         double turretX = robotX - TURRET_CENTER_OFFSET_IN * Math.cos(robotHeadingRad);
@@ -827,8 +826,8 @@ public class V3Tele extends LinearOpMode {
     }
 
     private void initVelocityEstimator(Pose pose) {
-        lastPoseX = pose.getX();
-        lastPoseY = pose.getY();
+        lastPoseX = pose.x();
+        lastPoseY = pose.y();
         fieldVxInPerSec = 0.0;
         fieldVyInPerSec = 0.0;
         velocityInitialized = true;
@@ -836,8 +835,8 @@ public class V3Tele extends LinearOpMode {
     }
 
     private void updateEstimatedFieldVelocity(Pose pose) {
-        double x = pose.getX();
-        double y = pose.getY();
+        double x = pose.x();
+        double y = pose.y();
 
         if (!velocityInitialized) {
             initVelocityEstimator(pose);

@@ -1,10 +1,13 @@
 package org.firstinspires.ftc.teamcode.hardwareClasses;
 
+import com.acmerobotics.dashboard.config.Config;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
 import com.qualcomm.robotcore.hardware.HardwareMap;
 import com.qualcomm.robotcore.util.Range;
 
+// Gains are public static so they can be tuned live from FTC Dashboard (Configuration tab).
+@Config
 public class Turret {
     private DcMotorEx turretMotor;
 
@@ -16,15 +19,15 @@ public class Turret {
     // =========================
     // Old logic tunables
     // =========================
-    private double kP = 0.017;
-    private double kF = 0.003;
-    private double minPower = 0.02;
+    public static double kP = 0.017;
+    public static double kF = 0.003;
+    public static double minPower = 0.02;
 
     // =========================
     // New tracking logic tunables
     // =========================
-    private double kD = 0.0008;   // velocity error gain
-    private double kV = 0.003;   // desired angular velocity feedforward gain
+    public static double kD = 0.0008;   // velocity error gain
+    public static double kV = 0.003;   // desired angular velocity feedforward gain
 
     // Limits
     private double maxAngle = 180;
