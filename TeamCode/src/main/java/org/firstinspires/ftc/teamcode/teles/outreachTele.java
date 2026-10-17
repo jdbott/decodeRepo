@@ -2,14 +2,17 @@ package org.firstinspires.ftc.teamcode.teles;
 
 import org.firstinspires.ftc.teamcode.RobotConfig;
 
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.DcMotorSimple;
+import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.hardware.VoltageSensor;
 import com.qualcomm.robotcore.util.ElapsedTime;
 import com.qualcomm.robotcore.util.Range;
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
 import org.firstinspires.ftc.teamcode.hardwareClasses.Feeder;
 import org.firstinspires.ftc.teamcode.hardwareClasses.Flywheel;
@@ -18,6 +21,9 @@ import org.firstinspires.ftc.teamcode.hardwareClasses.Intake;
 
 @TeleOp(name = "Outreach Tele")
 public class outreachTele extends LinearOpMode {
+
+    // Control Hub IMU (robot config name); heading source for field-centric drive
+    private static final String IMU_NAME = "imu";
 
     private Hood hood;
     private Feeder feeder;
@@ -30,6 +36,8 @@ public class outreachTele extends LinearOpMode {
     private DcMotorEx rightFront;
     private DcMotorEx rightBack;
 
+    private IMU imu;
+
     private boolean oneDriver = false;
 
     // Shot mode (manual toggle only; no odometry for auto FAR detection)
@@ -41,7 +49,7 @@ public class outreachTele extends LinearOpMode {
     private ShotMode shotMode = ShotMode.CLOSE;
 
     // Fixed override shot settings
-    private static final double FIXED_POWER_SHOT_VELOCITY_RAD = 440;
+    private static final double FIXED_POWER_SHOT_VELOCITY_RAD = 0;
     private static final double FIXED_POWER_SHOT_HOOD_DEG = 53.5;
 
     // Intake toggle
@@ -53,6 +61,7 @@ public class outreachTele extends LinearOpMode {
 
     private boolean lastRightBumper1 = false;
     private boolean lastRightBumper2 = false;
+    private boolean lastDpadUp = false;
 
     // Timed shoot/feed sequence
     private final ElapsedTime sequenceTimer = new ElapsedTime();
@@ -70,7 +79,10 @@ public class outreachTele extends LinearOpMode {
     private double hoodAngleDeg = 50.0;
 
     // Flywheel target velocity state
-    private double targetVelocityRad = 275;
+    private double targetVelocityRad = 0;
+
+    // Field-centric drive heading (rad, CCW positive, relative to the last zero)
+    private double headingRad = 0;
 
     @Override
     public void runOpMode() {
@@ -97,6 +109,14 @@ public class outreachTele extends LinearOpMode {
         leftBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rightFront.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         rightBack.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+
+        // Field-centric drive: zero the yaw so the robot's current facing becomes "forward".
+        // Re-zero any time with D-pad up (see drive()).
+        imu = hardwareMap.get(IMU.class, IMU_NAME);
+        imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(
+                RevHubOrientationOnRobot.LogoFacingDirection.UP,
+                RevHubOrientationOnRobot.UsbFacingDirection.FORWARD)));
+        imu.resetYaw();
 
         feeder.clutchOut();
         feeder.armBlock();
@@ -135,7 +155,7 @@ public class outreachTele extends LinearOpMode {
                 hoodAngleDeg = FIXED_POWER_SHOT_HOOD_DEG;
                 hoodAngleDeg = hood.setAngle(hoodAngleDeg);
             } else {
-                targetVelocityRad = 275;
+                targetVelocityRad = 0;
                 hoodAngleDeg = 50.0;
                 hoodAngleDeg = hood.setAngle(hoodAngleDeg);
             }
@@ -151,6 +171,7 @@ public class outreachTele extends LinearOpMode {
             telemetry.addData("Shot Mode", shotMode);
             telemetry.addData("Hood Angle (deg)", hoodAngleDeg);
             telemetry.addData("Flywheel Target (rad/s)", targetVelocityRad);
+            telemetry.addData("Heading (deg)", "%.1f", Math.toDegrees(headingRad));
             telemetry.update();
         }
 
@@ -159,13 +180,28 @@ public class outreachTele extends LinearOpMode {
     }
 
     private void drive() {
+        // D-pad up re-zeros the field frame: whichever way the robot faces now becomes "forward"
+        boolean dpadUp = gamepad1.dpad_up;
+        if (dpadUp && !lastDpadUp) {
+            imu.resetYaw();
+            gamepad1.rumble(250);
+        }
+        lastDpadUp = dpadUp;
+
         // Left trigger = slow mode
         double trigger = Range.clip(1 - gamepad1.left_trigger, 0.2, 1);
 
-        // Drivetrain sits 180° from the motor names: invert both translation axes, leave turn.
-        double forward = gamepad1.left_stick_y * trigger;
-        double strafe = -gamepad1.left_stick_x * trigger;
+        // Stick command in the field frame: up = forward, right = right
+        double fieldForward = -gamepad1.left_stick_y * trigger;
+        double fieldRight = gamepad1.left_stick_x * trigger;
         double turn = -gamepad1.right_stick_x * trigger;
+
+        // Rotate the field-frame command into the robot frame with the IMU yaw (CCW positive)
+        headingRad = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+        double cos = Math.cos(headingRad);
+        double sin = Math.sin(headingRad);
+        double forward = fieldForward * cos - fieldRight * sin;
+        double strafe = fieldForward * sin + fieldRight * cos;
 
         double lf = forward + strafe + turn;
         double lb = forward - strafe + turn;
