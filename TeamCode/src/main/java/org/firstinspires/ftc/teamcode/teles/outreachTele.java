@@ -258,6 +258,7 @@ public class outreachTele extends LinearOpMode {
     private void updateFeedSequence() {
         switch (feedState) {
             case IDLE:
+            case DONE:
                 break;
 
             case WAIT_BEFORE_INTAKE:
@@ -275,9 +276,6 @@ public class outreachTele extends LinearOpMode {
                     feeder.armBlock();
                     feedState = FeedState.DONE;
                 }
-                break;
-
-            case DONE:
                 break;
         }
     }
