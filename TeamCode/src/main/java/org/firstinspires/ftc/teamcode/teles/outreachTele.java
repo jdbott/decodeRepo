@@ -162,8 +162,9 @@ public class outreachTele extends LinearOpMode {
         // Left trigger = slow mode
         double trigger = Range.clip(1 - gamepad1.left_trigger, 0.2, 1);
 
-        double forward = -gamepad1.left_stick_y * trigger;
-        double strafe = gamepad1.left_stick_x * trigger;
+        // Drivetrain sits 180° from the motor names: invert both translation axes, leave turn.
+        double forward = gamepad1.left_stick_y * trigger;
+        double strafe = -gamepad1.left_stick_x * trigger;
         double turn = -gamepad1.right_stick_x * trigger;
 
         double lf = forward + strafe + turn;
