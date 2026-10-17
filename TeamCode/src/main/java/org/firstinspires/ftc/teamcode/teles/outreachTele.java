@@ -191,7 +191,8 @@ public class outreachTele extends LinearOpMode {
         // Left trigger = slow mode
         double trigger = Range.clip(1 - gamepad1.left_trigger, 0.2, 1);
 
-        // Stick command in the field frame: up = forward, right = right
+        // Stick command in the field frame: up = forward, right = right (the gamepad reports up
+        // as a negative value, hence the negation). Flip these signs if the chassis is mirrored.
         double fieldForward = -gamepad1.left_stick_y * trigger;
         double fieldRight = gamepad1.left_stick_x * trigger;
         double turn = -gamepad1.right_stick_x * trigger;
