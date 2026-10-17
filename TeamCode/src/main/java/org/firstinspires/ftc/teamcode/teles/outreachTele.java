@@ -122,8 +122,8 @@ public class outreachTele extends LinearOpMode {
         waitForStart();
         if (isStopRequested()) return;
 
-        intake.setPower(1);
-        flywheel.setTargetVelocity(targetVelocityRad);
+        //intake.setPower(1);
+        //flywheel.setTargetVelocity(targetVelocityRad);
 
         while (opModeIsActive()) {
             drive();
@@ -143,7 +143,7 @@ public class outreachTele extends LinearOpMode {
             handleXToggle();
             handleBSequence();
 
-            updateFeedSequence();
+            //updateFeedSequence();
 
             flywheel.setTargetVelocity(targetVelocityRad);
             flywheel.update();
@@ -216,6 +216,7 @@ public class outreachTele extends LinearOpMode {
             xPressed = gamepad2.x;
         }
 
+        /*
         if (xPressed && !lastX) {
             intakeToggleOn = !intakeToggleOn;
 
@@ -229,6 +230,7 @@ public class outreachTele extends LinearOpMode {
                 }
             }
         }
+         */
 
         lastX = xPressed;
     }
